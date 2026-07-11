@@ -5,7 +5,8 @@ export type GridCellState =
   | "goal"
   | "frontier"
   | "visited"
-  | "path";
+  | "path"
+  | "difficult";
 
 export type GridFrame = {
   cellStates: GridCellState[][];
@@ -46,9 +47,28 @@ function buildWallMap(): boolean[][] {
 
 const WALL_MAP = buildWallMap();
 
+/**
+ * 地形コスト。既定は1、一部を「コストの高い地形」(5)にすることで、
+ * 歩数最短(BFS/DFS)と累積コスト最小(ダイクストラ法)が別の経路を選ぶ様子を対比できるようにする。
+ * BFS/DFSはこのコストを無視してそのまま突っ切るが、ダイクストラ法だけが迂回する。
+ */
+function buildWeightMap(): number[][] {
+  const weights: number[][] = Array.from({ length: MAZE_ROWS }, () => Array(MAZE_COLS).fill(1));
+  for (let c = 1; c <= 14; c++) {
+    weights[MAZE_ROWS - 1][c] = 5;
+  }
+  return weights;
+}
+
+const WEIGHT_MAP = buildWeightMap();
+const weightOf = (r: number, c: number) => WEIGHT_MAP[r][c];
+
 function buildInitialGrid(): GridCellState[][] {
-  const grid: GridCellState[][] = WALL_MAP.map((row) =>
-    row.map((isWall) => (isWall ? "wall" : "idle")),
+  const grid: GridCellState[][] = WALL_MAP.map((row, r) =>
+    row.map((isWall, c) => {
+      if (isWall) return "wall";
+      return weightOf(r, c) > 1 ? "difficult" : "idle";
+    }),
   );
   grid[START[0]][START[1]] = "start";
   grid[GOAL[0]][GOAL[1]] = "goal";
@@ -189,7 +209,83 @@ export function dfsSteps(): GridFrame[] {
   return frames;
 }
 
+/**
+ * ダイクストラ法のステップ列を生成する。
+ * BFSの「歩数」の代わりに「累積コスト」を優先度にして探索することで、
+ * コストの高い地形(difficult)を迂回する経路を選ぶ様子を可視化する。
+ * グリッドが小さいため、優先度付きキューは配列+ソートの素朴な実装で十分。
+ */
+export function dijkstraSteps(): GridFrame[] {
+  const grid = buildInitialGrid();
+  const frames: GridFrame[] = [{ cellStates: cloneGrid(grid), description: "初期状態" }];
+  const dist = new Map<string, number>();
+  const parent = new Map<string, string>();
+  const visited = new Set<string>();
+  const startKey = key(START[0], START[1]);
+  dist.set(startKey, 0);
+
+  const queue: [number, number][] = [START];
+
+  let found = false;
+  while (queue.length > 0 && !found) {
+    queue.sort((a, b) => (dist.get(key(...a)) ?? Infinity) - (dist.get(key(...b)) ?? Infinity));
+    const [r, c] = queue.shift()!;
+    const currentKey = key(r, c);
+    if (visited.has(currentKey)) continue;
+    visited.add(currentKey);
+
+    if (grid[r][c] !== "start" && grid[r][c] !== "goal") {
+      grid[r][c] = "visited";
+    }
+    frames.push({
+      cellStates: cloneGrid(grid),
+      description: `(${r + 1}, ${c + 1}) を累積コスト${dist.get(currentKey)}で確定`,
+    });
+
+    if (r === GOAL[0] && c === GOAL[1]) {
+      found = true;
+      break;
+    }
+
+    const neighbors: [number, number][] = [
+      [r - 1, c],
+      [r + 1, c],
+      [r, c - 1],
+      [r, c + 1],
+    ];
+    for (const [nr, nc] of neighbors) {
+      if (!inBounds(nr, nc) || isWall(nr, nc) || visited.has(key(nr, nc))) continue;
+      const candidateDist = dist.get(currentKey)! + weightOf(nr, nc);
+      const neighborKey = key(nr, nc);
+      if (candidateDist < (dist.get(neighborKey) ?? Infinity)) {
+        dist.set(neighborKey, candidateDist);
+        parent.set(neighborKey, currentKey);
+        if (grid[nr][nc] !== "goal") grid[nr][nc] = "frontier";
+        queue.push([nr, nc]);
+      }
+    }
+    frames.push({
+      cellStates: cloneGrid(grid),
+      description: `隣接マスの累積コストを更新(キュー内 ${queue.length}件)`,
+    });
+  }
+
+  if (found) {
+    reconstructPath(grid, frames, parent);
+  }
+
+  frames.push({
+    cellStates: cloneGrid(grid),
+    description: found
+      ? `探索完了(最小コスト経路を発見、総コスト${dist.get(key(GOAL[0], GOAL[1]))})`
+      : "探索完了(経路が見つかりませんでした)",
+  });
+
+  return frames;
+}
+
 export const PATHFINDING_VISUALIZERS: Record<string, () => GridFrame[]> = {
   bfs: bfsSteps,
   dfs: dfsSteps,
+  dijkstra: dijkstraSteps,
 };
