@@ -84,8 +84,49 @@
   padding-top: var(--space-1);
 }
 
-.summary {
+/* content/algorithms/*.md をmarked経由でHTML化したものの表示スタイル */
+.markdownBody {
   font-family: var(--font-body);
   line-height: 1.8;
   color: var(--color-text-muted);
+}
+
+.markdownBody h2 {
+  font-family: var(--font-display-en);
+  font-size: 0.9375rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  color: var(--color-accent-amber);
+  margin-top: var(--space-8);
+  margin-bottom: var(--space-3);
+}
+
+.markdownBody h2:first-child {
+  margin-top: 0;
+}
+
+.markdownBody p {
+  margin-bottom: var(--space-3);
+}
+
+.markdownBody ul,
+.markdownBody ol {
+  margin: 0 0 var(--space-3) var(--space-6);
+}
+
+.markdownBody li {
+  margin-bottom: var(--space-1);
+}
+
+.markdownBody code {
+  font-family: var(--font-mono);
+  font-size: 0.875em;
+  color: var(--color-text);
+  background: var(--color-bg-surface);
+  padding: 0.125em 0.375em;
+  border-radius: 3px;
+}
+
+.markdownBody strong {
+  color: var(--color-text);
 }

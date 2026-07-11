@@ -4,10 +4,11 @@ import { useMemo, useState } from "react";
 import Link from "next/link";
 import styles from "./AlgorithmCatalog.module.css";
 import { ComplexityBadge } from "@/components/hud/ComplexityBadge";
-import { CATEGORY_ORDER, type SampleAlgorithm } from "@/lib/sample-algorithms";
+import { CATEGORY_ORDER } from "@/lib/algorithm-categories";
+import type { AlgorithmMeta } from "@/lib/content/algorithms";
 
 type AlgorithmCatalogProps = {
-  algorithms: SampleAlgorithm[];
+  algorithms: AlgorithmMeta[];
   featuredId: string;
 };
 
@@ -36,7 +37,7 @@ export function AlgorithmCatalog({
 
   const groupedByCategory = useMemo(() => {
     const rest = algorithms.filter((algorithm) => algorithm.id !== featured.id);
-    const groups = new Map<string, SampleAlgorithm[]>();
+    const groups = new Map<string, AlgorithmMeta[]>();
     for (const algorithm of rest) {
       const list = groups.get(algorithm.category) ?? [];
       list.push(algorithm);
@@ -156,7 +157,7 @@ function AlgorithmRow({
   algorithm,
   showCategory = false,
 }: {
-  algorithm: SampleAlgorithm;
+  algorithm: AlgorithmMeta;
   showCategory?: boolean;
 }) {
   return (
