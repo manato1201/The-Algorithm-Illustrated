@@ -4,8 +4,10 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import styles from "./SortVisualizer.module.css";
 import { PlaybackControls } from "./PlaybackControls";
 import { useStepPlayer } from "./useStepPlayer";
+import { useWorkerFrames } from "./useWorkerFrames";
 import { stateColors, type StateColorKey } from "@/lib/design-tokens";
-import { SORT_VISUALIZERS } from "@/lib/sort-visualizers";
+import type { SortFrame } from "@/lib/sort-visualizers";
+import type { WorkerRequest } from "@/workers/algorithm-worker";
 
 const INITIAL_ARRAY = [
   62, 11, 88, 34, 5, 77, 23, 45, 90, 8, 56, 41, 19, 68, 3, 82, 30, 71, 15, 59,
@@ -25,15 +27,16 @@ type SortVisualizerProps = {
 
 /**
  * 状態遷移の可視化(ui-design.md 3節#2「主戦場」、5節のショーケースティア領域)。
- * Web Worker/diffベースの状態記録は未実装のため、現状はクライアント側で全ステップを事前生成して再生する簡易実装。
+ * ステップ列の生成はWeb Worker(algorithm-worker.ts)に委譲し、メインスレッドは受け取ったフレームの再生・描画のみを担う。
+ * ただしdiffベースの状態記録・IndexedDBキャッシュは未実装のクライアント側簡易実装(docs/progress.md参照)。
  */
 export function SortVisualizer({ algorithmId }: SortVisualizerProps) {
-  const generate = SORT_VISUALIZERS[algorithmId];
   const [seedArray, setSeedArray] = useState<number[]>(INITIAL_ARRAY);
-  const frames = useMemo(
-    () => (generate ? generate(seedArray) : []),
-    [generate, seedArray],
+  const request = useMemo<WorkerRequest>(
+    () => ({ kind: "sort", algorithmId, input: seedArray }),
+    [algorithmId, seedArray],
   );
+  const { frames, isComputing } = useWorkerFrames<SortFrame>(request);
   const { stepIndex, isFinished, showPause, handlePlayPause, handleStep, reset } =
     useStepPlayer(frames.length);
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -88,15 +91,13 @@ export function SortVisualizer({ algorithmId }: SortVisualizerProps) {
     });
   }, [reset]);
 
-  if (!generate) return null;
-
   const currentFrame = frames[stepIndex];
 
   return (
     <div className={styles.visualizer}>
       <canvas ref={canvasRef} className={styles.canvas} aria-hidden="true" />
       <p className={styles.description} role="status">
-        {currentFrame?.description}
+        {isComputing ? "Web Workerで計算中…" : currentFrame?.description}
       </p>
       <PlaybackControls
         stepIndex={stepIndex}
