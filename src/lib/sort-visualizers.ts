@@ -244,9 +244,174 @@ export function selectionSortSteps(initial: number[]): SortFrame[] {
   return frames;
 }
 
+/**
+ * マージソートのステップ列を生成する。
+ * マージ中の比較をcomparing、書き込みをswappingでハイライトし、区間のマージ完了時にsettledへ切り替える。
+ */
+export function mergeSortSteps(initial: number[]): SortFrame[] {
+  const array = [...initial];
+  const frames: SortFrame[] = [frame(array, {}, "初期状態")];
+  const settled = new Set<number>();
+
+  const markSettled = (): Partial<Record<number, StateColorKey>> => {
+    const highlight: Partial<Record<number, StateColorKey>> = {};
+    settled.forEach((idx) => {
+      highlight[idx] = "settled";
+    });
+    return highlight;
+  };
+
+  const merge = (left: number, mid: number, right: number) => {
+    const leftPart = array.slice(left, mid + 1);
+    const rightPart = array.slice(mid + 1, right + 1);
+    let i = 0;
+    let j = 0;
+    let k = left;
+
+    while (i < leftPart.length && j < rightPart.length) {
+      frames.push(
+        frame(
+          array,
+          { ...markSettled(), [left + i]: "comparing", [mid + 1 + j]: "comparing" },
+          `${left + i + 1}番目と${mid + 1 + j + 1}番目を比較`,
+        ),
+      );
+      if (leftPart[i] <= rightPart[j]) {
+        array[k] = leftPart[i];
+        i++;
+      } else {
+        array[k] = rightPart[j];
+        j++;
+      }
+      frames.push(frame(array, { ...markSettled(), [k]: "swapping" }, `${k + 1}番目に書き込み`));
+      k++;
+    }
+    while (i < leftPart.length) {
+      array[k] = leftPart[i];
+      frames.push(frame(array, { ...markSettled(), [k]: "swapping" }, `残りを${k + 1}番目にコピー`));
+      i++;
+      k++;
+    }
+    while (j < rightPart.length) {
+      array[k] = rightPart[j];
+      frames.push(frame(array, { ...markSettled(), [k]: "swapping" }, `残りを${k + 1}番目にコピー`));
+      j++;
+      k++;
+    }
+    for (let idx = left; idx <= right; idx++) settled.add(idx);
+    frames.push(frame(array, markSettled(), `区間[${left + 1}, ${right + 1}]のマージが完了`));
+  };
+
+  const sort = (left: number, right: number) => {
+    if (left >= right) {
+      settled.add(left);
+      return;
+    }
+    const mid = Math.floor((left + right) / 2);
+    sort(left, mid);
+    sort(mid + 1, right);
+    merge(left, mid, right);
+  };
+
+  sort(0, array.length - 1);
+
+  const allSettled: Partial<Record<number, StateColorKey>> = {};
+  array.forEach((_, idx) => {
+    allSettled[idx] = "settled";
+  });
+  frames.push(frame(array, allSettled, "ソート完了"));
+
+  return frames;
+}
+
+/**
+ * ヒープソートのステップ列を生成する。
+ * 最大ヒープ構築フェーズと、根を末尾に追い出す抽出フェーズの2段構成。
+ */
+export function heapSortSteps(initial: number[]): SortFrame[] {
+  const array = [...initial];
+  const frames: SortFrame[] = [frame(array, {}, "初期状態")];
+  const n = array.length;
+  const settled = new Set<number>();
+
+  const markSettled = (): Partial<Record<number, StateColorKey>> => {
+    const highlight: Partial<Record<number, StateColorKey>> = {};
+    settled.forEach((idx) => {
+      highlight[idx] = "settled";
+    });
+    return highlight;
+  };
+
+  const siftDown = (heapSize: number, root: number) => {
+    let largest = root;
+    for (;;) {
+      const left = 2 * largest + 1;
+      const right = 2 * largest + 2;
+      let candidate = largest;
+
+      if (left < heapSize) {
+        frames.push(
+          frame(
+            array,
+            { ...markSettled(), [candidate]: "pivot", [left]: "comparing" },
+            `${candidate + 1}番目と左の子${left + 1}番目を比較`,
+          ),
+        );
+        if (array[left] > array[candidate]) candidate = left;
+      }
+      if (right < heapSize) {
+        frames.push(
+          frame(
+            array,
+            { ...markSettled(), [largest]: "pivot", [right]: "comparing" },
+            `${largest + 1}番目と右の子${right + 1}番目を比較`,
+          ),
+        );
+        if (array[right] > array[candidate]) candidate = right;
+      }
+      if (candidate === largest) break;
+
+      [array[largest], array[candidate]] = [array[candidate], array[largest]];
+      frames.push(
+        frame(
+          array,
+          { ...markSettled(), [largest]: "swapping", [candidate]: "swapping" },
+          `${largest + 1}番目と${candidate + 1}番目を交換`,
+        ),
+      );
+      largest = candidate;
+    }
+  };
+
+  for (let i = Math.floor(n / 2) - 1; i >= 0; i--) {
+    siftDown(n, i);
+  }
+  frames.push(frame(array, markSettled(), "最大ヒープの構築が完了"));
+
+  for (let end = n - 1; end > 0; end--) {
+    [array[0], array[end]] = [array[end], array[0]];
+    settled.add(end);
+    frames.push(
+      frame(array, { ...markSettled(), 0: "swapping", [end]: "swapping" }, `最大値を${end + 1}番目に確定`),
+    );
+    siftDown(end, 0);
+  }
+  settled.add(0);
+
+  const allSettled: Partial<Record<number, StateColorKey>> = {};
+  array.forEach((_, idx) => {
+    allSettled[idx] = "settled";
+  });
+  frames.push(frame(array, allSettled, "ソート完了"));
+
+  return frames;
+}
+
 export const SORT_VISUALIZERS: Record<string, (initial: number[]) => SortFrame[]> = {
   "bubble-sort": bubbleSortSteps,
   "quick-sort": quickSortSteps,
   "insertion-sort": insertionSortSteps,
   "selection-sort": selectionSortSteps,
+  "merge-sort": mergeSortSteps,
+  "heap-sort": heapSortSteps,
 };
