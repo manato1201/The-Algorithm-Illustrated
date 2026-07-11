@@ -5,7 +5,10 @@ import { ComplexityBadge } from "@/components/hud/ComplexityBadge";
 import { SortVisualizer } from "@/components/visualizer/SortVisualizer";
 import { PathfindingVisualizer } from "@/components/visualizer/PathfindingVisualizer";
 import { DPTableVisualizer } from "@/components/visualizer/DPTableVisualizer";
-import { sampleAlgorithms } from "@/lib/sample-algorithms";
+import {
+  getAllAlgorithmIds,
+  getAlgorithmDetail,
+} from "@/lib/content/algorithms";
 import { SORT_VISUALIZERS } from "@/lib/sort-visualizers";
 import { PATHFINDING_VISUALIZERS } from "@/lib/pathfinding-visualizers";
 import { DP_VISUALIZERS } from "@/lib/dp-visualizers";
@@ -15,14 +18,14 @@ type AlgorithmDetailPageProps = {
 };
 
 export function generateStaticParams() {
-  return sampleAlgorithms.map((algorithm) => ({ id: algorithm.id }));
+  return getAllAlgorithmIds().map((id) => ({ id }));
 }
 
 export default async function AlgorithmDetailPage({
   params,
 }: AlgorithmDetailPageProps) {
   const { id } = await params;
-  const algorithm = sampleAlgorithms.find((item) => item.id === id);
+  const algorithm = getAlgorithmDetail(id);
 
   if (!algorithm) {
     notFound();
@@ -69,7 +72,11 @@ export default async function AlgorithmDetailPage({
           <h2 id="explain-heading" className={styles.sectionLabel}>
             ■ ABOUT 概要
           </h2>
-          <p className={styles.summary}>{algorithm.summary}</p>
+          <div
+            className={styles.markdownBody}
+            // content/algorithms/*.md はリポジトリで管理する信頼済みコンテンツのみ(外部入力なし)
+            dangerouslySetInnerHTML={{ __html: algorithm.bodyHtml }}
+          />
         </section>
       </div>
     </div>

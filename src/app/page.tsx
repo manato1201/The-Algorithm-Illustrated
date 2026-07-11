@@ -1,6 +1,7 @@
 import { AlgorithmCatalog } from "@/components/catalog/AlgorithmCatalog";
-import { sampleAlgorithms } from "@/lib/sample-algorithms";
+import { getAllAlgorithmsMeta } from "@/lib/content/algorithms";
 
 export default function HomePage() {
-  return <AlgorithmCatalog algorithms={sampleAlgorithms} featuredId="quick-sort" />;
+  const algorithms = getAllAlgorithmsMeta();
+  return <AlgorithmCatalog algorithms={algorithms} featuredId="quick-sort" />;
 }
