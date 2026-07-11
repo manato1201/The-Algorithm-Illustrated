@@ -135,7 +135,118 @@ export function quickSortSteps(initial: number[]): SortFrame[] {
   return frames;
 }
 
+/**
+ * 挿入ソートのステップ列を生成する。
+ * 取り出した要素をpivot、比較・交換をcomparing/swappingでハイライトする。
+ */
+export function insertionSortSteps(initial: number[]): SortFrame[] {
+  const array = [...initial];
+  const frames: SortFrame[] = [frame(array, {}, "初期状態")];
+  const n = array.length;
+
+  const markSorted = (upTo: number): Partial<Record<number, StateColorKey>> => {
+    const highlight: Partial<Record<number, StateColorKey>> = {};
+    for (let k = 0; k <= upTo; k++) highlight[k] = "settled";
+    return highlight;
+  };
+
+  for (let i = 1; i < n; i++) {
+    frames.push(
+      frame(array, { ...markSorted(i - 1), [i]: "pivot" }, `${i + 1}番目(値: ${array[i]})を取り出す`),
+    );
+    let j = i;
+    while (j > 0 && array[j - 1] > array[j]) {
+      frames.push(
+        frame(
+          array,
+          { ...markSorted(i - 1), [j - 1]: "comparing", [j]: "comparing" },
+          `${j}番目と${j + 1}番目を比較`,
+        ),
+      );
+      [array[j - 1], array[j]] = [array[j], array[j - 1]];
+      frames.push(
+        frame(
+          array,
+          { ...markSorted(i - 1), [j - 1]: "swapping", [j]: "swapping" },
+          `${j}番目と${j + 1}番目を交換`,
+        ),
+      );
+      j--;
+    }
+    frames.push(frame(array, markSorted(i), `先頭から${i + 1}個が整列済み`));
+  }
+
+  const allSettled: Partial<Record<number, StateColorKey>> = {};
+  array.forEach((_, idx) => {
+    allSettled[idx] = "settled";
+  });
+  frames.push(frame(array, allSettled, "ソート完了"));
+
+  return frames;
+}
+
+/**
+ * 選択ソートのステップ列を生成する。
+ * 探索中の最小値候補をpivot、比較対象をcomparingでハイライトする。
+ */
+export function selectionSortSteps(initial: number[]): SortFrame[] {
+  const array = [...initial];
+  const frames: SortFrame[] = [frame(array, {}, "初期状態")];
+  const n = array.length;
+
+  const markSettledBefore = (i: number): Partial<Record<number, StateColorKey>> => {
+    const highlight: Partial<Record<number, StateColorKey>> = {};
+    for (let k = 0; k < i; k++) highlight[k] = "settled";
+    return highlight;
+  };
+
+  for (let i = 0; i < n - 1; i++) {
+    let minIndex = i;
+    const settledSoFar = markSettledBefore(i);
+
+    frames.push(
+      frame(array, { ...settledSoFar, [minIndex]: "pivot" }, `${i + 1}番目以降の最小値を探索開始`),
+    );
+    for (let j = i + 1; j < n; j++) {
+      frames.push(
+        frame(
+          array,
+          { ...settledSoFar, [minIndex]: "pivot", [j]: "comparing" },
+          `${j + 1}番目と現在の最小値(${array[minIndex]})を比較`,
+        ),
+      );
+      if (array[j] < array[minIndex]) {
+        minIndex = j;
+        frames.push(
+          frame(array, { ...settledSoFar, [minIndex]: "pivot" }, `最小値を${minIndex + 1}番目に更新`),
+        );
+      }
+    }
+    if (minIndex !== i) {
+      [array[i], array[minIndex]] = [array[minIndex], array[i]];
+      frames.push(
+        frame(
+          array,
+          { ...settledSoFar, [i]: "swapping", [minIndex]: "swapping" },
+          `${i + 1}番目と${minIndex + 1}番目を交換`,
+        ),
+      );
+    }
+    frames.push(frame(array, markSettledBefore(i + 1), `先頭から${i + 1}個が確定`));
+  }
+
+  const allSettled: Partial<Record<number, StateColorKey>> = {};
+  array.forEach((_, idx) => {
+    allSettled[idx] = "settled";
+  });
+  frames.push(frame(array, allSettled, "ソート完了"));
+
+  return frames;
+}
+
 export const SORT_VISUALIZERS: Record<string, (initial: number[]) => SortFrame[]> = {
   "bubble-sort": bubbleSortSteps,
   "quick-sort": quickSortSteps,
+  "insertion-sort": insertionSortSteps,
+  "selection-sort": selectionSortSteps,
 };
