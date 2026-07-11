@@ -60,7 +60,7 @@ export default async function AlgorithmDetailPage({
             <DPTableVisualizer algorithmId={id} />
           ) : (
             <div className={styles.placeholder}>
-              可視化は準備中です。現在はソート系(バブル/選択/挿入/マージ/ヒープ/クイックソート)・経路探索(BFS/DFS/ダイクストラ法)・動的計画法(0-1ナップサック問題)のみ対応しています。
+              可視化は準備中です。現在はソート系(バブル/選択/挿入/マージ/ヒープ/クイックソート)・経路探索(BFS/DFS/ダイクストラ法/A*探索)・動的計画法(0-1ナップサック問題)のみ対応しています。
             </div>
           )}
         </section>

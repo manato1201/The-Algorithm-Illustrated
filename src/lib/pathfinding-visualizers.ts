@@ -284,8 +284,88 @@ export function dijkstraSteps(): GridFrame[] {
   return frames;
 }
 
+/** マンハッタン距離ヒューリスティック(A*が「ゴールまでの残り」を見積もるのに使う) */
+const heuristic = (r: number, c: number) => Math.abs(GOAL[0] - r) + Math.abs(GOAL[1] - c);
+
+/**
+ * A*探索のステップ列を生成する。
+ * ダイクストラ法とほぼ同じ実装だが、優先度を「累積コストg」ではなく「g + ヒューリスティックh」にすることで、
+ * ゴール方向を優先的に探索し、同じ最小コスト経路をより少ない探索マス数で見つけられる。
+ */
+export function aStarSteps(): GridFrame[] {
+  const grid = buildInitialGrid();
+  const frames: GridFrame[] = [{ cellStates: cloneGrid(grid), description: "初期状態" }];
+  const gScore = new Map<string, number>();
+  const parent = new Map<string, string>();
+  const visited = new Set<string>();
+  const startKey = key(START[0], START[1]);
+  gScore.set(startKey, 0);
+
+  const fScore = (r: number, c: number) => (gScore.get(key(r, c)) ?? Infinity) + heuristic(r, c);
+
+  const queue: [number, number][] = [START];
+
+  let found = false;
+  while (queue.length > 0 && !found) {
+    queue.sort((a, b) => fScore(...a) - fScore(...b));
+    const [r, c] = queue.shift()!;
+    const currentKey = key(r, c);
+    if (visited.has(currentKey)) continue;
+    visited.add(currentKey);
+
+    if (grid[r][c] !== "start" && grid[r][c] !== "goal") {
+      grid[r][c] = "visited";
+    }
+    frames.push({
+      cellStates: cloneGrid(grid),
+      description: `(${r + 1}, ${c + 1}) を f=g+h=${fScore(r, c)}(g=${gScore.get(currentKey)}, h=${heuristic(r, c)})で確定`,
+    });
+
+    if (r === GOAL[0] && c === GOAL[1]) {
+      found = true;
+      break;
+    }
+
+    const neighbors: [number, number][] = [
+      [r - 1, c],
+      [r + 1, c],
+      [r, c - 1],
+      [r, c + 1],
+    ];
+    for (const [nr, nc] of neighbors) {
+      if (!inBounds(nr, nc) || isWall(nr, nc) || visited.has(key(nr, nc))) continue;
+      const candidateG = gScore.get(currentKey)! + weightOf(nr, nc);
+      const neighborKey = key(nr, nc);
+      if (candidateG < (gScore.get(neighborKey) ?? Infinity)) {
+        gScore.set(neighborKey, candidateG);
+        parent.set(neighborKey, currentKey);
+        if (grid[nr][nc] !== "goal") grid[nr][nc] = "frontier";
+        queue.push([nr, nc]);
+      }
+    }
+    frames.push({
+      cellStates: cloneGrid(grid),
+      description: `隣接マスのg値を更新(キュー内 ${queue.length}件)`,
+    });
+  }
+
+  if (found) {
+    reconstructPath(grid, frames, parent);
+  }
+
+  frames.push({
+    cellStates: cloneGrid(grid),
+    description: found
+      ? `探索完了(最小コスト経路を発見、総コスト${gScore.get(key(GOAL[0], GOAL[1]))})`
+      : "探索完了(経路が見つかりませんでした)",
+  });
+
+  return frames;
+}
+
 export const PATHFINDING_VISUALIZERS: Record<string, () => GridFrame[]> = {
   bfs: bfsSteps,
   dfs: dfsSteps,
   dijkstra: dijkstraSteps,
+  "a-star": aStarSteps,
 };
