@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import Link from "next/link";
 import styles from "./AlgorithmCatalog.module.css";
 import { ComplexityBadge } from "@/components/hud/ComplexityBadge";
 import { CATEGORY_ORDER, type SampleAlgorithm } from "@/lib/sample-algorithms";
@@ -114,14 +115,17 @@ export function AlgorithmCatalog({
             <h2 id="featured-heading" className={styles.sectionLabel}>
               ■ FEATURED 代表アルゴリズム
             </h2>
-            <article className={styles.featuredCard}>
+            <Link
+              href={`/algorithms/${featured.id}`}
+              className={styles.featuredCard}
+            >
               <div className={styles.featuredMeta}>
                 <span className={styles.category}>{featured.category}</span>
                 <ComplexityBadge notation={featured.complexity} />
               </div>
               <h3 className={styles.featuredName}>{featured.name}</h3>
               <p className={styles.featuredDesc}>{featured.summary}</p>
-            </article>
+            </Link>
           </section>
 
           <section className={styles.list} aria-labelledby="list-heading">
@@ -157,13 +161,13 @@ function AlgorithmRow({
 }) {
   return (
     <li className={styles.listRow}>
-      <div className={styles.listRowHead}>
+      <Link href={`/algorithms/${algorithm.id}`} className={styles.listRowHead}>
         <span className={styles.listName}>{algorithm.name}</span>
         {showCategory ? (
           <span className={styles.listCategory}>{algorithm.category}</span>
         ) : null}
         <ComplexityBadge notation={algorithm.complexity} />
-      </div>
+      </Link>
       <p className={styles.listSummary}>{algorithm.summary}</p>
     </li>
   );

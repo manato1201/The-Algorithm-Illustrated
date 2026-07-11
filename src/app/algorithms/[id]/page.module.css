@@ -1,0 +1,91 @@
+.page {
+  padding: var(--space-6);
+  max-width: 72rem;
+  margin: 0 auto;
+}
+
+.backLink {
+  display: inline-block;
+  font-family: var(--font-mono);
+  font-size: 0.8125rem;
+  color: var(--color-text-muted);
+  margin-bottom: var(--space-6);
+}
+
+.backLink:hover {
+  color: var(--color-accent-amber);
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+  margin-bottom: var(--space-8);
+}
+
+.category {
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  color: var(--color-text-muted);
+  letter-spacing: 0.06em;
+}
+
+.title {
+  font-family: var(--font-display);
+  font-size: clamp(1.5rem, 3vw, 2.25rem);
+  font-weight: 700;
+  flex-basis: 100%;
+}
+
+.sectionLabel {
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  letter-spacing: 0.1em;
+  color: var(--color-text-muted);
+  margin-bottom: var(--space-4);
+}
+
+/* スティッキーサイド(ui-design.md 4.1節の転用: 左固定=可視化+コントロール、右スクロール=説明文) */
+.layout {
+  display: grid;
+  grid-template-columns: minmax(0, 3fr) minmax(0, 2fr);
+  gap: var(--space-8);
+  align-items: start;
+}
+
+@media (max-width: 768px) {
+  .layout {
+    grid-template-columns: 1fr;
+  }
+}
+
+.visualPane {
+  position: sticky;
+  top: var(--space-6);
+}
+
+@media (max-width: 768px) {
+  .visualPane {
+    position: static;
+  }
+}
+
+.placeholder {
+  border: 1px dashed var(--color-line);
+  border-radius: 8px;
+  padding: var(--space-8);
+  font-family: var(--font-body);
+  color: var(--color-text-muted);
+  text-align: center;
+}
+
+.explainPane {
+  padding-top: var(--space-1);
+}
+
+.summary {
+  font-family: var(--font-body);
+  line-height: 1.8;
+  color: var(--color-text-muted);
+}
