@@ -17,6 +17,7 @@ const CELL_COLORS: Record<GridCellState, string> = {
   frontier: stateColors.pivot,
   visited: stateColors.comparing,
   path: stateColors.settled,
+  difficult: stateColors.swapping,
 };
 
 const LEGEND_ITEMS: { key: GridCellState; label: string }[] = [
@@ -24,7 +25,8 @@ const LEGEND_ITEMS: { key: GridCellState; label: string }[] = [
   { key: "goal", label: "ゴール" },
   { key: "frontier", label: "次の候補" },
   { key: "visited", label: "探索済み" },
-  { key: "path", label: "最短経路" },
+  { key: "path", label: "最短/最小コスト経路" },
+  { key: "difficult", label: "地形コスト高" },
   { key: "wall", label: "壁" },
 ];
 
@@ -73,7 +75,8 @@ export function PathfindingVisualizer({ algorithmId }: PathfindingVisualizerProp
         const x = c * (cellWidth + gap);
         const y = r * (cellHeight + gap);
         const color = CELL_COLORS[state];
-        const isDynamic = state === "frontier" || state === "visited" || state === "path";
+        const isDynamic =
+          state === "frontier" || state === "visited" || state === "path" || state === "difficult";
 
         ctx.shadowColor = isDynamic ? color : "transparent";
         ctx.shadowBlur = isDynamic ? 10 : 0;
