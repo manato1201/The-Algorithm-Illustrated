@@ -2,13 +2,14 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import styles from "./SortVisualizer.module.css";
+import { PlaybackControls } from "./PlaybackControls";
+import { useStepPlayer } from "./useStepPlayer";
 import { stateColors, type StateColorKey } from "@/lib/design-tokens";
 import { SORT_VISUALIZERS } from "@/lib/sort-visualizers";
 
 const INITIAL_ARRAY = [
   62, 11, 88, 34, 5, 77, 23, 45, 90, 8, 56, 41, 19, 68, 3, 82, 30, 71, 15, 59,
 ];
-const PLAY_INTERVAL_MS = 400;
 
 const LEGEND_ITEMS: { key: StateColorKey; label: string }[] = [
   { key: "idle", label: "未処理" },
@@ -33,17 +34,9 @@ export function SortVisualizer({ algorithmId }: SortVisualizerProps) {
     () => (generate ? generate(seedArray) : []),
     [generate, seedArray],
   );
-  const [stepIndex, setStepIndex] = useState(0);
-  const [isPlaying, setIsPlaying] = useState(false);
+  const { stepIndex, isFinished, showPause, handlePlayPause, handleStep, reset } =
+    useStepPlayer(frames.length);
   const canvasRef = useRef<HTMLCanvasElement>(null);
-
-  useEffect(() => {
-    if (!isPlaying || stepIndex >= frames.length - 1) return;
-    const timer = setTimeout(() => {
-      setStepIndex((i) => Math.min(i + 1, frames.length - 1));
-    }, PLAY_INTERVAL_MS);
-    return () => clearTimeout(timer);
-  }, [isPlaying, stepIndex, frames.length]);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -83,26 +76,8 @@ export function SortVisualizer({ algorithmId }: SortVisualizerProps) {
     });
   }, [frames, stepIndex]);
 
-  const handlePlayPause = useCallback(() => {
-    if (stepIndex >= frames.length - 1) {
-      setStepIndex(0);
-      setIsPlaying(true);
-      return;
-    }
-    setIsPlaying((playing) => !playing);
-  }, [stepIndex, frames.length]);
-
-  const handleStep = useCallback(
-    (delta: number) => {
-      setIsPlaying(false);
-      setStepIndex((i) => Math.min(Math.max(i + delta, 0), frames.length - 1));
-    },
-    [frames.length],
-  );
-
   const handleShuffle = useCallback(() => {
-    setIsPlaying(false);
-    setStepIndex(0);
+    reset();
     setSeedArray((current) => {
       const next = [...current];
       for (let i = next.length - 1; i > 0; i--) {
@@ -111,13 +86,11 @@ export function SortVisualizer({ algorithmId }: SortVisualizerProps) {
       }
       return next;
     });
-  }, []);
+  }, [reset]);
 
   if (!generate) return null;
 
-  const isFinished = stepIndex >= frames.length - 1;
-  const currentFrame = frames[Math.min(stepIndex, frames.length - 1)];
-  const showPause = isPlaying && !isFinished;
+  const currentFrame = frames[stepIndex];
 
   return (
     <div className={styles.visualizer}>
@@ -125,33 +98,16 @@ export function SortVisualizer({ algorithmId }: SortVisualizerProps) {
       <p className={styles.description} role="status">
         {currentFrame?.description}
       </p>
-      <div className={styles.controls}>
-        <button
-          type="button"
-          className={styles.button}
-          onClick={() => handleStep(-1)}
-          disabled={stepIndex === 0}
-        >
-          ← 戻る
-        </button>
-        <button type="button" className={styles.buttonPrimary} onClick={handlePlayPause}>
-          {showPause ? "一時停止" : isFinished ? "最初から再生" : "再生"}
-        </button>
-        <button
-          type="button"
-          className={styles.button}
-          onClick={() => handleStep(1)}
-          disabled={isFinished}
-        >
-          進む →
-        </button>
-        <button type="button" className={styles.button} onClick={handleShuffle}>
-          シャッフル
-        </button>
-        <span className={styles.stepCount}>
-          STEP {stepIndex + 1} / {frames.length}
-        </span>
-      </div>
+      <PlaybackControls
+        stepIndex={stepIndex}
+        frameCount={frames.length}
+        showPause={showPause}
+        isFinished={isFinished}
+        onPlayPause={handlePlayPause}
+        onStep={handleStep}
+        onReset={handleShuffle}
+        resetLabel="シャッフル"
+      />
       <ul className={styles.legend}>
         {LEGEND_ITEMS.map((item) => (
           <li key={item.key} className={styles.legendItem}>
