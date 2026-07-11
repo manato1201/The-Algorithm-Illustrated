@@ -1,0 +1,251 @@
+.page {
+  display: flex;
+  flex-direction: column;
+}
+
+/* ヒーロー(1. タイポグラフィック全面の転用) — 余白多め */
+.hero {
+  padding: var(--space-16) var(--space-6) var(--space-12);
+  max-width: 56rem;
+}
+
+.eyebrow {
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  letter-spacing: 0.12em;
+  color: var(--color-accent-amber);
+  margin-bottom: var(--space-4);
+}
+
+.heroTitle {
+  font-family: var(--font-display);
+  font-weight: 900;
+  font-size: clamp(2rem, 5vw, 3.5rem);
+  line-height: 1.25;
+  margin-bottom: var(--space-6);
+  animation: flicker-in 0.6s ease-out both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .heroTitle {
+    animation: none;
+  }
+}
+
+@keyframes flicker-in {
+  from {
+    opacity: 0;
+    filter: drop-shadow(0 0 0 transparent);
+  }
+  60% {
+    opacity: 1;
+    filter: drop-shadow(0 0 18px rgba(255, 167, 51, 0.45));
+  }
+  to {
+    opacity: 1;
+    filter: drop-shadow(0 0 0 transparent);
+  }
+}
+
+.heroLead {
+  font-family: var(--font-body);
+  font-size: 1rem;
+  line-height: 1.8;
+  color: var(--color-text-muted);
+  max-width: 38rem;
+  margin-bottom: var(--space-6);
+}
+
+/* 件数表示(参照HUDの「763本」相当の等幅数値表示) */
+.countLine {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-2);
+  font-family: var(--font-mono);
+  margin-bottom: var(--space-6);
+}
+
+.countNumber {
+  font-size: 1.5rem;
+  font-weight: 700;
+  color: var(--color-accent-amber);
+}
+
+.countLabel {
+  font-size: 0.8125rem;
+  color: var(--color-text-muted);
+}
+
+.searchBar {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  border: 1px solid var(--color-line);
+  border-radius: 4px;
+  padding: var(--space-3) var(--space-4);
+  max-width: 32rem;
+  transition:
+    border-color 0.15s ease,
+    box-shadow 0.15s ease;
+}
+
+.searchBar:focus-within {
+  border-color: var(--color-accent-amber);
+  box-shadow: var(--glow-amber);
+}
+
+.searchLabel {
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+  letter-spacing: 0.1em;
+  color: var(--color-text-muted);
+  flex-shrink: 0;
+}
+
+.searchInput {
+  flex: 1;
+  background: transparent;
+  border: none;
+  color: var(--color-text);
+  font-family: var(--font-body);
+  font-size: 0.9375rem;
+}
+
+.searchInput::placeholder {
+  color: var(--color-text-muted);
+}
+
+.searchInput:focus {
+  outline: none;
+}
+
+.sectionLabel {
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  letter-spacing: 0.1em;
+  color: var(--color-text-muted);
+  margin-bottom: var(--space-4);
+}
+
+/* 代表アルゴリズム(同一装置の連続回避: 1件のみ大きいショーケースタイル) */
+.showcase {
+  padding: var(--space-8) var(--space-6);
+  border-top: 1px solid var(--color-line);
+}
+
+.featuredCard {
+  border: 1px solid var(--color-line);
+  border-radius: 8px;
+  padding: var(--space-8);
+  background: var(--color-bg-surface);
+}
+
+.featuredMeta {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  margin-bottom: var(--space-4);
+}
+
+.category {
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  color: var(--color-text-muted);
+  letter-spacing: 0.06em;
+}
+
+.featuredName {
+  font-family: var(--font-display);
+  font-size: 1.75rem;
+  font-weight: 700;
+  margin-bottom: var(--space-3);
+}
+
+.featuredDesc {
+  font-family: var(--font-body);
+  color: var(--color-text-muted);
+  line-height: 1.7;
+  max-width: 42rem;
+}
+
+/* 一覧・検索結果(情報密度高) */
+.list,
+.results {
+  padding: var(--space-8) var(--space-6) var(--space-16);
+  border-top: 1px solid var(--color-line);
+}
+
+.categoryGroup {
+  margin-bottom: var(--space-8);
+}
+
+.categoryGroup:last-child {
+  margin-bottom: 0;
+}
+
+.categoryHeading {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-family: var(--font-display-en);
+  font-size: 0.9375rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  color: var(--color-accent-amber);
+  margin-bottom: var(--space-2);
+}
+
+.categoryCount {
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  color: var(--color-text-muted);
+  font-weight: 400;
+}
+
+.listItems {
+  list-style: none;
+  border-top: 1px solid var(--color-line);
+}
+
+.listRow {
+  padding: var(--space-3) 0;
+  border-bottom: 1px solid var(--color-line);
+}
+
+.listRowHead {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  margin-bottom: var(--space-1);
+}
+
+.listName {
+  font-family: var(--font-body);
+  font-size: 0.9375rem;
+  font-weight: 500;
+}
+
+.listCategory {
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  color: var(--color-text-muted);
+  letter-spacing: 0.04em;
+}
+
+.listSummary {
+  font-family: var(--font-body);
+  font-size: 0.8125rem;
+  line-height: 1.6;
+  color: var(--color-text-muted);
+  max-width: 48rem;
+}
+
+/* 検索結果0件(2.6節: 破線パネル=プレースホルダ領域の言語を転用) */
+.emptyState {
+  border: 1px dashed var(--color-line);
+  border-radius: 8px;
+  padding: var(--space-8);
+  text-align: center;
+  font-family: var(--font-body);
+  color: var(--color-text-muted);
+}

@@ -1,0 +1,19 @@
+.clock {
+  display: inline-flex;
+  align-items: baseline;
+  gap: var(--space-1);
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+}
+
+.time {
+  font-size: 1rem;
+  font-weight: 500;
+  color: var(--color-text);
+}
+
+.zone {
+  font-size: 0.6875rem;
+  color: var(--color-text-muted);
+  letter-spacing: 0.05em;
+}
