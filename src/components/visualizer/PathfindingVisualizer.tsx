@@ -4,13 +4,10 @@ import { useEffect, useMemo, useRef } from "react";
 import styles from "./PathfindingVisualizer.module.css";
 import { PlaybackControls } from "./PlaybackControls";
 import { useStepPlayer } from "./useStepPlayer";
+import { useWorkerFrames } from "./useWorkerFrames";
 import { coreColors, stateColors } from "@/lib/design-tokens";
-import {
-  MAZE_COLS,
-  MAZE_ROWS,
-  PATHFINDING_VISUALIZERS,
-  type GridCellState,
-} from "@/lib/pathfinding-visualizers";
+import { MAZE_COLS, MAZE_ROWS, type GridCellState, type GridFrame } from "@/lib/pathfinding-visualizers";
+import type { WorkerRequest } from "@/workers/algorithm-worker";
 
 const CELL_COLORS: Record<GridCellState, string> = {
   idle: stateColors.idle,
@@ -36,12 +33,16 @@ type PathfindingVisualizerProps = {
 };
 
 /**
- * グリッド上の経路探索(BFS/DFS)の可視化。SortVisualizerと同じuseStepPlayer/PlaybackControlsを共用する。
- * データはfixedな迷路(pathfinding-visualizers.ts)を1回だけ辿るため、SortVisualizerのシャッフルに相当する操作はない。
+ * グリッド上の経路探索(BFS/DFS)の可視化。ステップ列の生成はWeb Workerに委譲する。
+ * SortVisualizerと同じuseStepPlayer/PlaybackControls/useWorkerFramesを共用する。
+ * データはfixedな迷路(pathfinding-visualizers.ts)を1回だけ辿るため、シャッフルに相当する操作はない。
  */
 export function PathfindingVisualizer({ algorithmId }: PathfindingVisualizerProps) {
-  const generate = PATHFINDING_VISUALIZERS[algorithmId];
-  const frames = useMemo(() => (generate ? generate() : []), [generate]);
+  const request = useMemo<WorkerRequest>(
+    () => ({ kind: "pathfinding", algorithmId }),
+    [algorithmId],
+  );
+  const { frames, isComputing } = useWorkerFrames<GridFrame>(request);
   const { stepIndex, isFinished, showPause, handlePlayPause, handleStep, reset } =
     useStepPlayer(frames.length);
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -82,15 +83,13 @@ export function PathfindingVisualizer({ algorithmId }: PathfindingVisualizerProp
     });
   }, [frames, stepIndex]);
 
-  if (!generate) return null;
-
   const currentFrame = frames[stepIndex];
 
   return (
     <div className={styles.visualizer}>
       <canvas ref={canvasRef} className={styles.canvas} aria-hidden="true" />
       <p className={styles.description} role="status">
-        {currentFrame?.description}
+        {isComputing ? "Web Workerで計算中…" : currentFrame?.description}
       </p>
       <PlaybackControls
         stepIndex={stepIndex}
