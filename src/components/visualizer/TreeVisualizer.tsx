@@ -16,6 +16,10 @@ const NODE_COLORS: Record<TreeNodeState, string> = {
   rotating: stateColors.swapping,
 };
 
+/** 赤黒木専用。node.colorが設定されている場合、状態パレットの代わりにこちらを使う。 */
+const RB_RED = stateColors.swapping;
+const RB_BLACK = stateColors.idle;
+
 const LEGEND_ITEMS: { key: TreeNodeState; label: string }[] = [
   { key: "visiting", label: "探索中" },
   { key: "inserted", label: "挿入済み" },
@@ -117,23 +121,33 @@ export function TreeVisualizer({ algorithmId }: TreeVisualizerProps) {
 
     Object.values(currentFrame.nodes).forEach((node) => {
       const state = currentFrame.nodeStates[node.id] ?? "idle";
-      const color = NODE_COLORS[state];
+      const isRedBlackNode = node.color !== undefined;
+      const fillColor = isRedBlackNode ? (node.color === "red" ? RB_RED : RB_BLACK) : NODE_COLORS[state];
+      const isTransient = state === "visiting" || state === "rotating";
+      const showGlow = isRedBlackNode ? isTransient : state !== "idle";
       const { x, y } = point(node.id);
 
-      ctx.shadowColor = state === "idle" ? "transparent" : color;
-      ctx.shadowBlur = state === "idle" ? 0 : 12;
-      ctx.fillStyle = color;
+      ctx.shadowColor = showGlow ? NODE_COLORS[state] : "transparent";
+      ctx.shadowBlur = showGlow ? 12 : 0;
+      ctx.fillStyle = fillColor;
       ctx.beginPath();
       ctx.arc(x, y, 16, 0, Math.PI * 2);
       ctx.fill();
 
       ctx.shadowBlur = 0;
-      ctx.fillStyle = "#06070a";
+      if (isRedBlackNode && node.color === "black") {
+        ctx.strokeStyle = "rgba(237,240,245,0.4)";
+        ctx.lineWidth = 1.5;
+        ctx.stroke();
+      }
+
+      ctx.fillStyle = isRedBlackNode && node.color === "black" ? "#edf0f5" : "#06070a";
       ctx.fillText(String(node.value), x, y);
     });
   }, [frames, stepIndex]);
 
   const currentFrame = frames[stepIndex];
+  const isRedBlackTree = algorithmId === "red-black-tree";
 
   return (
     <div className={styles.visualizer}>
@@ -152,7 +166,19 @@ export function TreeVisualizer({ algorithmId }: TreeVisualizerProps) {
         resetLabel="最初から"
       />
       <ul className={styles.legend}>
-        {LEGEND_ITEMS.map((item) => (
+        {isRedBlackTree ? (
+          <>
+            <li className={styles.legendItem}>
+              <span className={styles.legendSwatch} style={{ backgroundColor: RB_RED }} aria-hidden="true" />
+              赤
+            </li>
+            <li className={styles.legendItem}>
+              <span className={styles.legendSwatch} style={{ backgroundColor: RB_BLACK }} aria-hidden="true" />
+              黒
+            </li>
+          </>
+        ) : null}
+        {LEGEND_ITEMS.filter((item) => !isRedBlackTree || item.key !== "inserted").map((item) => (
           <li key={item.key} className={styles.legendItem}>
             <span
               className={styles.legendSwatch}
