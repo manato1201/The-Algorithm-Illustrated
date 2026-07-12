@@ -46,6 +46,26 @@
   color: var(--color-text-muted);
 }
 
+.nav {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+  flex-wrap: wrap;
+}
+
+.navLink {
+  font-family: var(--font-mono);
+  font-size: 0.8125rem;
+  letter-spacing: 0.04em;
+  color: var(--color-text-muted);
+  transition: color 0.15s ease;
+}
+
+.navLink:hover,
+.navLink:focus-visible {
+  color: var(--color-accent-amber);
+}
+
 .headerRight {
   display: flex;
   align-items: center;
