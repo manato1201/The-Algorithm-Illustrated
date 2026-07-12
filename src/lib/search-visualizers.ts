@@ -368,6 +368,136 @@ export function fibonacciSearchSteps(): SearchFrame[] {
   return frames;
 }
 
+/** カダンのアルゴリズム用の配列(正負が混在する値)。最大部分配列の和は6([4,-1,2,1]の区間)。 */
+export const KADANE_ARRAY = [-2, 1, -3, 4, -1, 2, 1, -5, 4];
+
+/**
+ * カダンのアルゴリズム(最大部分配列問題)のステップ列を生成する。
+ * 「直前までの部分和が負なら捨てて今の要素から新しく始める、そうでなければ足し続ける」
+ * という局所的な判断だけを繰り返すのに、結果的に全体最適な答えに到達する
+ * ——貪欲法とDPの境界にあるとされる所以を、都度更新される最大値の推移で確認できる。
+ */
+export function kadaneSteps(): SearchFrame[] {
+  const array = KADANE_ARRAY;
+  const frames: SearchFrame[] = [
+    frame(array, {}, "初期状態。カダンのアルゴリズムで最大部分配列の和を求める"),
+  ];
+
+  let currentSum = array[0];
+  let maxSum = array[0];
+  let currentStart = 0;
+  let bestStart = 0;
+  let bestEnd = 0;
+  frames.push(
+    frame(
+      array,
+      { 0: "comparing" },
+      `1番目(値${array[0]})から開始。現在の部分和=${currentSum}、最大値=${maxSum}`,
+    ),
+  );
+
+  for (let i = 1; i < array.length; i++) {
+    if (currentSum < 0) {
+      currentSum = array[i];
+      currentStart = i;
+      frames.push(
+        frame(
+          array,
+          { [i]: "comparing" },
+          `直前までの部分和が負なので破棄し、${i + 1}番目(値${array[i]})から新しく部分配列を開始`,
+        ),
+      );
+    } else {
+      currentSum += array[i];
+      frames.push(
+        frame(
+          array,
+          { [i]: "comparing" },
+          `${i + 1}番目(値${array[i]})を部分配列に追加。現在の部分和=${currentSum}`,
+        ),
+      );
+    }
+
+    if (currentSum > maxSum) {
+      maxSum = currentSum;
+      bestStart = currentStart;
+      bestEnd = i;
+      const highlight: Partial<Record<number, StateColorKey>> = {};
+      for (let k = bestStart; k <= bestEnd; k++) highlight[k] = "pivot";
+      frames.push(
+        frame(array, highlight, `新しい最大値を更新: ${maxSum}(区間[${bestStart}, ${bestEnd}])`),
+      );
+    }
+  }
+
+  const finalHighlight: Partial<Record<number, StateColorKey>> = {};
+  for (let k = bestStart; k <= bestEnd; k++) finalHighlight[k] = "settled";
+  frames.push(
+    frame(array, finalHighlight, `計算完了。最大部分配列の和は${maxSum}(区間[${bestStart}, ${bestEnd}])`),
+  );
+  return frames;
+}
+
+/** エラトステネスの篩で素数を求める範囲(2〜30)。素数は2,3,5,7,11,13,17,19,23,29の10個。 */
+export const SIEVE_LIMIT = 30;
+
+/**
+ * エラトステネスの篩のステップ列を生成する。
+ * 素数pを1つ見つけるたびに、p*p以上のpの倍数を一括で合成数としてマークしていく
+ * (p*p未満のpの倍数は、それより小さい素数によって既にマーク済みであることが保証されている)。
+ * 個別に割り切れるか判定するのではなく「まとめて篩い落とす」操作の積み重ねで
+ * 範囲内の素数が一括で求まる様子を可視化する。
+ */
+export function sieveOfEratosthenesSteps(): SearchFrame[] {
+  const array = Array.from({ length: SIEVE_LIMIT - 1 }, (_, i) => i + 2);
+  const isComposite = new Array(SIEVE_LIMIT + 1).fill(false);
+  const indexOf = new Map<number, number>();
+  array.forEach((v, idx) => indexOf.set(v, idx));
+
+  const compositeHighlight = (): Partial<Record<number, StateColorKey>> => {
+    const highlight: Partial<Record<number, StateColorKey>> = {};
+    array.forEach((v, idx) => {
+      if (isComposite[v]) highlight[idx] = "swapping";
+    });
+    return highlight;
+  };
+
+  const frames: SearchFrame[] = [
+    frame(array, {}, `初期状態(2〜${SIEVE_LIMIT}が素数の候補)`),
+  ];
+
+  for (let p = 2; p * p <= SIEVE_LIMIT; p++) {
+    if (isComposite[p]) continue;
+    const highlight = compositeHighlight();
+    highlight[indexOf.get(p)!] = "pivot";
+    frames.push(
+      frame(array, highlight, `${p}はまだ合成数としてマークされていない → 素数。${p}の倍数を篩い落とす`),
+    );
+
+    for (let m = p * p; m <= SIEVE_LIMIT; m += p) {
+      isComposite[m] = true;
+    }
+    const afterHighlight = compositeHighlight();
+    frames.push(
+      frame(
+        array,
+        afterHighlight,
+        `${p * p}以上の${p}の倍数を合成数としてマーク(${p * p}未満の${p}の倍数はより小さい素数で既にマーク済み)`,
+      ),
+    );
+  }
+
+  const finalHighlight: Partial<Record<number, StateColorKey>> = {};
+  array.forEach((v, idx) => {
+    finalHighlight[idx] = isComposite[v] ? "swapping" : "settled";
+  });
+  const primes = array.filter((v) => !isComposite[v]);
+  frames.push(
+    frame(array, finalHighlight, `完了。2〜${SIEVE_LIMIT}の素数: ${primes.join(", ")}`),
+  );
+  return frames;
+}
+
 export const SEARCH_VISUALIZERS: Record<string, () => SearchFrame[]> = {
   "linear-search": linearSearchSteps,
   "binary-search": binarySearchSteps,
@@ -376,4 +506,6 @@ export const SEARCH_VISUALIZERS: Record<string, () => SearchFrame[]> = {
   "interpolation-search": interpolationSearchSteps,
   "exponential-search": exponentialSearchSteps,
   "fibonacci-search": fibonacciSearchSteps,
+  kadane: kadaneSteps,
+  "sieve-of-eratosthenes": sieveOfEratosthenesSteps,
 };

@@ -17,6 +17,17 @@ const LEGEND_ITEMS: { key: StateColorKey; label: string }[] = [
   { key: "settled", label: "発見" },
 ];
 
+/** SEARCH_TARGET(検索対象の値)を実際に使う「探索」系アルゴリズムのみ、その値をラベル表示する。 */
+const TARGET_SEARCH_ALGORITHMS = new Set([
+  "linear-search",
+  "binary-search",
+  "ternary-search",
+  "jump-search",
+  "interpolation-search",
+  "exponential-search",
+  "fibonacci-search",
+]);
+
 type SearchVisualizerProps = {
   algorithmId: string;
 };
@@ -54,20 +65,28 @@ export function SearchVisualizer({ algorithmId }: SearchVisualizerProps) {
     const n = values.length;
     const gap = 4;
     const barWidth = (width - gap * (n - 1)) / n;
-    const maxValue = Math.max(...values);
     const floorPadding = 4;
+    const usableHeight = height - 24;
+    /** 負の値(カダンのアルゴリズム等)にも対応するため、0を基準線としたスケールで描画する。 */
+    const minValue = Math.min(0, ...values);
+    const maxValue = Math.max(0, ...values);
+    const range = maxValue - minValue || 1;
+    const yFor = (value: number) =>
+      height - floorPadding - ((value - minValue) / range) * usableHeight;
+    const zeroY = yFor(0);
 
     values.forEach((value, index) => {
-      const barHeight = (value / maxValue) * (height - 24);
+      const valueY = yFor(value);
       const x = index * (barWidth + gap);
-      const y = height - floorPadding - barHeight;
+      const rectTop = Math.min(valueY, zeroY);
+      const rectHeight = Math.abs(zeroY - valueY);
       const state = currentFrame.highlight[index] ?? "idle";
       const color = stateColors[state];
 
       ctx.shadowColor = state === "idle" ? "transparent" : color;
       ctx.shadowBlur = state === "idle" ? 0 : 14;
       ctx.fillStyle = color;
-      ctx.fillRect(x, y, barWidth, barHeight);
+      ctx.fillRect(x, rectTop, barWidth, rectHeight);
     });
   }, [frames, stepIndex]);
 
@@ -93,7 +112,9 @@ export function SearchVisualizer({ algorithmId }: SearchVisualizerProps) {
 
   return (
     <div className={styles.visualizer}>
-      <p className={styles.target}>検索対象の値: {SEARCH_TARGET}</p>
+      {TARGET_SEARCH_ALGORITHMS.has(algorithmId) ? (
+        <p className={styles.target}>検索対象の値: {SEARCH_TARGET}</p>
+      ) : null}
       <div className={styles.canvasWrap}>
         <canvas ref={canvasRef} className={styles.canvas} aria-hidden="true" />
         <ParticleBurstLayer bursts={bursts} />
@@ -122,6 +143,16 @@ export function SearchVisualizer({ algorithmId }: SearchVisualizerProps) {
             {item.label}
           </li>
         ))}
+        {algorithmId === "sieve-of-eratosthenes" ? (
+          <li className={styles.legendItem}>
+            <span
+              className={styles.legendSwatch}
+              style={{ backgroundColor: stateColors.swapping }}
+              aria-hidden="true"
+            />
+            合成数(篩い落とし済み)
+          </li>
+        ) : null}
       </ul>
     </div>
   );
