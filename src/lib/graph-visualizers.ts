@@ -586,6 +586,132 @@ export function unionFindSteps(): GraphFrame[] {
   return frames;
 }
 
+export const SCC_NODES: GraphNode[] = circleLayout(["A", "B", "C", "D", "E", "F"]);
+/**
+ * 3つの強連結成分を含む有向グラフ: {A,B,C}(3頂点のサイクル)、{D,E}(2頂点のサイクル)、{F}(単独)。
+ * SCC間はC→D、E→Fの橋渡し辺で繋がっており、SCCを1つにまとめた縮約グラフはDAGになる。
+ */
+export const SCC_EDGES: GraphEdge[] = [
+  { id: "AB", from: "A", to: "B", weight: 1 },
+  { id: "BC", from: "B", to: "C", weight: 1 },
+  { id: "CA", from: "C", to: "A", weight: 1 },
+  { id: "CD", from: "C", to: "D", weight: 1 },
+  { id: "DE", from: "D", to: "E", weight: 1 },
+  { id: "ED", from: "E", to: "D", weight: 1 },
+  { id: "EF", from: "E", to: "F", weight: 1 },
+];
+
+/**
+ * Tarjanの強連結成分分解のステップ列を生成する。
+ * DFSで各頂点に発見時刻(index)とlow-link値(自分自身か、DFS木の子孫からの後退辺で到達できる
+ * 最小の発見時刻)を割り当てる。low-link=発見時刻の頂点はSCCの根であり、
+ * その時点でスタックに積まれている(まだどのSCCにも属していない)頂点を根まで全て取り出せば、
+ * それが1つの強連結成分になる。深さ優先探索1回だけで全SCCを求められるのが特徴。
+ */
+export function tarjanSccSteps(): GraphFrame[] {
+  const nodes = SCC_NODES;
+  const edges = SCC_EDGES;
+  const nodeStates = initNodeStates(nodes, "idle");
+  const edgeStates = initEdgeStates(edges, "idle");
+
+  const frames: GraphFrame[] = [
+    {
+      nodeStates: { ...nodeStates },
+      edgeStates: { ...edgeStates },
+      distances: {},
+      description: "DFS1回で強連結成分(SCC)を求めるTarjanのアルゴリズムを開始",
+    },
+  ];
+
+  let index = 0;
+  const indices = new Map<string, number>();
+  const lowlinks = new Map<string, number>();
+  const onStack = new Set<string>();
+  const stack: string[] = [];
+  const sccResults: string[][] = [];
+
+  const outgoing = (id: string) => edges.filter((e) => e.from === id);
+
+  const strongconnect = (v: string) => {
+    indices.set(v, index);
+    lowlinks.set(v, index);
+    index++;
+    stack.push(v);
+    onStack.add(v);
+    nodeStates[v] = "visited";
+    frames.push({
+      nodeStates: { ...nodeStates },
+      edgeStates: { ...edgeStates },
+      distances: {},
+      description: `頂点${v}を訪問(発見時刻=${indices.get(v)})、スタックに積む`,
+    });
+
+    for (const edge of outgoing(v)) {
+      const w = edge.to;
+      edgeStates[edge.id] = "checking";
+      frames.push({
+        nodeStates: { ...nodeStates },
+        edgeStates: { ...edgeStates },
+        distances: {},
+        description: `辺${v}→${w}を検査`,
+      });
+
+      if (!indices.has(w)) {
+        edgeStates[edge.id] = "tree";
+        strongconnect(w);
+        lowlinks.set(v, Math.min(lowlinks.get(v)!, lowlinks.get(w)!));
+        frames.push({
+          nodeStates: { ...nodeStates },
+          edgeStates: { ...edgeStates },
+          distances: {},
+          description: `頂点${w}の探索から戻る。low-link[${v}]を${lowlinks.get(v)}に更新`,
+        });
+      } else if (onStack.has(w)) {
+        lowlinks.set(v, Math.min(lowlinks.get(v)!, indices.get(w)!));
+        frames.push({
+          nodeStates: { ...nodeStates },
+          edgeStates: { ...edgeStates },
+          distances: {},
+          description: `頂点${w}はスタック上(同じSCCの候補) → low-link[${v}]を${lowlinks.get(v)}に更新`,
+        });
+      } else {
+        edgeStates[edge.id] = "idle";
+      }
+    }
+
+    if (lowlinks.get(v) === indices.get(v)) {
+      const scc: string[] = [];
+      let w: string;
+      do {
+        w = stack.pop()!;
+        onStack.delete(w);
+        nodeStates[w] = "settled";
+        scc.push(w);
+      } while (w !== v);
+      sccResults.push(scc);
+      frames.push({
+        nodeStates: { ...nodeStates },
+        edgeStates: { ...edgeStates },
+        distances: {},
+        description: `頂点${v}はSCCの根(low-link=発見時刻) → {${scc.join(",")}}を1つの強連結成分として確定`,
+      });
+    }
+  };
+
+  for (const node of nodes) {
+    if (!indices.has(node.id)) strongconnect(node.id);
+  }
+
+  frames.push({
+    nodeStates: { ...nodeStates },
+    edgeStates: { ...edgeStates },
+    distances: {},
+    description: `計算完了。強連結成分: ${sccResults.map((s) => `{${s.join(",")}}`).join(", ")}`,
+  });
+
+  return frames;
+}
+
 export const GRAPH_DATASETS: Record<string, GraphDataset> = {
   "bellman-ford": {
     nodes: SHORTEST_PATH_NODES,
@@ -601,6 +727,7 @@ export const GRAPH_DATASETS: Record<string, GraphDataset> = {
   },
   boruvka: { nodes: MST_NODES, edges: MST_EDGES, directed: false },
   "union-find": { nodes: UNION_FIND_NODES, edges: UNION_FIND_EDGES, directed: false },
+  "tarjan-scc": { nodes: SCC_NODES, edges: SCC_EDGES, directed: true },
 };
 
 export const GRAPH_VISUALIZERS: Record<string, () => GraphFrame[]> = {
@@ -610,4 +737,5 @@ export const GRAPH_VISUALIZERS: Record<string, () => GraphFrame[]> = {
   "topological-sort": topologicalSortSteps,
   boruvka: boruvkaSteps,
   "union-find": unionFindSteps,
+  "tarjan-scc": tarjanSccSteps,
 };
