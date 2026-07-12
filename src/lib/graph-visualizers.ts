@@ -1183,6 +1183,191 @@ export function dinicSteps(): GraphFrame[] {
   return frames;
 }
 
+/**
+ * 二部グラフの最大マッチング例(CLRSの教科書に登場する古典的な例)。
+ * L1はR1・R2の両方と、L3はR2・R3の両方とつながっており、
+ * L2はR1としかつながっていない。貪欲に左から順にマッチさせると
+ * L1-R1、L2は行き場を失い、L3-R2が決まってR3が余る、という準最適な結果になりがちだが、
+ * 実際の最大マッチングは3組全て(L1-R2、L2-R1、L3-R3)であり、
+ * それを見つけるには「L2から始まり、既存のマッチングを1つ迂回する」長さ5の増加パスが必要になる
+ * ——ホップクロフト・カープ法が単純な貪欲法より賢い理由を体感できる最小の例になっている。
+ */
+export const BIPARTITE_L_IDS = ["L1", "L2", "L3"];
+export const BIPARTITE_R_IDS = ["R1", "R2", "R3"];
+export const BIPARTITE_NODES: GraphNode[] = [
+  ...BIPARTITE_L_IDS.map((id, i) => ({ id, label: id, x: 0.22, y: 0.2 + i * 0.3 })),
+  ...BIPARTITE_R_IDS.map((id, i) => ({ id, label: id, x: 0.78, y: 0.2 + i * 0.3 })),
+];
+export const BIPARTITE_EDGES: GraphEdge[] = [
+  { id: "L1-R1", from: "L1", to: "R1", weight: 1 },
+  { id: "L1-R2", from: "L1", to: "R2", weight: 1 },
+  { id: "L2-R1", from: "L2", to: "R1", weight: 1 },
+  { id: "L3-R2", from: "L3", to: "R2", weight: 1 },
+  { id: "L3-R3", from: "L3", to: "R3", weight: 1 },
+];
+const HOPCROFT_KARP_NIL = "NIL";
+
+/**
+ * ホップクロフト・カープ法のステップ列を生成する。Ford-Fulkerson系アルゴリズムと同じ
+ * 「増加パスを見つけてはマッチングを反転する」という発想を土台にしつつ、二部グラフという
+ * 構造に特化し、1フェーズで複数の増加パスをまとめて処理することで高速化する:
+ * (1) BFSで、未マッチの左頂点から到達できる最短の増加パス長(レイヤー)を全頂点に割り当てる、
+ * (2) そのレイヤーに沿ったDFSで、互いに頂点が重ならない増加パスをできるだけ多く同時に見つける、
+ * (3) 見つけた全てのパスに沿ってマッチングを反転する——という3ステップを1フェーズとして繰り返す。
+ * Dinic法の「BFSでレベルグラフ→DFSでブロッキングフロー」という2段階構成と同型であることが分かる。
+ */
+export function hopcroftKarpSteps(): GraphFrame[] {
+  const nodes = BIPARTITE_NODES;
+  const edges = BIPARTITE_EDGES;
+
+  const adjacency = new Map<string, string[]>();
+  BIPARTITE_L_IDS.forEach((l) =>
+    adjacency.set(l, edges.filter((e) => e.from === l).map((e) => e.to)),
+  );
+
+  const matchL = new Map<string, string | null>();
+  const matchR = new Map<string, string | null>();
+  BIPARTITE_L_IDS.forEach((l) => matchL.set(l, null));
+  BIPARTITE_R_IDS.forEach((r) => matchR.set(r, null));
+
+  const edgeIdBetween = (l: string, r: string): string =>
+    edges.find((e) => e.from === l && e.to === r)!.id;
+
+  const nodeStates = initNodeStates(nodes, "idle");
+  const edgeStates = initEdgeStates(edges, "idle");
+  const blankLabels = (): Record<string, string> =>
+    Object.fromEntries(edges.map((e) => [e.id, ""]));
+
+  const syncMatchedStates = () => {
+    BIPARTITE_L_IDS.forEach((l) => {
+      nodeStates[l] = matchL.get(l) ? "settled" : "idle";
+    });
+    BIPARTITE_R_IDS.forEach((r) => {
+      nodeStates[r] = matchR.get(r) ? "settled" : "idle";
+    });
+    for (const e of edges) {
+      edgeStates[e.id] = matchL.get(e.from) === e.to ? "tree" : "idle";
+    }
+  };
+
+  const frames: GraphFrame[] = [
+    {
+      nodeStates: { ...nodeStates },
+      edgeStates: { ...edgeStates },
+      distances: {},
+      edgeLabels: blankLabels(),
+      description:
+        "二部グラフの最大マッチングを求めるホップクロフト・カープ法を開始。左側L1〜L3・右側R1〜R3のどのペアも未マッチの状態",
+    },
+  ];
+
+  let phase = 0;
+  for (;;) {
+    const dist = new Map<string, number>();
+    const queue: string[] = [];
+    BIPARTITE_L_IDS.forEach((l) => {
+      if (!matchL.get(l)) {
+        dist.set(l, 0);
+        queue.push(l);
+      } else {
+        dist.set(l, Infinity);
+      }
+    });
+    dist.set(HOPCROFT_KARP_NIL, Infinity);
+    while (queue.length > 0) {
+      const l = queue.shift()!;
+      if (dist.get(l)! < dist.get(HOPCROFT_KARP_NIL)!) {
+        for (const r of adjacency.get(l) ?? []) {
+          const u = matchR.get(r) ?? HOPCROFT_KARP_NIL;
+          if ((dist.get(u) ?? Infinity) === Infinity) {
+            dist.set(u, dist.get(l)! + 1);
+            if (u !== HOPCROFT_KARP_NIL) queue.push(u);
+          }
+        }
+      }
+    }
+    if (dist.get(HOPCROFT_KARP_NIL) === Infinity) break;
+    phase++;
+
+    const distDisplay: Record<string, number | null> = {};
+    BIPARTITE_L_IDS.forEach((l) => {
+      const d = dist.get(l);
+      distDisplay[l] = d === undefined || d === Infinity ? null : d;
+    });
+    syncMatchedStates();
+    frames.push({
+      nodeStates: { ...nodeStates },
+      edgeStates: { ...edgeStates },
+      distances: distDisplay,
+      edgeLabels: blankLabels(),
+      description: `[フェーズ${phase}] BFSで未マッチ頂点からの最短増加パス長を計算(頂点下の数字がレイヤー)`,
+    });
+
+    let phaseAugmented = 0;
+    const dfs = (l: string): boolean => {
+      for (const r of adjacency.get(l) ?? []) {
+        const u = matchR.get(r) ?? HOPCROFT_KARP_NIL;
+        const eid = edgeIdBetween(l, r);
+        const edgeSnapshot = { ...edgeStates };
+        edgeSnapshot[eid] = "checking";
+        frames.push({
+          nodeStates: { ...nodeStates },
+          edgeStates: edgeSnapshot,
+          distances: distDisplay,
+          edgeLabels: blankLabels(),
+          description: `頂点${l}から辺${l}-${r}を検討(${r}の現在のマッチ相手: ${matchR.get(r) ?? "なし"})`,
+        });
+        if ((dist.get(u) ?? Infinity) === dist.get(l)! + 1) {
+          if (u === HOPCROFT_KARP_NIL || dfs(u)) {
+            matchL.set(l, r);
+            matchR.set(r, l);
+            return true;
+          }
+        }
+      }
+      dist.set(l, Infinity);
+      return false;
+    };
+
+    BIPARTITE_L_IDS.forEach((l) => {
+      if (!matchL.get(l)) {
+        const augmented = dfs(l);
+        if (augmented) {
+          phaseAugmented++;
+          syncMatchedStates();
+          frames.push({
+            nodeStates: { ...nodeStates },
+            edgeStates: { ...edgeStates },
+            distances: distDisplay,
+            edgeLabels: blankLabels(),
+            description: `頂点${l}から増加パスを発見しマッチングを反転(このフェーズで${phaseAugmented}本目)`,
+          });
+        }
+      }
+    });
+
+    frames.push({
+      nodeStates: { ...nodeStates },
+      edgeStates: { ...edgeStates },
+      distances: distDisplay,
+      edgeLabels: blankLabels(),
+      description: `[フェーズ${phase}] 完了。このフェーズで${phaseAugmented}本の増加パスをまとめて反映`,
+    });
+  }
+
+  const totalMatching = [...matchL.values()].filter((v) => v !== null).length;
+  syncMatchedStates();
+  frames.push({
+    nodeStates: { ...nodeStates },
+    edgeStates: { ...edgeStates },
+    distances: {},
+    edgeLabels: blankLabels(),
+    description: `計算完了。最大マッチングのサイズは${totalMatching}(これ以上増加パスが見つからない)`,
+  });
+
+  return frames;
+}
+
 export const GRAPH_DATASETS: Record<string, GraphDataset> = {
   "bellman-ford": {
     nodes: SHORTEST_PATH_NODES,
@@ -1202,6 +1387,7 @@ export const GRAPH_DATASETS: Record<string, GraphDataset> = {
   "edmonds-karp": { nodes: FLOW_NODES, edges: FLOW_EDGES, directed: true },
   dinic: { nodes: FLOW_NODES, edges: FLOW_EDGES, directed: true },
   "ford-fulkerson": { nodes: FLOW_NODES, edges: FLOW_EDGES, directed: true },
+  "hopcroft-karp": { nodes: BIPARTITE_NODES, edges: BIPARTITE_EDGES, directed: false },
 };
 
 export const GRAPH_VISUALIZERS: Record<string, () => GraphFrame[]> = {
@@ -1215,4 +1401,5 @@ export const GRAPH_VISUALIZERS: Record<string, () => GraphFrame[]> = {
   dinic: dinicSteps,
   "edmonds-karp": edmondsKarpSteps,
   "ford-fulkerson": fordFulkersonSteps,
+  "hopcroft-karp": hopcroftKarpSteps,
 };
