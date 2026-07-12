@@ -703,6 +703,620 @@ export function eggDropSteps(): DPFrame[] {
   return frames;
 }
 
+export const LONGEST_COMMON_SUBSTRING_A = "ABABC";
+export const LONGEST_COMMON_SUBSTRING_B = "BABCA";
+
+/**
+ * 最長共通部分文字列のステップ列を生成する。LCS(最長共通部分列)と同じ2次元DPテーブルを使うが、
+ * 漸化式が異なる: 文字が一致すれば左上に+1する点は同じでも、不一致なら「連続性」が途切れるため
+ * 0にリセットする(LCSのように上や左の値を引き継がない)。テーブル中の最大値とその位置から
+ * 実際の部分文字列を復元する。本来は接尾辞配列/接尾辞木を使うとO(n+m)で解けるが、
+ * ここでは仕組みが見えやすいDPベースの素朴な解法(O(nm))を可視化している。
+ */
+export function longestCommonSubstringSteps(): DPFrame[] {
+  const a = LONGEST_COMMON_SUBSTRING_A;
+  const b = LONGEST_COMMON_SUBSTRING_B;
+  const n = a.length;
+  const m = b.length;
+  const dp: (number | null)[][] = Array.from({ length: n + 1 }, () =>
+    Array<number | null>(m + 1).fill(null),
+  );
+  for (let i = 0; i <= n; i++) dp[i][0] = 0;
+  for (let j = 0; j <= m; j++) dp[0][j] = 0;
+
+  const settled = new Set<string>();
+  for (let i = 0; i <= n; i++) settled.add(`${i},0`);
+  for (let j = 0; j <= m; j++) settled.add(`0,${j}`);
+
+  const frames: DPFrame[] = [];
+  const snapshot = (
+    extra: Map<string, "comparing" | "pivot">,
+    description: string,
+  ): DPFrame => {
+    const table: DPCell[][] = dp.map((row, i) =>
+      row.map((value, j) => {
+        const cellKey = `${i},${j}`;
+        const state: DPCellState = extra.get(cellKey) ?? (settled.has(cellKey) ? "settled" : "idle");
+        return { value, state };
+      }),
+    );
+    return { table, description };
+  };
+
+  frames.push(snapshot(new Map(), "初期状態(どちらかが空文字列なら共通部分文字列の長さは0)"));
+
+  let maxLen = 0;
+  let maxEndI = 0;
+  for (let i = 1; i <= n; i++) {
+    for (let j = 1; j <= m; j++) {
+      const highlight = new Map<string, "comparing" | "pivot">();
+      let value: number;
+      if (a[i - 1] === b[j - 1]) {
+        highlight.set(`${i - 1},${j - 1}`, "comparing");
+        value = dp[i - 1][j - 1]! + 1;
+        frames.push(
+          snapshot(highlight, `"${a[i - 1]}" と "${b[j - 1]}" が一致 → 左上に+1(連続する共通部分の長さ)`),
+        );
+      } else {
+        value = 0;
+        frames.push(snapshot(highlight, `"${a[i - 1]}" と "${b[j - 1]}" が不一致 → 連続が途切れるので0にリセット`));
+      }
+      dp[i][j] = value;
+      settled.add(`${i},${j}`);
+      if (value > maxLen) {
+        maxLen = value;
+        maxEndI = i;
+      }
+      frames.push(
+        snapshot(
+          new Map([[`${i},${j}`, "pivot"]]),
+          `dp[${i}][${j}] = ${value} を確定` + (value === maxLen && value > 0 ? `(現在の最長: ${maxLen})` : ""),
+        ),
+      );
+    }
+  }
+
+  const substring = a.slice(maxEndI - maxLen, maxEndI);
+  frames.push(snapshot(new Map(), `計算完了。最長共通部分文字列は "${substring}"(長さ${maxLen})`));
+  return frames;
+}
+
+export type IntervalSchedulingItem = { label: string; start: number; end: number };
+export const INTERVAL_SCHEDULING_INTERVALS: IntervalSchedulingItem[] = [
+  { label: "A", start: 1, end: 3 },
+  { label: "B", start: 2, end: 4 },
+  { label: "C", start: 3, end: 5 },
+  { label: "D", start: 0, end: 7 },
+  { label: "E", start: 5, end: 9 },
+  { label: "F", start: 8, end: 10 },
+];
+
+/**
+ * 区間スケジューリング問題(貪欲法)のステップ列を生成する。終了時刻の早い順に区間をソートし、
+ * 「直前に採用した区間の終了時刻以降に開始する区間だけを採用する」という単純な規則を
+ * 1回通すだけで、両立可能な区間の最大数が求まることを可視化する
+ * (終了時刻が早い区間を優先することで、後続の区間を選ぶ余地を最大限残せるのが根拠)。
+ */
+export function intervalSchedulingSteps(): DPFrame[] {
+  const sorted = [...INTERVAL_SCHEDULING_INTERVALS].sort((x, y) => x.end - y.end);
+  const n = sorted.length;
+  const table: (number | null)[][] = [
+    sorted.map((iv) => iv.start),
+    sorted.map((iv) => iv.end),
+    sorted.map(() => null),
+  ];
+  const state: DPCellState[][] = [
+    sorted.map(() => "settled"),
+    sorted.map(() => "settled"),
+    sorted.map(() => "idle"),
+  ];
+
+  const frames: DPFrame[] = [];
+  const snapshot = (description: string): DPFrame => ({
+    table: table.map((row, r) => row.map((value, c) => ({ value, state: state[r][c] }))),
+    description,
+  });
+
+  frames.push(
+    snapshot(`区間を終了時刻の早い順にソート: ${sorted.map((iv) => `${iv.label}(${iv.start}-${iv.end})`).join(", ")}`),
+  );
+
+  let lastEnd = -Infinity;
+  let selectedCount = 0;
+  for (let c = 0; c < n; c++) {
+    state[2][c] = "comparing";
+    frames.push(
+      snapshot(
+        `区間${sorted[c].label}(開始${sorted[c].start}・終了${sorted[c].end})を検討(直前に採用した区間の終了時刻: ${lastEnd === -Infinity ? "なし" : lastEnd})`,
+      ),
+    );
+
+    if (sorted[c].start >= lastEnd) {
+      table[2][c] = 1;
+      state[2][c] = "pivot";
+      lastEnd = sorted[c].end;
+      selectedCount++;
+      frames.push(snapshot(`区間${sorted[c].label}を採用(開始時刻が直前の終了時刻以降)。採用済み${selectedCount}件`));
+    } else {
+      table[2][c] = 0;
+      state[2][c] = "idle";
+      frames.push(snapshot(`区間${sorted[c].label}を棄却(直前に採用した区間と重なる)`));
+    }
+  }
+
+  const selectedLabels = sorted.filter((_, c) => table[2][c] === 1).map((iv) => iv.label);
+  frames.push(snapshot(`計算完了。採用した区間: ${selectedLabels.join(", ")}(最大${selectedCount}件が両立可能)`));
+  return frames;
+}
+
+export const EUCLIDEAN_A = 48;
+export const EUCLIDEAN_B = 18;
+
+/**
+ * ユークリッドの互除法のステップ列を生成する。「aをbで割った余りをrとすると、
+ * gcd(a,b)=gcd(b,r)」という性質を使い、(a,b)を(b, a mod b)に置き換える操作を
+ * bが0になるまで繰り返すだけで最大公約数が求まる。
+ */
+export function euclideanAlgorithmSteps(): DPFrame[] {
+  const pairs: [number, number][] = [];
+  {
+    let a = EUCLIDEAN_A;
+    let b = EUCLIDEAN_B;
+    pairs.push([a, b]);
+    while (b !== 0) {
+      const r = a % b;
+      a = b;
+      b = r;
+      pairs.push([a, b]);
+    }
+  }
+  const cols = pairs.length;
+  const table: (number | null)[][] = [new Array(cols).fill(null), new Array(cols).fill(null)];
+  const state: DPCellState[][] = [new Array(cols).fill("idle"), new Array(cols).fill("idle")];
+
+  const frames: DPFrame[] = [];
+  const snapshot = (description: string): DPFrame => ({
+    table: table.map((row, r) => row.map((value, c) => ({ value, state: state[r][c] }))),
+    description,
+  });
+
+  frames.push(snapshot(`ユークリッドの互除法を開始。gcd(${EUCLIDEAN_A}, ${EUCLIDEAN_B})を求める`));
+
+  for (let c = 0; c < cols; c++) {
+    table[0][c] = pairs[c][0];
+    table[1][c] = pairs[c][1];
+    state[0][c] = "pivot";
+    state[1][c] = "pivot";
+    if (c === 0) {
+      frames.push(snapshot(`初期状態: a=${pairs[0][0]}, b=${pairs[0][1]}`));
+    } else {
+      frames.push(
+        snapshot(
+          `${pairs[c - 1][0]} mod ${pairs[c - 1][1]} = ${pairs[c][1]} → 新しい(a, b) = (${pairs[c][0]}, ${pairs[c][1]})`,
+        ),
+      );
+    }
+    state[0][c] = "settled";
+    state[1][c] = "settled";
+  }
+
+  frames.push(snapshot(`計算完了。b=0になったのでgcd(${EUCLIDEAN_A}, ${EUCLIDEAN_B}) = ${pairs[cols - 1][0]}`));
+  return frames;
+}
+
+export const EXTENDED_EUCLIDEAN_A = 35;
+export const EXTENDED_EUCLIDEAN_B = 15;
+
+/**
+ * 拡張ユークリッドの互除法のステップ列を生成する。gcdを求める通常の互除法と並行して、
+ * ax + by = gcd(a,b) を満たす係数(x,y)も更新していく。各反復で商q=⌊r0/r1⌋を使い、
+ * r,s,t(それぞれgcd候補・xの係数・yの係数)を「2つ前の値からq×1つ前の値を引く」形で更新する。
+ */
+export function extendedEuclideanSteps(): DPFrame[] {
+  type Row = { r: number; s: number; t: number };
+  const rows: Row[] = [];
+  {
+    let r0 = EXTENDED_EUCLIDEAN_A;
+    let r1 = EXTENDED_EUCLIDEAN_B;
+    let s0 = 1;
+    let s1 = 0;
+    let t0 = 0;
+    let t1 = 1;
+    rows.push({ r: r0, s: s0, t: t0 });
+    rows.push({ r: r1, s: s1, t: t1 });
+    while (r1 !== 0) {
+      const q = Math.floor(r0 / r1);
+      const r2 = r0 - q * r1;
+      const s2 = s0 - q * s1;
+      const t2 = t0 - q * t1;
+      rows.push({ r: r2, s: s2, t: t2 });
+      r0 = r1;
+      r1 = r2;
+      s0 = s1;
+      s1 = s2;
+      t0 = t1;
+      t1 = t2;
+    }
+  }
+  const cols = rows.length;
+  const table: (number | null)[][] = [
+    new Array(cols).fill(null),
+    new Array(cols).fill(null),
+    new Array(cols).fill(null),
+  ];
+  const state: DPCellState[][] = [
+    new Array(cols).fill("idle"),
+    new Array(cols).fill("idle"),
+    new Array(cols).fill("idle"),
+  ];
+
+  const frames: DPFrame[] = [];
+  const snapshot = (description: string): DPFrame => ({
+    table: table.map((row, r) => row.map((value, c) => ({ value, state: state[r][c] }))),
+    description,
+  });
+
+  frames.push(
+    snapshot(
+      `拡張ユークリッドの互除法を開始。${EXTENDED_EUCLIDEAN_A}s + ${EXTENDED_EUCLIDEAN_B}t = gcd(${EXTENDED_EUCLIDEAN_A}, ${EXTENDED_EUCLIDEAN_B}) を満たす(s,t)を、gcdの計算と同時に求める`,
+    ),
+  );
+
+  for (let c = 0; c < cols; c++) {
+    table[0][c] = rows[c].r;
+    table[1][c] = rows[c].s;
+    table[2][c] = rows[c].t;
+    state[0][c] = "pivot";
+    state[1][c] = "pivot";
+    state[2][c] = "pivot";
+    if (c < 2) {
+      frames.push(snapshot(`初期化: r=${rows[c].r}, s=${rows[c].s}, t=${rows[c].t}`));
+    } else {
+      const q = Math.floor(rows[c - 2].r / rows[c - 1].r);
+      frames.push(
+        snapshot(
+          `商q=⌊${rows[c - 2].r}/${rows[c - 1].r}⌋=${q}を使い、r,s,tをそれぞれ「2つ前の値-q×1つ前の値」で更新: r=${rows[c].r}, s=${rows[c].s}, t=${rows[c].t}`,
+        ),
+      );
+    }
+    state[0][c] = "settled";
+    state[1][c] = "settled";
+    state[2][c] = "settled";
+  }
+
+  const gcdRowIndex = cols - 2;
+  const gcd = rows[gcdRowIndex].r;
+  const s = rows[gcdRowIndex].s;
+  const t = rows[gcdRowIndex].t;
+  frames.push(
+    snapshot(
+      `計算完了。gcd(${EXTENDED_EUCLIDEAN_A}, ${EXTENDED_EUCLIDEAN_B}) = ${gcd}、${EXTENDED_EUCLIDEAN_A}×(${s}) + ${EXTENDED_EUCLIDEAN_B}×(${t}) = ${gcd}`,
+    ),
+  );
+  return frames;
+}
+
+export const MOD_EXP_BASE = 7;
+export const MOD_EXP_EXPONENT = 13;
+export const MOD_EXP_MODULUS = 11;
+
+/**
+ * 繰り返し二乗法(高速べき乗)のステップ列を生成する。指数を2進展開し、下位ビットから
+ * 「ビットが1なら結果に現在の底を掛ける、そうでなければ何もしない」を行った後、
+ * 底を2乗して次のビットに備える、を繰り返すことで、素朴な繰り返し掛け算のO(n)回ではなく
+ * O(log n)回の掛け算で巨大なべき乗剰余を計算できる。RSA等の暗号処理の基盤になっている。
+ */
+export function modularExponentiationSteps(): DPFrame[] {
+  type Row = { bit: number; baseUsed: number; result: number };
+  const rows: Row[] = [];
+  {
+    let e = MOD_EXP_EXPONENT;
+    let b = MOD_EXP_BASE % MOD_EXP_MODULUS;
+    let result = 1;
+    while (e > 0) {
+      const bit = e & 1;
+      const baseUsed = b;
+      if (bit === 1) result = (result * b) % MOD_EXP_MODULUS;
+      rows.push({ bit, baseUsed, result });
+      b = (b * b) % MOD_EXP_MODULUS;
+      e = e >> 1;
+    }
+  }
+
+  const cols = rows.length;
+  const table: (number | null)[][] = [
+    new Array(cols).fill(null),
+    new Array(cols).fill(null),
+    new Array(cols).fill(null),
+  ];
+  const state: DPCellState[][] = [
+    new Array(cols).fill("idle"),
+    new Array(cols).fill("idle"),
+    new Array(cols).fill("idle"),
+  ];
+
+  const frames: DPFrame[] = [];
+  const snapshot = (description: string): DPFrame => ({
+    table: table.map((row, r) => row.map((value, c) => ({ value, state: state[r][c] }))),
+    description,
+  });
+
+  frames.push(
+    snapshot(
+      `繰り返し二乗法を開始。${MOD_EXP_BASE}^${MOD_EXP_EXPONENT} mod ${MOD_EXP_MODULUS} を求める(指数を2進展開し、下位ビットから処理)`,
+    ),
+  );
+
+  for (let c = 0; c < cols; c++) {
+    table[0][c] = rows[c].bit;
+    table[1][c] = rows[c].baseUsed;
+    table[2][c] = rows[c].result;
+    state[0][c] = "pivot";
+    state[1][c] = "pivot";
+    state[2][c] = "pivot";
+    frames.push(
+      snapshot(
+        `ビット${rows[c].bit}: ${
+          rows[c].bit === 1 ? `1なので結果に底${rows[c].baseUsed}を掛ける` : "0なのでスキップ"
+        } → result=${rows[c].result}(次に備えて底を2乗)`,
+      ),
+    );
+    state[0][c] = "settled";
+    state[1][c] = "settled";
+    state[2][c] = "settled";
+  }
+
+  frames.push(
+    snapshot(`計算完了。${MOD_EXP_BASE}^${MOD_EXP_EXPONENT} mod ${MOD_EXP_MODULUS} = ${rows[cols - 1].result}`),
+  );
+  return frames;
+}
+
+export const RUSSIAN_PEASANT_A = 17;
+export const RUSSIAN_PEASANT_B = 34;
+
+/**
+ * ロシア農民の乗算法のステップ列を生成する。aを半分に(端数切り捨て)、bを倍にしていき、
+ * aが奇数のときだけその時点のbを累積和に加える。これは2進数表現に基づく仕組みで、
+ * aを2進展開したときの各ビットに対応する「bを2倍した値」を、ビットが1の位置だけ
+ * 足し合わせているのと同じ計算になっている。
+ */
+export function russianPeasantMultiplicationSteps(): DPFrame[] {
+  type Row = { a: number; b: number; isOdd: number; sum: number };
+  const rows: Row[] = [];
+  {
+    let a = RUSSIAN_PEASANT_A;
+    let b = RUSSIAN_PEASANT_B;
+    let sum = 0;
+    while (a > 0) {
+      const isOdd = a % 2 === 1 ? 1 : 0;
+      if (isOdd === 1) sum += b;
+      rows.push({ a, b, isOdd, sum });
+      a = Math.floor(a / 2);
+      b = b * 2;
+    }
+  }
+
+  const cols = rows.length;
+  const table: (number | null)[][] = [
+    new Array(cols).fill(null),
+    new Array(cols).fill(null),
+    new Array(cols).fill(null),
+    new Array(cols).fill(null),
+  ];
+  const state: DPCellState[][] = [
+    new Array(cols).fill("idle"),
+    new Array(cols).fill("idle"),
+    new Array(cols).fill("idle"),
+    new Array(cols).fill("idle"),
+  ];
+
+  const frames: DPFrame[] = [];
+  const snapshot = (description: string): DPFrame => ({
+    table: table.map((row, r) => row.map((value, c) => ({ value, state: state[r][c] }))),
+    description,
+  });
+
+  frames.push(
+    snapshot(`ロシア農民の乗算法を開始。${RUSSIAN_PEASANT_A} × ${RUSSIAN_PEASANT_B} を求める`),
+  );
+
+  for (let c = 0; c < cols; c++) {
+    table[0][c] = rows[c].a;
+    table[1][c] = rows[c].b;
+    table[2][c] = rows[c].isOdd;
+    table[3][c] = rows[c].sum;
+    state[0][c] = "pivot";
+    state[1][c] = "pivot";
+    state[2][c] = "pivot";
+    state[3][c] = "pivot";
+    frames.push(
+      snapshot(
+        `a=${rows[c].a}は${rows[c].isOdd === 1 ? "奇数なのでb=" + rows[c].b + "を累積和に加算" : "偶数なのでスキップ"} → 累積和=${rows[c].sum}(次はaを半分に、bを2倍に)`,
+      ),
+    );
+    state[0][c] = "settled";
+    state[1][c] = "settled";
+    state[2][c] = "settled";
+    state[3][c] = "settled";
+  }
+
+  frames.push(
+    snapshot(`計算完了。aが0になったので終了。${RUSSIAN_PEASANT_A} × ${RUSSIAN_PEASANT_B} = ${rows[cols - 1].sum}`),
+  );
+  return frames;
+}
+
+export const CRT_MODULI = [3, 5, 7];
+export const CRT_REMAINDERS = [2, 3, 2];
+
+function crtModInverse(a: number, m: number): number {
+  const aMod = ((a % m) + m) % m;
+  for (let x = 1; x < m; x++) {
+    if ((aMod * x) % m === 1) return x;
+  }
+  return 1;
+}
+
+/**
+ * 中国剰余定理(CRT)のステップ列を生成する。x≡a_i (mod n_i)という複数の合同式から、
+ * 全ての式を同時に満たすxをN=Π n_i を法として復元する。各iについて
+ * N_i=N/n_i(自分以外の法の積)を計算し、N_iのn_iを法とする逆元を求め、
+ * a_i×N_i×逆元 を合計してNで割った余りが答えになる
+ * (N_iはn_i以外の法で割り切れるので、他の合同式への影響を持たずにi番目の条件だけを満たせる)。
+ */
+export function chineseRemainderTheoremSteps(): DPFrame[] {
+  const n = CRT_MODULI.length;
+  const N = CRT_MODULI.reduce((p, c) => p * c, 1);
+
+  type Row = { ni: number; ai: number; Ni: number; inv: number; term: number; cumulative: number };
+  const rows: Row[] = [];
+  let cumulative = 0;
+  for (let i = 0; i < n; i++) {
+    const ni = CRT_MODULI[i];
+    const ai = CRT_REMAINDERS[i];
+    const Ni = N / ni;
+    const inv = crtModInverse(Ni, ni);
+    const term = (ai * Ni * inv) % N;
+    cumulative = (cumulative + term) % N;
+    rows.push({ ni, ai, Ni, inv, term, cumulative });
+  }
+
+  const cols = n;
+  const table: (number | null)[][] = Array.from({ length: 6 }, () => new Array(cols).fill(null));
+  const state: DPCellState[][] = Array.from({ length: 6 }, () => new Array(cols).fill("idle"));
+
+  const frames: DPFrame[] = [];
+  const snapshot = (description: string): DPFrame => ({
+    table: table.map((row, r) => row.map((value, c) => ({ value, state: state[r][c] }))),
+    description,
+  });
+
+  frames.push(
+    snapshot(
+      `中国剰余定理を開始。x≡${CRT_REMAINDERS.map((a, i) => `${a}(mod ${CRT_MODULI[i]})`).join(", x≡")} を満たすxを、N=${N}を法として求める`,
+    ),
+  );
+
+  for (let c = 0; c < cols; c++) {
+    for (let r = 0; r < 6; r++) state[r][c] = "comparing";
+    table[0][c] = rows[c].ni;
+    table[1][c] = rows[c].ai;
+    frames.push(snapshot(`i=${c + 1}: n_i=${rows[c].ni}, a_i=${rows[c].ai}`));
+
+    table[2][c] = rows[c].Ni;
+    frames.push(snapshot(`N_i = N/n_i = ${N}/${rows[c].ni} = ${rows[c].Ni}(自分以外の法の積)`));
+
+    table[3][c] = rows[c].inv;
+    frames.push(snapshot(`N_iのn_iを法とする逆元を求める: ${rows[c].Ni}⁻¹ mod ${rows[c].ni} = ${rows[c].inv}`));
+
+    table[4][c] = rows[c].term;
+    table[5][c] = rows[c].cumulative;
+    for (let r = 0; r < 6; r++) state[r][c] = "pivot";
+    frames.push(
+      snapshot(
+        `項 = a_i×N_i×逆元 mod N = ${rows[c].ai}×${rows[c].Ni}×${rows[c].inv} mod ${N} = ${rows[c].term}。累積和 = ${rows[c].cumulative}`,
+      ),
+    );
+    for (let r = 0; r < 6; r++) state[r][c] = "settled";
+  }
+
+  frames.push(snapshot(`計算完了。x = ${rows[cols - 1].cumulative}(mod ${N})が全ての合同式を満たす`));
+  return frames;
+}
+
+export const DH_PRIME = 23;
+export const DH_GENERATOR = 5;
+export const DH_ALICE_SECRET = 6;
+export const DH_BOB_SECRET = 15;
+
+function dhModPow(base: number, exp: number, mod: number): number {
+  let result = 1;
+  let b = base % mod;
+  let e = exp;
+  while (e > 0) {
+    if (e & 1) result = (result * b) % mod;
+    b = (b * b) % mod;
+    e = e >> 1;
+  }
+  return result;
+}
+
+/**
+ * ディフィー・ヘルマン鍵共有のステップ列を生成する。AliceとBobは公開されたp(素数)とg(原始根)
+ * だけを使い、それぞれ非公開の秘密鍵a,bから公開鍵A=g^a mod p、B=g^b mod pを計算して交換する。
+ * その後、相手の公開鍵に自分の秘密鍵でべき乗する(B^a mod p、A^b mod p)ことで、
+ * 互いに同じ共有鍵に到達できる(g^(ab) mod pが両者の計算の本質であるため)。
+ * 盗聴者はp,g,A,Bを見ることはできるが、離散対数問題(g^x mod pからxを逆算する問題)の
+ * 困難さにより、aやbを求めることは計算量的に困難——これが安全性の根拠になっている。
+ */
+export function diffieHellmanSteps(): DPFrame[] {
+  const p = DH_PRIME;
+  const g = DH_GENERATOR;
+  const aSecret = DH_ALICE_SECRET;
+  const bSecret = DH_BOB_SECRET;
+
+  const table: (number | null)[][] = [
+    [null, null, null],
+    [null, null, null],
+  ];
+  const state: DPCellState[][] = [
+    ["idle", "idle", "idle"],
+    ["idle", "idle", "idle"],
+  ];
+
+  const frames: DPFrame[] = [];
+  const snapshot = (description: string): DPFrame => ({
+    table: table.map((row, r) => row.map((value, c) => ({ value, state: state[r][c] }))),
+    description,
+  });
+
+  frames.push(
+    snapshot(`ディフィー・ヘルマン鍵共有を開始。公開パラメータ: 素数p=${p}, 原始根g=${g}(盗聴者もこの2つは知っている)`),
+  );
+
+  table[0][0] = aSecret;
+  state[0][0] = "pivot";
+  frames.push(snapshot(`Aliceが秘密鍵a=${aSecret}を選ぶ(誰にも公開しない)`));
+  state[0][0] = "settled";
+
+  table[1][0] = bSecret;
+  state[1][0] = "pivot";
+  frames.push(snapshot(`Bobが秘密鍵b=${bSecret}を選ぶ(誰にも公開しない)`));
+  state[1][0] = "settled";
+
+  const A = dhModPow(g, aSecret, p);
+  table[0][1] = A;
+  state[0][1] = "pivot";
+  frames.push(snapshot(`Aliceが公開鍵A = g^a mod p = ${g}^${aSecret} mod ${p} = ${A} を計算し、公開通信路に送る`));
+  state[0][1] = "settled";
+
+  const B = dhModPow(g, bSecret, p);
+  table[1][1] = B;
+  state[1][1] = "pivot";
+  frames.push(snapshot(`Bobが公開鍵B = g^b mod p = ${g}^${bSecret} mod ${p} = ${B} を計算し、公開通信路に送る`));
+  state[1][1] = "settled";
+
+  const sharedFromAlice = dhModPow(B, aSecret, p);
+  table[0][2] = sharedFromAlice;
+  state[0][2] = "pivot";
+  frames.push(snapshot(`Aliceが共有鍵 = B^a mod p = ${B}^${aSecret} mod ${p} = ${sharedFromAlice} を計算`));
+  state[0][2] = "settled";
+
+  const sharedFromBob = dhModPow(A, bSecret, p);
+  table[1][2] = sharedFromBob;
+  state[1][2] = "pivot";
+  frames.push(snapshot(`Bobが共有鍵 = A^b mod p = ${A}^${bSecret} mod ${p} = ${sharedFromBob} を計算`));
+  state[1][2] = "settled";
+
+  frames.push(
+    snapshot(
+      `計算完了。両者とも同じ共有鍵${sharedFromAlice}に到達した(盗聴者はp,g,A,Bが見えても、離散対数問題の困難さによりa,bを求められない)`,
+    ),
+  );
+  return frames;
+}
+
 export type DPTableMeta = {
   /** テーブル上の情報チップ(品物一覧や対象文字列など)。 */
   chips: string[];
@@ -787,6 +1401,93 @@ export const DP_TABLE_META: Record<string, DPTableMeta> = {
     rowHeaders: Array.from({ length: EGG_DROP_EGGS }, (_, e) => `${e + 1}個`),
     colHeaders: Array.from({ length: EGG_DROP_FLOORS + 1 }, (_, f) => String(f)),
   },
+  "longest-common-substring": {
+    chips: [`文字列1: "${LONGEST_COMMON_SUBSTRING_A}"`, `文字列2: "${LONGEST_COMMON_SUBSTRING_B}"`],
+    cornerLabel: "∅ \\ ∅",
+    rowHeaders: ["∅", ...LONGEST_COMMON_SUBSTRING_A.split("")],
+    colHeaders: ["∅", ...LONGEST_COMMON_SUBSTRING_B.split("")],
+  },
+  "interval-scheduling": {
+    chips: [`区間: ${INTERVAL_SCHEDULING_INTERVALS.map((iv) => `${iv.label}(${iv.start}-${iv.end})`).join(", ")}`],
+    cornerLabel: "属性 \\ 区間(終了時刻順)",
+    rowHeaders: ["開始時刻", "終了時刻", "採用?(1/0)"],
+    colHeaders: [...INTERVAL_SCHEDULING_INTERVALS].sort((a, b) => a.end - b.end).map((iv) => iv.label),
+  },
+  "euclidean-algorithm": {
+    chips: [`a=${EUCLIDEAN_A}`, `b=${EUCLIDEAN_B}`],
+    cornerLabel: "変数 \\ 反復",
+    rowHeaders: ["a", "b"],
+    colHeaders: (() => {
+      let a = EUCLIDEAN_A;
+      let b = EUCLIDEAN_B;
+      let count = 1;
+      while (b !== 0) {
+        const r = a % b;
+        a = b;
+        b = r;
+        count++;
+      }
+      return Array.from({ length: count }, (_, i) => `第${i}回`);
+    })(),
+  },
+  "extended-euclidean": {
+    chips: [`a=${EXTENDED_EUCLIDEAN_A}`, `b=${EXTENDED_EUCLIDEAN_B}`, "ax + by = gcd(a,b) を満たす(x,y)も同時に求める"],
+    cornerLabel: "変数 \\ 反復",
+    rowHeaders: ["r(余り)", "s", "t"],
+    colHeaders: (() => {
+      let r0 = EXTENDED_EUCLIDEAN_A;
+      let r1 = EXTENDED_EUCLIDEAN_B;
+      let count = 2;
+      while (r1 !== 0) {
+        const q = Math.floor(r0 / r1);
+        const r2 = r0 - q * r1;
+        r0 = r1;
+        r1 = r2;
+        count++;
+      }
+      return Array.from({ length: count }, (_, i) => `第${i}回`);
+    })(),
+  },
+  "modular-exponentiation": {
+    chips: [`底=${MOD_EXP_BASE}`, `指数=${MOD_EXP_EXPONENT}`, `法=${MOD_EXP_MODULUS}`],
+    cornerLabel: "値 \\ 反復",
+    rowHeaders: ["ビット", "底(掛けた値)", "result"],
+    colHeaders: (() => {
+      let e = MOD_EXP_EXPONENT;
+      let count = 0;
+      while (e > 0) {
+        count++;
+        e = e >> 1;
+      }
+      return Array.from({ length: count }, (_, i) => `反復${i + 1}`);
+    })(),
+  },
+  "russian-peasant-multiplication": {
+    chips: [`a=${RUSSIAN_PEASANT_A}`, `b=${RUSSIAN_PEASANT_B}`, `a×b=${RUSSIAN_PEASANT_A * RUSSIAN_PEASANT_B}`],
+    cornerLabel: "値 \\ 反復",
+    rowHeaders: ["a(半分に)", "b(倍に)", "aは奇数?(1/0)", "累積和"],
+    colHeaders: (() => {
+      let a = RUSSIAN_PEASANT_A;
+      let count = 0;
+      while (a > 0) {
+        count++;
+        a = Math.floor(a / 2);
+      }
+      return Array.from({ length: count }, (_, i) => `反復${i + 1}`);
+    })(),
+  },
+  "chinese-remainder-theorem": {
+    chips: [`法の組: ${CRT_MODULI.join(", ")}`, `余りの組: ${CRT_REMAINDERS.join(", ")}`, `N=${CRT_MODULI.reduce((p, c) => p * c, 1)}`],
+    cornerLabel: "値 \\ i番目",
+    rowHeaders: ["n_i", "a_i", "N_i=N/n_i", "逆元(N_i⁻¹ mod n_i)", "項(a_i×N_i×逆元 mod N)", "累積和 mod N"],
+    colHeaders: CRT_MODULI.map((n, i) => `i=${i + 1}(mod ${n})`),
+  },
+  "diffie-hellman": {
+    chips: [`素数p=${DH_PRIME}`, `原始根g=${DH_GENERATOR}`, "秘密鍵は非公開、公開鍵と共有鍵のみ通信路に流れる"],
+    cornerLabel: "当事者 \\ 値",
+    rowHeaders: ["Alice", "Bob"],
+    colHeaders: ["秘密鍵", "公開鍵(g^秘密 mod p)", "共有鍵"],
+  },
 };
 
 export const DP_VISUALIZERS: Record<string, () => DPFrame[]> = {
@@ -802,4 +1503,12 @@ export const DP_VISUALIZERS: Record<string, () => DPFrame[]> = {
   "sparse-table": sparseTableSteps,
   "matrix-chain-multiplication": matrixChainSteps,
   "egg-drop": eggDropSteps,
+  "longest-common-substring": longestCommonSubstringSteps,
+  "interval-scheduling": intervalSchedulingSteps,
+  "euclidean-algorithm": euclideanAlgorithmSteps,
+  "extended-euclidean": extendedEuclideanSteps,
+  "modular-exponentiation": modularExponentiationSteps,
+  "russian-peasant-multiplication": russianPeasantMultiplicationSteps,
+  "chinese-remainder-theorem": chineseRemainderTheoremSteps,
+  "diffie-hellman": diffieHellmanSteps,
 };

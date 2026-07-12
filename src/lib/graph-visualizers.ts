@@ -401,6 +401,237 @@ export function topologicalSortSteps(): GraphFrame[] {
 }
 
 /**
+ * カーンのアルゴリズム(BFSベースのトポロジカルソート)のステップ列を生成する。
+ * `topologicalSortSteps`(DFSの帰りがけ順)と同じ有向非巡回グラフ(DAG)を使い回すが、
+ * アプローチは対照的: 各頂点の入次数(自分に向かう辺の本数)を数えておき、
+ * 入次数0の頂点(＝まだ処理されていない依存先を持たない頂点)から順に取り除いては、
+ * その頂点から出る辺を除去して行き先の入次数を減らし、新たに入次数0になった頂点を
+ * キューに追加する、という処理をキューが空になるまで繰り返す。
+ */
+export function kahnSteps(): GraphFrame[] {
+  const nodes = SHORTEST_PATH_NODES;
+  const edges = SHORTEST_PATH_EDGES;
+  const nodeStates = initNodeStates(nodes, "idle");
+  const edgeStates = initEdgeStates(edges, "idle");
+
+  const indegree = new Map<string, number>();
+  nodes.forEach((n) => indegree.set(n.id, 0));
+  edges.forEach((e) => indegree.set(e.to, (indegree.get(e.to) ?? 0) + 1));
+
+  const indegreeDisplay = (): Record<string, number | null> =>
+    Object.fromEntries(nodes.map((n) => [n.id, indegree.get(n.id)!]));
+
+  const frames: GraphFrame[] = [
+    {
+      nodeStates: { ...nodeStates },
+      edgeStates: { ...edgeStates },
+      distances: indegreeDisplay(),
+      description: "各頂点の入次数を計算(頂点下の数字が入次数)。カーンのアルゴリズムを開始",
+    },
+  ];
+
+  const queue: string[] = nodes.filter((n) => indegree.get(n.id) === 0).map((n) => n.id);
+  const order: string[] = [];
+  const outgoing = (id: string) => edges.filter((e) => e.from === id);
+
+  while (queue.length > 0) {
+    const cur = queue.shift()!;
+    order.push(cur);
+    nodeStates[cur] = "settled";
+    frames.push({
+      nodeStates: { ...nodeStates },
+      edgeStates: { ...edgeStates },
+      distances: indegreeDisplay(),
+      description: `入次数0の頂点${cur}を順序リストに追加(現在の順序: ${order.join(" → ")})`,
+    });
+
+    for (const edge of outgoing(cur)) {
+      edgeStates[edge.id] = "tree";
+      indegree.set(edge.to, indegree.get(edge.to)! - 1);
+      frames.push({
+        nodeStates: { ...nodeStates },
+        edgeStates: { ...edgeStates },
+        distances: indegreeDisplay(),
+        description: `辺${edge.from}→${edge.to}を除去。頂点${edge.to}の入次数を${indegree.get(edge.to)}に更新`,
+      });
+      if (indegree.get(edge.to) === 0) {
+        queue.push(edge.to);
+        nodeStates[edge.to] = "visited";
+        frames.push({
+          nodeStates: { ...nodeStates },
+          edgeStates: { ...edgeStates },
+          distances: indegreeDisplay(),
+          description: `頂点${edge.to}の入次数が0になったのでキューに追加`,
+        });
+      }
+    }
+  }
+
+  frames.push({
+    nodeStates: { ...nodeStates },
+    edgeStates: { ...edgeStates },
+    distances: {},
+    description: `カーンのアルゴリズム完了: ${order.join(" → ")}`,
+  });
+
+  return frames;
+}
+
+/**
+ * ジョンソンのアルゴリズムのステップ列を生成する。bellman-ford.mdと同じグラフ(負の辺D→E: -3を含む)
+ * を使い、フロイド・ワーシャル法と同じ「全点対最短経路」を求める点は同じだが、アプローチは全く異なる:
+ * (1) 全頂点に重み0の辺でつながる仮想始点を考え、そこからベルマン・フォード法で
+ *     各頂点への最短距離h(v)を求める(負の辺があっても計算できるのがベルマン・フォード法の強み)、
+ * (2) 各辺(u,v)をw'(u,v)=w(u,v)+h(u)-h(v)で再重み付けすると全ての辺が非負になることが保証される
+ *     (三角不等式 h(v)≤h(u)+w(u,v) より w'(u,v)≥0)、
+ * (3) 非負になった辺なら高速なダイクストラ法が使えるので、全頂点を始点に1回ずつダイクストラ法を実行し、
+ *     得られた距離を dist = d' - h(始点) + h(終点) で実際の距離に変換する。
+ * 疎なグラフではO(V²logV + VE)とフロイド・ワーシャル法のO(V³)より高速になるのが利点。
+ * 同じグラフに対して求まる全点対最短距離は、フロイド・ワーシャル法の結果と完全に一致する
+ * (node --experimental-strip-typesで検証済み)。
+ */
+export function johnsonSteps(): GraphFrame[] {
+  const nodes = SHORTEST_PATH_NODES;
+  const edges = SHORTEST_PATH_EDGES;
+
+  const nodeStates = initNodeStates(nodes, "idle");
+  const edgeStates = initEdgeStates(edges, "idle");
+  const originalLabels = (): Record<string, string> =>
+    Object.fromEntries(edges.map((e) => [e.id, String(e.weight)]));
+
+  const frames: GraphFrame[] = [
+    {
+      nodeStates: { ...nodeStates },
+      edgeStates: { ...edgeStates },
+      distances: {},
+      edgeLabels: originalLabels(),
+      description: "ジョンソンのアルゴリズムを開始。負の辺(D→E: -3)を含むグラフの全点対最短経路を求める",
+    },
+  ];
+
+  const h = new Map<string, number>();
+  nodes.forEach((n) => h.set(n.id, 0));
+  for (let i = 0; i < nodes.length - 1; i++) {
+    for (const e of edges) {
+      if (h.get(e.from)! + e.weight < h.get(e.to)!) {
+        h.set(e.to, h.get(e.from)! + e.weight);
+      }
+    }
+  }
+  const hDisplay: Record<string, number | null> = Object.fromEntries(
+    nodes.map((n) => [n.id, h.get(n.id)!]),
+  );
+  frames.push({
+    nodeStates: { ...nodeStates },
+    edgeStates: { ...edgeStates },
+    distances: hDisplay,
+    edgeLabels: originalLabels(),
+    description:
+      "[フェーズ1] 全頂点に重み0の辺でつながる仮想始点からベルマン・フォード法で最短距離h(v)を計算(頂点下の数字がh)。これを使って負の辺を打ち消す",
+  });
+
+  const reweighted = new Map<string, number>();
+  edges.forEach((e) => reweighted.set(e.id, e.weight + h.get(e.from)! - h.get(e.to)!));
+  const reweightedLabels = Object.fromEntries(
+    edges.map((e) => [
+      e.id,
+      `${e.weight}+${h.get(e.from)}-${h.get(e.to)}=${reweighted.get(e.id)}`,
+    ]),
+  );
+  frames.push({
+    nodeStates: { ...nodeStates },
+    edgeStates: { ...edgeStates },
+    distances: hDisplay,
+    edgeLabels: reweightedLabels,
+    description:
+      "[フェーズ2] 各辺をw'(u,v)=w(u,v)+h(u)-h(v)で再重み付け。全ての辺が非負になり、ダイクストラ法が使えるようになる",
+  });
+
+  const adjacency = new Map<string, string[]>();
+  nodes.forEach((n) => adjacency.set(n.id, edges.filter((e) => e.from === n.id).map((e) => e.to)));
+  const edgeIdBetween = (a: string, b: string): string =>
+    edges.find((e) => e.from === a && e.to === b)!.id;
+
+  const allPairsSummary: string[] = [];
+
+  for (const source of nodes) {
+    const distPrime = new Map<string, number | null>();
+    nodes.forEach((n) => distPrime.set(n.id, n.id === source.id ? 0 : null));
+    const visited = new Set<string>();
+    const localNodeStates = initNodeStates(nodes, "idle");
+    localNodeStates[source.id] = "settled";
+    const idleEdges = initEdgeStates(edges, "idle");
+    frames.push({
+      nodeStates: { ...localNodeStates },
+      edgeStates: { ...idleEdges },
+      distances: Object.fromEntries([...distPrime.entries()]),
+      edgeLabels: reweightedLabels,
+      description: `[フェーズ3] 頂点${source.id}を始点にダイクストラ法(再重み付けしたグラフ上)を実行`,
+    });
+
+    while (visited.size < nodes.length) {
+      let u: string | null = null;
+      let best = Infinity;
+      nodes.forEach((n) => {
+        const d = distPrime.get(n.id);
+        if (!visited.has(n.id) && typeof d === "number" && d < best) {
+          best = d;
+          u = n.id;
+        }
+      });
+      if (u === null) break;
+      const uid: string = u;
+      visited.add(uid);
+      localNodeStates[uid] = "settled";
+      for (const v of adjacency.get(uid) ?? []) {
+        if (visited.has(v)) continue;
+        const w = reweighted.get(edgeIdBetween(uid, v))!;
+        const cand = distPrime.get(uid)! + w;
+        if (distPrime.get(v) === null || cand < distPrime.get(v)!) {
+          distPrime.set(v, cand);
+          if (localNodeStates[v] !== "settled") localNodeStates[v] = "visited";
+        }
+      }
+      frames.push({
+        nodeStates: { ...localNodeStates },
+        edgeStates: { ...idleEdges },
+        distances: Object.fromEntries([...distPrime.entries()]),
+        edgeLabels: reweightedLabels,
+        description: `頂点${uid}を確定。隣接頂点の距離を更新`,
+      });
+    }
+
+    const realDist: Record<string, number | null> = {};
+    nodes.forEach((n) => {
+      const dp = distPrime.get(n.id);
+      realDist[n.id] = typeof dp === "number" ? dp - h.get(source.id)! + h.get(n.id)! : null;
+    });
+    allPairsSummary.push(
+      `${source.id}→{${nodes.map((n) => `${n.id}:${realDist[n.id] ?? "∞"}`).join(",")}}`,
+    );
+    frames.push({
+      nodeStates: { ...localNodeStates },
+      edgeStates: { ...idleEdges },
+      distances: realDist,
+      edgeLabels: reweightedLabels,
+      description: `頂点${source.id}からの実際の最短距離に変換完了(dist=d'-h(始点)+h(終点)): ${nodes
+        .map((n) => `${n.id}=${realDist[n.id] ?? "∞"}`)
+        .join(", ")}`,
+    });
+  }
+
+  frames.push({
+    nodeStates: initNodeStates(nodes, "settled"),
+    edgeStates: initEdgeStates(edges, "idle"),
+    distances: {},
+    edgeLabels: originalLabels(),
+    description: `計算完了。全点対の最短距離: ${allPairsSummary.join(" / ")}`,
+  });
+
+  return frames;
+}
+
+/**
  * ボルーフカ法のステップ列を生成する。
  * 全ての木(最初は各頂点1つずつ)が、他の木へ出る最小コストの辺を同時に選んで統合する、
  * というラウンド制の進め方がプリム法・クラスカル法との違い。
@@ -1388,6 +1619,8 @@ export const GRAPH_DATASETS: Record<string, GraphDataset> = {
   dinic: { nodes: FLOW_NODES, edges: FLOW_EDGES, directed: true },
   "ford-fulkerson": { nodes: FLOW_NODES, edges: FLOW_EDGES, directed: true },
   "hopcroft-karp": { nodes: BIPARTITE_NODES, edges: BIPARTITE_EDGES, directed: false },
+  kahn: { nodes: SHORTEST_PATH_NODES, edges: SHORTEST_PATH_EDGES, directed: true },
+  johnson: { nodes: SHORTEST_PATH_NODES, edges: SHORTEST_PATH_EDGES, directed: true },
 };
 
 export const GRAPH_VISUALIZERS: Record<string, () => GraphFrame[]> = {
@@ -1402,4 +1635,6 @@ export const GRAPH_VISUALIZERS: Record<string, () => GraphFrame[]> = {
   "edmonds-karp": edmondsKarpSteps,
   "ford-fulkerson": fordFulkersonSteps,
   "hopcroft-karp": hopcroftKarpSteps,
+  kahn: kahnSteps,
+  johnson: johnsonSteps,
 };
