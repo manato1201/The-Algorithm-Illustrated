@@ -1674,6 +1674,519 @@ export function consistentHashingSteps(): GraphFrame[] {
   return [...frames, ...framesAfterAdd];
 }
 
+/** ブリー・アルゴリズムのデモ用データ。P5(最大ID)が故障しており、P2が最初に検知して選挙を開始する。 */
+export const BULLY_NODES: GraphNode[] = circleLayout(["P1", "P2", "P3", "P4", "P5"]);
+export const BULLY_DOWN_NODE = "P5";
+export const BULLY_INITIATOR = "P2";
+export const BULLY_EDGES: GraphEdge[] = [
+  { id: "P2-P3", from: "P2", to: "P3", weight: 1 },
+  { id: "P2-P4", from: "P2", to: "P4", weight: 1 },
+  { id: "P2-P5", from: "P2", to: "P5", weight: 1 },
+  { id: "P3-P2", from: "P3", to: "P2", weight: 1 },
+  { id: "P3-P4", from: "P3", to: "P4", weight: 1 },
+  { id: "P3-P5", from: "P3", to: "P5", weight: 1 },
+  { id: "P4-P3", from: "P4", to: "P3", weight: 1 },
+  { id: "P4-P5", from: "P4", to: "P5", weight: 1 },
+  { id: "P4-P1", from: "P4", to: "P1", weight: 1 },
+  { id: "P4-P2", from: "P4", to: "P2", weight: 1 },
+  { id: "P4-P3b", from: "P4", to: "P3", weight: 1 },
+];
+
+/**
+ * ブリー・アルゴリズム(いじめっ子アルゴリズム)のステップ列を生成する。コーディネーターの
+ * 故障を検知したプロセスが、自分より大きいIDを持つ全プロセスにELECTIONメッセージを送る。
+ * 応答(OK)があれば、その応答者が代わりに選挙を続ける(自分は身を引く)。
+ * 誰からも応答がなければ、それが現時点で生きている最大IDのプロセスということなので、
+ * 自らコーディネーターを名乗り、全プロセスにCOORDINATORメッセージを broadcastする。
+ * 「より大きいIDのプロセスが常に勝つ」ことから"いじめっ子"の名がついている。
+ */
+export function bullyAlgorithmSteps(): GraphFrame[] {
+  const nodes = BULLY_NODES;
+  const edges = BULLY_EDGES;
+
+  const nodeStates = initNodeStates(nodes, "idle");
+  const edgeStates = initEdgeStates(edges, "idle");
+  const edgeLabels: Record<string, string> = Object.fromEntries(edges.map((e) => [e.id, ""]));
+
+  const frames: GraphFrame[] = [
+    {
+      nodeStates: { ...nodeStates },
+      edgeStates: { ...edgeStates },
+      distances: {},
+      edgeLabels: { ...edgeLabels },
+      description: `${BULLY_INITIATOR}がコーディネーター${BULLY_DOWN_NODE}の故障を検知し、選挙(ELECTION)を開始する`,
+    },
+  ];
+
+  const sendMessage = (id: string, label: string, state: GraphEdgeState, description: string) => {
+    edgeLabels[id] = label;
+    edgeStates[id] = state;
+    frames.push({
+      nodeStates: { ...nodeStates },
+      edgeStates: { ...edgeStates },
+      distances: {},
+      edgeLabels: { ...edgeLabels },
+      description,
+    });
+  };
+
+  nodeStates[BULLY_INITIATOR] = "visited";
+  sendMessage("P2-P3", "ELECTION", "checking", "P2 → P3: ELECTION");
+  sendMessage("P2-P4", "ELECTION", "checking", "P2 → P4: ELECTION");
+  sendMessage("P2-P5", "ELECTION", "rejected", `P2 → P5: ELECTION(${BULLY_DOWN_NODE}は故障中のため応答なし)`);
+
+  nodeStates.P3 = "visited";
+  sendMessage("P3-P2", "OK", "tree", "P3 → P2: OK(P3の方がIDが大きいので選挙を引き継ぐ。P2はここで脱落)");
+  sendMessage("P3-P4", "ELECTION", "checking", "P3 → P4: ELECTION");
+  sendMessage("P3-P5", "ELECTION", "rejected", `P3 → P5: ELECTION(${BULLY_DOWN_NODE}は故障中のため応答なし)`);
+
+  nodeStates.P4 = "visited";
+  sendMessage("P4-P3", "OK", "tree", "P4 → P3: OK(P4の方がIDが大きいので選挙を引き継ぐ。P3はここで脱落)");
+  sendMessage("P4-P5", "ELECTION", "rejected", `P4 → P5: ELECTION(${BULLY_DOWN_NODE}は故障中のため応答なし)`);
+
+  frames.push({
+    nodeStates: { ...nodeStates },
+    edgeStates: { ...edgeStates },
+    distances: {},
+    edgeLabels: { ...edgeLabels },
+    description: "P4はP5以外の誰からも応答を得られなかった(P5より大きいIDは存在しない) → P4が新コーディネーターを宣言",
+  });
+
+  nodeStates.P4 = "settled";
+  sendMessage("P4-P1", "COORDINATOR", "tree", "P4 → P1: COORDINATOR(新コーディネーターを通知)");
+  sendMessage("P4-P2", "COORDINATOR", "tree", "P4 → P2: COORDINATOR");
+  sendMessage("P4-P3b", "COORDINATOR", "tree", "P4 → P3: COORDINATOR");
+
+  frames.push({
+    nodeStates: { ...nodeStates },
+    edgeStates: { ...edgeStates },
+    distances: {},
+    edgeLabels: { ...edgeLabels },
+    description: "計算完了。新コーディネーターはP4(生きているプロセスの中で最大のID)",
+  });
+
+  return frames;
+}
+
+/** 二相コミット(2PC)のデモ用データ。コーディネーターC + 参加者3台、全員が賛成する成功シナリオ。 */
+export const TWO_PHASE_COMMIT_NODES: GraphNode[] = [
+  { id: "C", label: "C", x: 0.5, y: 0.15 },
+  { id: "P1", label: "P1", x: 0.2, y: 0.75 },
+  { id: "P2", label: "P2", x: 0.5, y: 0.9 },
+  { id: "P3", label: "P3", x: 0.8, y: 0.75 },
+];
+export const TWO_PHASE_COMMIT_PARTICIPANTS = ["P1", "P2", "P3"];
+export const TWO_PHASE_COMMIT_EDGES: GraphEdge[] = TWO_PHASE_COMMIT_PARTICIPANTS.flatMap((p) => [
+  { id: `C-${p}`, from: "C", to: p, weight: 1 },
+  { id: `${p}-C`, from: p, to: "C", weight: 1 },
+]);
+
+/**
+ * 二相コミット(2PC)のステップ列を生成する。分散トランザクションを「準備フェーズ」と
+ * 「コミットフェーズ」の2段階に分けることで原子性(全員が反映するか、誰も反映しないかのどちらか)
+ * を保証する。フェーズ1でコーディネーターが全参加者にPREPAREを送り、全員がYESと答えた場合のみ、
+ * フェーズ2でCOMMITを送って確定させる(1つでもNOがあればABORTを送る)。
+ * コーディネーターがフェーズ2の途中で故障すると、参加者は永久にブロックされうるという弱点がある。
+ */
+export function twoPhaseCommitSteps(): GraphFrame[] {
+  const nodes = TWO_PHASE_COMMIT_NODES;
+  const edges = TWO_PHASE_COMMIT_EDGES;
+  const participants = TWO_PHASE_COMMIT_PARTICIPANTS;
+
+  const nodeStates = initNodeStates(nodes, "idle");
+  const edgeStates = initEdgeStates(edges, "idle");
+  const edgeLabels: Record<string, string> = Object.fromEntries(edges.map((e) => [e.id, ""]));
+
+  const frames: GraphFrame[] = [
+    {
+      nodeStates: { ...nodeStates },
+      edgeStates: { ...edgeStates },
+      distances: {},
+      edgeLabels: { ...edgeLabels },
+      description: "二相コミットを開始。コーディネーターCが3台の参加者にトランザクションの実行を依頼する",
+    },
+  ];
+
+  const sendMessage = (id: string, label: string, state: GraphEdgeState, description: string) => {
+    edgeLabels[id] = label;
+    edgeStates[id] = state;
+    frames.push({
+      nodeStates: { ...nodeStates },
+      edgeStates: { ...edgeStates },
+      distances: {},
+      edgeLabels: { ...edgeLabels },
+      description,
+    });
+  };
+
+  nodeStates.C = "visited";
+  for (const p of participants) {
+    sendMessage(`C-${p}`, "PREPARE", "checking", `[フェーズ1] C → ${p}: PREPARE(準備できるか問い合わせ)`);
+  }
+  frames.push({
+    nodeStates: { ...nodeStates },
+    edgeStates: { ...edgeStates },
+    distances: {},
+    edgeLabels: { ...edgeLabels },
+    description: "[フェーズ1] 全参加者がPREPAREを受信。各自ローカルでコミット可能かを検証する",
+  });
+
+  for (const p of participants) {
+    nodeStates[p] = "visited";
+    sendMessage(`${p}-C`, "YES", "tree", `[フェーズ1] ${p} → C: YES(コミット可能)`);
+  }
+  frames.push({
+    nodeStates: { ...nodeStates },
+    edgeStates: { ...edgeStates },
+    distances: {},
+    edgeLabels: { ...edgeLabels },
+    description: "[フェーズ1完了] 全参加者がYESと回答 → Cはコミットを確定できると判断",
+  });
+
+  nodeStates.C = "settled";
+  for (const p of participants) {
+    sendMessage(`C-${p}`, "COMMIT", "tree", `[フェーズ2] C → ${p}: COMMIT(確定を指示)`);
+    nodeStates[p] = "settled";
+  }
+
+  frames.push({
+    nodeStates: { ...nodeStates },
+    edgeStates: { ...edgeStates },
+    distances: {},
+    edgeLabels: { ...edgeLabels },
+    description: "計算完了。全参加者がCOMMITを受信し、トランザクションが原子的に確定した",
+  });
+
+  return frames;
+}
+
+/** Raft(簡略化リーダー選出のみ)のデモ用データ。N3が最初にタイムアウトし候補者になる。 */
+export const RAFT_NODES: GraphNode[] = circleLayout(["N1", "N2", "N3", "N4", "N5"]);
+export const RAFT_CANDIDATE = "N3";
+export const RAFT_OTHERS = ["N1", "N2", "N4", "N5"];
+export const RAFT_EDGES: GraphEdge[] = RAFT_OTHERS.map((n) => ({
+  id: `${RAFT_CANDIDATE}-${n}`,
+  from: RAFT_CANDIDATE,
+  to: n,
+  weight: 1,
+}));
+
+/**
+ * Raft(簡略化してリーダー選出のみ)のステップ列を生成する。全ノードはフォロワーとして開始し、
+ * 一定時間コーディネーターからの信号(ハートビート)が来ないとタイムアウトして候補者に昇格し、
+ * 自分に投票した上で他の全ノードに投票を要求する(RequestVote)。
+ * 過半数の票を得られれば新しい任期(term)のリーダーとなり、以後は定期的なハートビート
+ * (AppendEntries)でリーダーであり続けることを他ノードに知らせる。
+ * Paxosより「理解しやすい」ことを設計目標に掲げて生まれた合意アルゴリズム。
+ */
+export function raftSteps(): GraphFrame[] {
+  const nodes = RAFT_NODES;
+  const edges = RAFT_EDGES;
+  const candidate = RAFT_CANDIDATE;
+  const others = RAFT_OTHERS;
+
+  const nodeStates = initNodeStates(nodes, "idle");
+  const edgeStates = initEdgeStates(edges, "idle");
+  const edgeLabels: Record<string, string> = Object.fromEntries(edges.map((e) => [e.id, ""]));
+
+  const frames: GraphFrame[] = [
+    {
+      nodeStates: { ...nodeStates },
+      edgeStates: { ...edgeStates },
+      distances: {},
+      edgeLabels: { ...edgeLabels },
+      description: "全ノードはフォロワーとして開始。誰もリーダーからのハートビートを受信していない",
+    },
+  ];
+
+  const sendMessage = (id: string, label: string, state: GraphEdgeState, description: string) => {
+    edgeLabels[id] = label;
+    edgeStates[id] = state;
+    frames.push({
+      nodeStates: { ...nodeStates },
+      edgeStates: { ...edgeStates },
+      distances: {},
+      edgeLabels: { ...edgeLabels },
+      description,
+    });
+  };
+
+  nodeStates[candidate] = "visited";
+  frames.push({
+    nodeStates: { ...nodeStates },
+    edgeStates: { ...edgeStates },
+    distances: {},
+    edgeLabels: { ...edgeLabels },
+    description: `${candidate}が最初にタイムアウトし、候補者(candidate)に昇格。新しい任期(term)を開始し、自分自身に投票する(1票)`,
+  });
+
+  for (const n of others) {
+    sendMessage(`${candidate}-${n}`, "RequestVote", "checking", `${candidate} → ${n}: RequestVote(この任期での投票を要求)`);
+  }
+
+  let votes = 1;
+  for (const n of others) {
+    votes++;
+    edgeLabels[`${candidate}-${n}`] = "VoteGranted";
+    edgeStates[`${candidate}-${n}`] = "tree";
+    frames.push({
+      nodeStates: { ...nodeStates },
+      edgeStates: { ...edgeStates },
+      distances: {},
+      edgeLabels: { ...edgeLabels },
+      description: `${n} → ${candidate}: VoteGranted(まだ今期投票していないので承認)。${candidate}の得票数=${votes}/${nodes.length}`,
+    });
+  }
+
+  nodeStates[candidate] = "settled";
+  frames.push({
+    nodeStates: { ...nodeStates },
+    edgeStates: { ...edgeStates },
+    distances: {},
+    edgeLabels: { ...edgeLabels },
+    description: `${candidate}が過半数(${votes}/${nodes.length})の票を獲得 → リーダーに昇格`,
+  });
+
+  for (const n of others) {
+    edgeLabels[`${candidate}-${n}`] = "Heartbeat";
+    frames.push({
+      nodeStates: { ...nodeStates },
+      edgeStates: { ...edgeStates },
+      distances: {},
+      edgeLabels: { ...edgeLabels },
+      description: `${candidate} → ${n}: Heartbeat(AppendEntries、リーダーであり続けることを定期的に通知)`,
+    });
+  }
+
+  frames.push({
+    nodeStates: { ...nodeStates },
+    edgeStates: { ...edgeStates },
+    distances: {},
+    edgeLabels: { ...edgeLabels },
+    description: `計算完了。新リーダーは${candidate}(得票${votes}/${nodes.length}で過半数を獲得)`,
+  });
+
+  return frames;
+}
+
+/** Paxos(単一ラウンドのBasic Paxosのみ)のデモ用データ。 */
+export const PAXOS_NODES: GraphNode[] = [
+  { id: "Pr", label: "Pr", x: 0.5, y: 0.15 },
+  { id: "A1", label: "A1", x: 0.2, y: 0.75 },
+  { id: "A2", label: "A2", x: 0.5, y: 0.9 },
+  { id: "A3", label: "A3", x: 0.8, y: 0.75 },
+];
+export const PAXOS_ACCEPTORS = ["A1", "A2", "A3"];
+export const PAXOS_PROPOSAL_NUMBER = 1;
+export const PAXOS_VALUE = "X";
+export const PAXOS_EDGES: GraphEdge[] = PAXOS_ACCEPTORS.map((a) => ({ id: `Pr-${a}`, from: "Pr", to: a, weight: 1 }));
+
+/**
+ * Paxos(単一ラウンドのBasic Paxosのみ)のステップ列を生成する。提案者(Proposer)は
+ * 提案番号nを添えてPrepare(n)を過半数の受理者(Acceptor)に送る(フェーズ1)。
+ * 受理者はnがこれまで見た中で最大なら、それ以前に受理していないことをPromiseで約束する。
+ * 過半数からPromiseを得たら、提案者はAccept(n, value)を送り(フェーズ2)、
+ * 受理者はPromiseを破っていなければAcceptedで応じる。過半数がAcceptedすれば、
+ * その値は分散システム全体で合意されたことになる——一部のノードが故障・遅延しても
+ * 全体の合意を保証できる、合意アルゴリズムの原典。
+ */
+export function paxosSteps(): GraphFrame[] {
+  const nodes = PAXOS_NODES;
+  const edges = PAXOS_EDGES;
+  const acceptors = PAXOS_ACCEPTORS;
+  const n = PAXOS_PROPOSAL_NUMBER;
+  const value = PAXOS_VALUE;
+
+  const nodeStates = initNodeStates(nodes, "idle");
+  const edgeStates = initEdgeStates(edges, "idle");
+  const edgeLabels: Record<string, string> = Object.fromEntries(edges.map((e) => [e.id, ""]));
+
+  const frames: GraphFrame[] = [
+    {
+      nodeStates: { ...nodeStates },
+      edgeStates: { ...edgeStates },
+      distances: {},
+      edgeLabels: { ...edgeLabels },
+      description: `Paxosを開始。提案者Prが値"${value}"を提案番号n=${n}で合意させようとする`,
+    },
+  ];
+
+  const sendMessage = (id: string, label: string, state: GraphEdgeState, description: string) => {
+    edgeLabels[id] = label;
+    edgeStates[id] = state;
+    frames.push({
+      nodeStates: { ...nodeStates },
+      edgeStates: { ...edgeStates },
+      distances: {},
+      edgeLabels: { ...edgeLabels },
+      description,
+    });
+  };
+
+  nodeStates.Pr = "visited";
+  for (const a of acceptors) {
+    sendMessage(`Pr-${a}`, `Prepare(${n})`, "checking", `[フェーズ1] Pr → ${a}: Prepare(${n})`);
+  }
+
+  let promises = 0;
+  for (const a of acceptors) {
+    promises++;
+    nodeStates[a] = "visited";
+    sendMessage(`Pr-${a}`, `Promise(${n})`, "tree", `[フェーズ1] ${a} → Pr: Promise(${n})(これより小さい提案番号は今後拒否すると約束)。約束数=${promises}/${acceptors.length}`);
+  }
+
+  frames.push({
+    nodeStates: { ...nodeStates },
+    edgeStates: { ...edgeStates },
+    distances: {},
+    edgeLabels: { ...edgeLabels },
+    description: `[フェーズ1完了] 過半数(${promises}/${acceptors.length})からPromiseを獲得 → フェーズ2に進める`,
+  });
+
+  for (const a of acceptors) {
+    sendMessage(`Pr-${a}`, `Accept(${n},${value})`, "checking", `[フェーズ2] Pr → ${a}: Accept(${n}, "${value}")`);
+  }
+
+  let accepted = 0;
+  for (const a of acceptors) {
+    accepted++;
+    nodeStates[a] = "settled";
+    sendMessage(`Pr-${a}`, `Accepted(${n})`, "tree", `[フェーズ2] ${a} → Pr: Accepted(${n})(Promiseを破っていないので受理)。受理数=${accepted}/${acceptors.length}`);
+  }
+
+  nodeStates.Pr = "settled";
+  frames.push({
+    nodeStates: { ...nodeStates },
+    edgeStates: { ...edgeStates },
+    distances: {},
+    edgeLabels: { ...edgeLabels },
+    description: `計算完了。過半数(${accepted}/${acceptors.length})がAcceptedを返したため、値"${value}"が分散システム全体で合意された`,
+  });
+
+  return frames;
+}
+
+type VectorClockEvent = {
+  process: string;
+  kind: "local" | "send" | "receive";
+  target?: string;
+};
+
+/** ベクタークロックのデモ用データ。P1↔P2、P2↔P3のメッセージ交換を含む7イベントの列。 */
+export const VECTOR_CLOCK_PROCESSES = ["P1", "P2", "P3"];
+export const VECTOR_CLOCK_EVENTS: VectorClockEvent[] = [
+  { process: "P1", kind: "local" },
+  { process: "P2", kind: "local" },
+  { process: "P1", kind: "send", target: "P2" },
+  { process: "P2", kind: "receive" },
+  { process: "P3", kind: "local" },
+  { process: "P2", kind: "send", target: "P3" },
+  { process: "P3", kind: "receive" },
+];
+export const VECTOR_CLOCK_NODES: GraphNode[] = [
+  { id: "P1", label: "P1", x: 0.2, y: 0.5 },
+  { id: "P2", label: "P2", x: 0.5, y: 0.2 },
+  { id: "P3", label: "P3", x: 0.8, y: 0.5 },
+];
+export const VECTOR_CLOCK_EDGES: GraphEdge[] = [
+  { id: "P1-P2", from: "P1", to: "P2", weight: 1 },
+  { id: "P2-P3", from: "P2", to: "P3", weight: 1 },
+];
+
+/**
+ * ベクタークロックのステップ列を生成する。各プロセスがプロセス数と同じ長さのカウンタの組
+ * (ベクタークロック)を持ち、(1) 何らかのイベント(ローカル処理・送信・受信)のたびに
+ * 自分の担当する要素だけを+1し、(2) メッセージ受信時にはさらに、受信したベクタークロックとの
+ * 要素ごとの最大値を取る、という2つの規則だけで更新する。2つのイベントのベクタークロックを
+ * 比較し、一方が他方を要素ごとに全て以下(かつ完全に同一ではない)なら「片方がもう片方より先に
+ * 起きたことが保証される(happens-before)」、どちらも他方を包含しなければ「因果関係のない
+ * 並行イベント」と判定できる——物理時計のズレに依存せず、分散システムでの事象の前後関係を
+ * 判定できるのが最大の利点。
+ */
+export function vectorClocksSteps(): GraphFrame[] {
+  const nodes = VECTOR_CLOCK_NODES;
+  const edges = VECTOR_CLOCK_EDGES;
+  const processes = VECTOR_CLOCK_PROCESSES;
+
+  const clocks: Record<string, number[]> = {};
+  processes.forEach((p) => {
+    clocks[p] = processes.map(() => 0);
+  });
+  const clockLabel = (p: string) => `[${clocks[p].join(",")}]`;
+
+  const nodeStates = initNodeStates(nodes, "idle");
+  const edgeStates = initEdgeStates(edges, "idle");
+
+  const frames: GraphFrame[] = [
+    {
+      nodeStates: { ...nodeStates },
+      edgeStates: { ...edgeStates },
+      distances: {},
+      description: `ベクタークロックを開始。全プロセス(${processes.join(", ")})のクロックを[0,0,0]に初期化`,
+    },
+  ];
+
+  const eventVectors: number[][] = [];
+  const idxOf = (p: string) => processes.indexOf(p);
+  let pendingMessage: number[] | null = null;
+
+  for (const ev of VECTOR_CLOCK_EVENTS) {
+    const i = idxOf(ev.process);
+    const states = { ...nodeStates };
+    states[ev.process] = "visited";
+
+    if (ev.kind === "local") {
+      clocks[ev.process][i]++;
+      frames.push({
+        nodeStates: states,
+        edgeStates: { ...edgeStates },
+        distances: {},
+        description: `${ev.process}でローカルイベント発生 → 自分の要素を+1。${ev.process}のクロック = ${clockLabel(ev.process)}`,
+      });
+    } else if (ev.kind === "send") {
+      clocks[ev.process][i]++;
+      pendingMessage = [...clocks[ev.process]];
+      const edgeId = `${ev.process}-${ev.target}`;
+      const newEdgeStates = { ...edgeStates, [edgeId]: "tree" as GraphEdgeState };
+      frames.push({
+        nodeStates: states,
+        edgeStates: newEdgeStates,
+        distances: {},
+        description: `${ev.process}が${ev.target}へメッセージ送信 → 自分の要素を+1し、クロック${clockLabel(ev.process)}をメッセージに添付`,
+      });
+    } else {
+      const received = pendingMessage!;
+      clocks[ev.process] = clocks[ev.process].map((v, k) => Math.max(v, received[k]));
+      clocks[ev.process][i]++;
+      frames.push({
+        nodeStates: states,
+        edgeStates: { ...edgeStates },
+        distances: {},
+        description: `${ev.process}がメッセージを受信 → 受信したクロック[${received.join(",")}]と要素ごとの最大値を取り、さらに自分の要素を+1。${ev.process}のクロック = ${clockLabel(ev.process)}`,
+      });
+    }
+    eventVectors.push([...clocks[ev.process]]);
+  }
+
+  const e1 = eventVectors[0];
+  const e7 = eventVectors[6];
+  const e1BeforeE7 = e1.every((v, k) => v <= e7[k]) && e1.some((v, k) => v !== e7[k]);
+  const e2 = eventVectors[1];
+  const e5 = eventVectors[4];
+  const e2LeqE5 = e2.every((v, k) => v <= e5[k]);
+  const e5LeqE2 = e5.every((v, k) => v <= e2[k]);
+  const concurrent = !e2LeqE5 && !e5LeqE2;
+
+  frames.push({
+    nodeStates: { ...nodeStates },
+    edgeStates: { ...edgeStates },
+    distances: {},
+    description: `計算完了。イベント1([${e1.join(",")}], P1のローカルイベント)とイベント7([${e7.join(",")}], P3の受信)は${e1BeforeE7 ? "happens-before(片方が確実に先に起きた)" : "比較不能"}。イベント2([${e2.join(",")}], P2のローカルイベント)とイベント5([${e5.join(",")}], P3のローカルイベント)は${concurrent ? "並行(concurrent、因果関係なし)" : "happens-before関係あり"}`,
+  });
+
+  return frames;
+}
+
 export type GraphDataset = {
   nodes: GraphNode[];
   edges: GraphEdge[];
@@ -2591,6 +3104,11 @@ export const GRAPH_DATASETS: Record<string, GraphDataset> = {
   pagerank: { nodes: RANKING_GRAPH_NODES, edges: RANKING_GRAPH_EDGES, directed: true },
   hits: { nodes: RANKING_GRAPH_NODES, edges: RANKING_GRAPH_EDGES, directed: true },
   "consistent-hashing": { nodes: CONSISTENT_HASHING_NODES, edges: CONSISTENT_HASHING_EDGES, directed: false },
+  "bully-algorithm": { nodes: BULLY_NODES, edges: BULLY_EDGES, directed: true },
+  "two-phase-commit": { nodes: TWO_PHASE_COMMIT_NODES, edges: TWO_PHASE_COMMIT_EDGES, directed: true },
+  raft: { nodes: RAFT_NODES, edges: RAFT_EDGES, directed: true },
+  paxos: { nodes: PAXOS_NODES, edges: PAXOS_EDGES, directed: true },
+  "vector-clocks": { nodes: VECTOR_CLOCK_NODES, edges: VECTOR_CLOCK_EDGES, directed: true },
 };
 
 export const GRAPH_VISUALIZERS: Record<string, () => GraphFrame[]> = {
@@ -2614,4 +3132,9 @@ export const GRAPH_VISUALIZERS: Record<string, () => GraphFrame[]> = {
   pagerank: pagerankSteps,
   hits: hitsSteps,
   "consistent-hashing": consistentHashingSteps,
+  "bully-algorithm": bullyAlgorithmSteps,
+  "two-phase-commit": twoPhaseCommitSteps,
+  raft: raftSteps,
+  paxos: paxosSteps,
+  "vector-clocks": vectorClocksSteps,
 };
