@@ -887,6 +887,153 @@ export function edmondsKarpSteps(): GraphFrame[] {
 }
 
 /**
+ * Ford-Fulkerson法のステップ列を生成する。Edmonds-Karp法(BFSで最短の増加パスを探す)との
+ * 違いは増加パスの探し方だけで、残余グラフの考え方(residualCap/pushFlow)は共通。
+ * ここではDFSで見つかった最初の増加パスをそのまま使う——BFSと違って最短パスとは限らないため、
+ * 一般には増加パスの本数が増えやすく(最悪ケースの反復回数は容量の値に依存しうる)、
+ * Edmonds-Karp法がFord-Fulkerson法の「BFS版」として計算量を多項式に抑える改良である
+ * ことを対比できる。同じ最大流ネットワーク(既知の最大流=23)を使う。
+ */
+export function fordFulkersonSteps(): GraphFrame[] {
+  const nodes = FLOW_NODES;
+  const edges = FLOW_EDGES;
+
+  const realCapacity = new Map<string, number>();
+  const flow = new Map<string, number>();
+  for (const e of edges) {
+    realCapacity.set(`${e.from}->${e.to}`, e.weight);
+    flow.set(`${e.from}->${e.to}`, 0);
+  }
+
+  const adjacency = new Map<string, Set<string>>();
+  const addAdjacency = (a: string, b: string) => {
+    if (!adjacency.has(a)) adjacency.set(a, new Set());
+    adjacency.get(a)!.add(b);
+  };
+  for (const e of edges) {
+    addAdjacency(e.from, e.to);
+    addAdjacency(e.to, e.from);
+  }
+
+  const residualCap = (a: string, b: string): number => {
+    if (realCapacity.has(`${a}->${b}`)) {
+      return realCapacity.get(`${a}->${b}`)! - flow.get(`${a}->${b}`)!;
+    }
+    if (realCapacity.has(`${b}->${a}`)) {
+      return flow.get(`${b}->${a}`)!;
+    }
+    return 0;
+  };
+
+  const pushFlow = (a: string, b: string, amount: number) => {
+    if (realCapacity.has(`${a}->${b}`)) {
+      flow.set(`${a}->${b}`, flow.get(`${a}->${b}`)! + amount);
+    } else {
+      flow.set(`${b}->${a}`, flow.get(`${b}->${a}`)! - amount);
+    }
+  };
+
+  const edgeIdBetween = (a: string, b: string): string => {
+    const forward = edges.find((e) => e.from === a && e.to === b);
+    const backward = edges.find((e) => e.from === b && e.to === a);
+    return (forward ?? backward)!.id;
+  };
+
+  const dfsAugmentingPath = (): string[] | null => {
+    const visited = new Set<string>([FLOW_SOURCE]);
+    const path: string[] = [FLOW_SOURCE];
+    const walk = (u: string): boolean => {
+      if (u === FLOW_SINK) return true;
+      for (const v of adjacency.get(u) ?? []) {
+        if (visited.has(v) || residualCap(u, v) <= 0) continue;
+        visited.add(v);
+        path.push(v);
+        if (walk(v)) return true;
+        path.pop();
+      }
+      return false;
+    };
+    return walk(FLOW_SOURCE) ? path : null;
+  };
+
+  const nodeStates = initNodeStates(nodes, "idle");
+  const edgeStates = initEdgeStates(edges, "idle");
+  const currentLabels = (): Record<string, string> =>
+    Object.fromEntries(edges.map((e) => [e.id, `${flow.get(`${e.from}->${e.to}`)}/${e.weight}`]));
+
+  const frames: GraphFrame[] = [
+    {
+      nodeStates: { ...nodeStates },
+      edgeStates: { ...edgeStates },
+      distances: {},
+      edgeLabels: currentLabels(),
+      description: "各辺のラベルを「現在の流量/容量」で表示。Ford-Fulkerson法(DFSで増加パスを探す)を開始",
+    },
+  ];
+
+  let totalFlow = 0;
+  let round = 0;
+  for (;;) {
+    const path = dfsAugmentingPath();
+    if (!path) break;
+    round++;
+
+    const pathNodeStates = { ...nodeStates };
+    path.forEach((n) => {
+      pathNodeStates[n] = "visited";
+    });
+    const pathEdgeStates = { ...edgeStates };
+    const pathEdgeIds: string[] = [];
+    for (let i = 0; i < path.length - 1; i++) {
+      const id = edgeIdBetween(path[i], path[i + 1]);
+      pathEdgeIds.push(id);
+      pathEdgeStates[id] = "checking";
+    }
+    frames.push({
+      nodeStates: pathNodeStates,
+      edgeStates: pathEdgeStates,
+      distances: {},
+      edgeLabels: currentLabels(),
+      description: `[ラウンド${round}] DFSで増加パス ${path.join("→")} を発見`,
+    });
+
+    let bottleneck = Infinity;
+    for (let i = 0; i < path.length - 1; i++) {
+      bottleneck = Math.min(bottleneck, residualCap(path[i], path[i + 1]));
+    }
+    for (let i = 0; i < path.length - 1; i++) {
+      pushFlow(path[i], path[i + 1], bottleneck);
+    }
+    totalFlow += bottleneck;
+
+    const afterEdgeStates = { ...edgeStates };
+    pathEdgeIds.forEach((id) => {
+      afterEdgeStates[id] = "relaxed";
+    });
+    frames.push({
+      nodeStates: { ...nodeStates },
+      edgeStates: afterEdgeStates,
+      distances: {},
+      edgeLabels: currentLabels(),
+      description: `ボトルネック容量${bottleneck}だけ流量を増加(累計流量: ${totalFlow})`,
+    });
+  }
+
+  nodes.forEach((n) => {
+    nodeStates[n.id] = "settled";
+  });
+  frames.push({
+    nodeStates: { ...nodeStates },
+    edgeStates: { ...edgeStates },
+    distances: {},
+    edgeLabels: currentLabels(),
+    description: `計算完了。最大流は${totalFlow}(ソースからシンクへの増加パスがこれ以上見つからない)`,
+  });
+
+  return frames;
+}
+
+/**
  * Dinic法のステップ列を生成する。Edmonds-Karp法が「1回のBFSにつき増加パス1本」なのに対し、
  * Dinic法は「BFSでレベルグラフ(各頂点のソースからの距離)を1回構築したら、
  * そのレベルグラフ上でDFSを使い、レベルが1ずつ増える辺だけを辿って複数の増加パスを
@@ -1054,6 +1201,7 @@ export const GRAPH_DATASETS: Record<string, GraphDataset> = {
   "tarjan-scc": { nodes: SCC_NODES, edges: SCC_EDGES, directed: true },
   "edmonds-karp": { nodes: FLOW_NODES, edges: FLOW_EDGES, directed: true },
   dinic: { nodes: FLOW_NODES, edges: FLOW_EDGES, directed: true },
+  "ford-fulkerson": { nodes: FLOW_NODES, edges: FLOW_EDGES, directed: true },
 };
 
 export const GRAPH_VISUALIZERS: Record<string, () => GraphFrame[]> = {
@@ -1066,4 +1214,5 @@ export const GRAPH_VISUALIZERS: Record<string, () => GraphFrame[]> = {
   "tarjan-scc": tarjanSccSteps,
   dinic: dinicSteps,
   "edmonds-karp": edmondsKarpSteps,
+  "ford-fulkerson": fordFulkersonSteps,
 };
