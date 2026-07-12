@@ -538,6 +538,58 @@ export function floydWarshallSteps(): DPFrame[] {
   return frames;
 }
 
+export const SPARSE_TABLE_ARRAY = [7, 2, 3, 0, 5, 10, 3, 12, 18];
+const SPARSE_TABLE_N = SPARSE_TABLE_ARRAY.length;
+const SPARSE_TABLE_K = Math.floor(Math.log2(SPARSE_TABLE_N)) + 1;
+
+/**
+ * 区間最小値クエリ(RMQ)のためのSparse Table構築を、k×iの2次元テーブルとして可視化する。
+ * dp[k][i] = 開始位置iから長さ2^kの区間の最小値。長さ2^kの区間は、長さ2^(k-1)の2つの区間の
+ * 最小値を比較するだけで求まる(区間が重なっていても正しい、というべき乗区間分割の性質を利用)。
+ */
+export function sparseTableSteps(): DPFrame[] {
+  const arr = SPARSE_TABLE_ARRAY;
+  const n = SPARSE_TABLE_N;
+  const K = SPARSE_TABLE_K;
+  const dp: (number | null)[][] = Array.from({ length: K }, () => new Array(n).fill(null));
+  for (let i = 0; i < n; i++) dp[0][i] = arr[i];
+  const settled = new Set<string>();
+  for (let i = 0; i < n; i++) settled.add(`0,${i}`);
+
+  const frames: DPFrame[] = [];
+  const snapshot = (extra: Map<string, "comparing" | "pivot">, description: string): DPFrame => {
+    const table: DPCell[][] = dp.map((row, k) =>
+      row.map((value, i) => {
+        const key = `${k},${i}`;
+        return { value, state: extra.get(key) ?? (settled.has(key) ? "settled" : "idle") };
+      }),
+    );
+    return { table, description };
+  };
+
+  frames.push(snapshot(new Map(), "初期状態(k=0の行は各要素そのもの、長さ2^0=1の区間の最小値)"));
+
+  for (let k = 1; k < K; k++) {
+    const half = 1 << (k - 1);
+    for (let i = 0; i + (1 << k) <= n; i++) {
+      const highlight = new Map<string, "comparing" | "pivot">([
+        [`${k - 1},${i}`, "comparing"],
+        [`${k - 1},${i + half}`, "comparing"],
+      ]);
+      const value = Math.min(dp[k - 1][i]!, dp[k - 1][i + half]!);
+      frames.push(snapshot(highlight, `長さ${1 << k}の区間(開始位置${i})は、長さ${half}の2つの区間の最小値を比較`));
+      dp[k][i] = value;
+      settled.add(`${k},${i}`);
+      frames.push(snapshot(new Map([[`${k},${i}`, "pivot"]]), `dp[${k}][${i}] = ${value} を確定`));
+    }
+  }
+
+  frames.push(
+    snapshot(new Map(), "計算完了。任意の区間の最小値をO(1)で問い合わせ可能な前計算テーブルが完成(問い合わせ時は2つの2冪区間でカバーする)"),
+  );
+  return frames;
+}
+
 export type DPTableMeta = {
   /** テーブル上の情報チップ(品物一覧や対象文字列など)。 */
   chips: string[];
@@ -604,6 +656,12 @@ export const DP_TABLE_META: Record<string, DPTableMeta> = {
     rowHeaders: FLOYD_WARSHALL_NODE_IDS,
     colHeaders: FLOYD_WARSHALL_NODE_IDS,
   },
+  "sparse-table": {
+    chips: [`配列: [${SPARSE_TABLE_ARRAY.join(", ")}]`, "各セルは区間最小値(RMQ)"],
+    cornerLabel: "k \\ 開始位置i",
+    rowHeaders: Array.from({ length: SPARSE_TABLE_K }, (_, k) => `k=${k}`),
+    colHeaders: Array.from({ length: SPARSE_TABLE_N }, (_, i) => String(i)),
+  },
 };
 
 export const DP_VISUALIZERS: Record<string, () => DPFrame[]> = {
@@ -616,4 +674,5 @@ export const DP_VISUALIZERS: Record<string, () => DPFrame[]> = {
   lis: lisSteps,
   "longest-palindromic-subsequence": longestPalindromicSubsequenceSteps,
   "floyd-warshall": floydWarshallSteps,
+  "sparse-table": sparseTableSteps,
 };
