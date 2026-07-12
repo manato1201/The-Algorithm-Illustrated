@@ -590,6 +590,119 @@ export function sparseTableSteps(): DPFrame[] {
   return frames;
 }
 
+export const MATRIX_DIMENSIONS = [30, 35, 15, 5, 10, 20, 25];
+
+/**
+ * 行列連鎖乗算の区間DPを、dp[i][j](行列i〜jをまとめて掛けるための最小スカラー乗算回数)として可視化する。
+ * 区間DPという点では最長回文部分列と同じ骨格だが、参照するのは「左右の内側区間」ではなく
+ * 「分割点kで2つに割った左右の区間+その分割点でのコスト」という点が異なる。
+ * CLRSの教科書的な次元列(30,35,15,5,10,20,25、行列6個)を使用。
+ */
+export function matrixChainSteps(): DPFrame[] {
+  const dims = MATRIX_DIMENSIONS;
+  const n = dims.length - 1;
+  const dp: (number | null)[][] = Array.from({ length: n }, () => new Array(n).fill(null));
+  for (let i = 0; i < n; i++) dp[i][i] = 0;
+  const settled = new Set<string>();
+  for (let i = 0; i < n; i++) settled.add(`${i},${i}`);
+
+  const frames: DPFrame[] = [];
+  const snapshot = (extra: Map<string, "comparing" | "pivot">, description: string): DPFrame => {
+    const table: DPCell[][] = dp.map((row, i) =>
+      row.map((value, j) => {
+        const key = `${i},${j}`;
+        return { value, state: extra.get(key) ?? (settled.has(key) ? "settled" : "idle") };
+      }),
+    );
+    return { table, description };
+  };
+
+  frames.push(snapshot(new Map(), "初期状態(行列1個だけの区間は乗算不要なのでコスト0)"));
+
+  for (let length = 2; length <= n; length++) {
+    for (let i = 0; i <= n - length; i++) {
+      const j = i + length - 1;
+      let best = Infinity;
+      let bestK = i;
+      const highlight = new Map<string, "comparing" | "pivot">();
+      for (let k = i; k < j; k++) {
+        highlight.set(`${i},${k}`, "comparing");
+        highlight.set(`${k + 1},${j}`, "comparing");
+        const cost = (dp[i][k] ?? 0) + (dp[k + 1][j] ?? 0) + dims[i] * dims[k + 1] * dims[j + 1];
+        if (cost < best) {
+          best = cost;
+          bestK = k;
+        }
+      }
+      frames.push(snapshot(highlight, `区間[A${i + 1}..A${j + 1}]: 分割点をA${i + 1}〜A${j}の間で全て試し、最小コストを探す`));
+      dp[i][j] = best;
+      settled.add(`${i},${j}`);
+      frames.push(
+        snapshot(new Map([[`${i},${j}`, "pivot"]]), `dp[${i}][${j}] = ${best}(分割点: A${bestK + 1}とA${bestK + 2}の間)を確定`),
+      );
+    }
+  }
+
+  frames.push(snapshot(new Map(), `計算完了。行列A1〜A${n}をまとめて掛けるのに必要な最小スカラー乗算回数は${dp[0][n - 1]}`));
+  return frames;
+}
+
+export const EGG_DROP_EGGS = 2;
+export const EGG_DROP_FLOORS = 10;
+
+/**
+ * 卵落とし問題のDPを可視化する。dp[e][f]=卵e+1個・床f階での最悪ケース最小試行回数
+ * (行インデックス0が卵1個に対応するよう1引いてずらしている)。
+ * xの階から落として「割れた場合」(卵が1個減り、下のf-x階を卵e個で探索)と
+ * 「割れなかった場合」(卵は減らず、上のf-x階を卵e+1個で探索)の悪い方を、
+ * 全てのxについて試して最小になるものを選ぶ。
+ */
+export function eggDropSteps(): DPFrame[] {
+  const eggs = EGG_DROP_EGGS;
+  const floors = EGG_DROP_FLOORS;
+  const dp: (number | null)[][] = Array.from({ length: eggs }, () => new Array(floors + 1).fill(null));
+  for (let f = 0; f <= floors; f++) dp[0][f] = f;
+  for (let e = 0; e < eggs; e++) dp[e][0] = 0;
+  const settled = new Set<string>();
+  for (let f = 0; f <= floors; f++) settled.add(`0,${f}`);
+  for (let e = 0; e < eggs; e++) settled.add(`${e},0`);
+
+  const frames: DPFrame[] = [];
+  const snapshot = (extra: Map<string, "comparing" | "pivot">, description: string): DPFrame => {
+    const table: DPCell[][] = dp.map((row, e) =>
+      row.map((value, f) => {
+        const key = `${e},${f}`;
+        return { value, state: extra.get(key) ?? (settled.has(key) ? "settled" : "idle") };
+      }),
+    );
+    return { table, description };
+  };
+
+  frames.push(snapshot(new Map(), "初期状態(卵1個なら1階ずつ確かめるのでf階はf回、床0階なら0回)"));
+
+  for (let e = 1; e < eggs; e++) {
+    for (let f = 1; f <= floors; f++) {
+      let best = Infinity;
+      const highlight = new Map<string, "comparing" | "pivot">();
+      for (let x = 1; x <= f; x++) {
+        highlight.set(`${e - 1},${x - 1}`, "comparing");
+        highlight.set(`${e},${f - x}`, "comparing");
+        const worstCase = 1 + Math.max(dp[e - 1][x - 1] ?? 0, dp[e][f - x] ?? 0);
+        if (worstCase < best) best = worstCase;
+      }
+      frames.push(
+        snapshot(highlight, `卵${e + 1}個・床${f}階: x階から落とす場合を全て試し、割れた/割れなかった場合の悪い方が最小になるxを探す`),
+      );
+      dp[e][f] = best;
+      settled.add(`${e},${f}`);
+      frames.push(snapshot(new Map([[`${e},${f}`, "pivot"]]), `dp[${e}][${f}] = ${best} を確定`));
+    }
+  }
+
+  frames.push(snapshot(new Map(), `計算完了。卵${eggs}個・床${floors}階での最悪ケース最小試行回数は${dp[eggs - 1][floors]}`));
+  return frames;
+}
+
 export type DPTableMeta = {
   /** テーブル上の情報チップ(品物一覧や対象文字列など)。 */
   chips: string[];
@@ -662,6 +775,18 @@ export const DP_TABLE_META: Record<string, DPTableMeta> = {
     rowHeaders: Array.from({ length: SPARSE_TABLE_K }, (_, k) => `k=${k}`),
     colHeaders: Array.from({ length: SPARSE_TABLE_N }, (_, i) => String(i)),
   },
+  "matrix-chain-multiplication": {
+    chips: [`行列の次元列: ${MATRIX_DIMENSIONS.join(" × ")}`, `行列数: ${MATRIX_DIMENSIONS.length - 1}`],
+    cornerLabel: "i \\ j",
+    rowHeaders: Array.from({ length: MATRIX_DIMENSIONS.length - 1 }, (_, i) => `A${i + 1}`),
+    colHeaders: Array.from({ length: MATRIX_DIMENSIONS.length - 1 }, (_, i) => `A${i + 1}`),
+  },
+  "egg-drop": {
+    chips: [`卵の数: ${EGG_DROP_EGGS}`, `階数: ${EGG_DROP_FLOORS}`],
+    cornerLabel: "卵数 \\ 階数",
+    rowHeaders: Array.from({ length: EGG_DROP_EGGS }, (_, e) => `${e + 1}個`),
+    colHeaders: Array.from({ length: EGG_DROP_FLOORS + 1 }, (_, f) => String(f)),
+  },
 };
 
 export const DP_VISUALIZERS: Record<string, () => DPFrame[]> = {
@@ -675,4 +800,6 @@ export const DP_VISUALIZERS: Record<string, () => DPFrame[]> = {
   "longest-palindromic-subsequence": longestPalindromicSubsequenceSteps,
   "floyd-warshall": floydWarshallSteps,
   "sparse-table": sparseTableSteps,
+  "matrix-chain-multiplication": matrixChainSteps,
+  "egg-drop": eggDropSteps,
 };

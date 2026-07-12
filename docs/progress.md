@@ -1,6 +1,6 @@
 # 実装状況ノート
 
-最終更新: 2026-07-12(可視化対応アルゴリズムを46件→49件に拡張。新規StringMatchVisualizerで文字列カテゴリに初対応(KMP法/ラビン-カープ法/Z algorithm)。前段でTreeVisualizerによるデータ構造カテゴリ対応(BST/AVL木/Treap)・Sparse Table追加も実施済み。更新情報(RSS)画面+Vercel Edge Functions BFF、比較画面、Aboutページ、Worker使い回し最適化、pixi.jsパーティクル演出も追加済み)
+最終更新: 2026-07-12(可視化対応アルゴリズムを49件→53件に拡張。新規コンポーネントを増やさず、既存3ビジュアライザ(StringMatchVisualizer/DPTableVisualizer/GraphVisualizer)を拡張してボイヤー・ムーア法/行列連鎖乗算/卵落とし問題/Union-Findを追加。前段でTreeVisualizerによるデータ構造カテゴリ対応(BST/AVL木/Treap)・StringMatchVisualizerによる文字列カテゴリ対応(KMP法/ラビン-カープ法/Z algorithm)も実施済み。更新情報(RSS)画面+Vercel Edge Functions BFF、比較画面、Aboutページ、Worker使い回し最適化、pixi.jsパーティクル演出も追加済み)
 
 このドキュメントは、後日どのセッションからでも作業を再開できるように、実装済みの内容・意思決定の理由・既知の制約をまとめたものです。デザインの意思決定そのものは [docs/design/ui-design.md](design/ui-design.md) を参照してください。
 
@@ -126,7 +126,9 @@
 
 ### DP(動的計画法)可視化(`src/components/visualizer/DPTableVisualizer.tsx` + `src/lib/dp-visualizers.ts`)
 
-- **対応アルゴリズム: 10種類**(0-1ナップサック問題/LCS/編集距離/硬貨両替/棒の切り出し/部分和問題/最長増加部分列(LIS)/最長回文部分列/フロイド・ワーシャル法/Sparse Table)。2026-07-12に7種を追加
+- **対応アルゴリズム: 12種類**(0-1ナップサック問題/LCS/編集距離/硬貨両替/棒の切り出し/部分和問題/最長増加部分列(LIS)/最長回文部分列/フロイド・ワーシャル法/Sparse Table/行列連鎖乗算/卵落とし問題)。2026-07-12に9種を追加
+- **行列連鎖乗算**は最長回文部分列と同じ区間DPの骨格(`dp[i][j]`)だが、参照するのは「内側区間」ではなく「分割点kで割った左右区間+その分割コスト」という点が異なる。CLRSの教科書的な次元列(6行列)を使用し、ブルートフォース(全括弧付けパターンの再帰探索)と最小コスト(15125)が一致することを検証済み
+- **卵落とし問題**は`dp[卵の数][階数]`=最悪ケース最小試行回数。「x階から落として割れた場合(卵が減り下の階を探索)/割れなかった場合(卵は減らず上の階を探索)の悪い方を最小化するxを選ぶ」という最小最大化の発想をテーブルの参照関係で可視化する。卵2個・床10階の設定でブルートフォースと一致(4回)することを検証済み
 - **Sparse Table**(区間最小値クエリ用の前計算テーブル)は`k×i`の2次元DPとして表現: `dp[k][i]`=開始位置iから長さ2^kの区間の最小値。長さ2^kの区間は長さ2^(k-1)の2つの区間の最小値比較だけで求まる(区間が重なっていても正しい、というべき乗区間分割特有の性質)。ブルートフォースの区間最小値計算と全セルが一致することを検証済み
 - 他の可視化と異なり**Canvasではなく素のHTML `<table>` + CSSトランジション**で実装。`data-state`属性(idle/comparing/pivot/settled)に応じて`background-color`/`box-shadow`を`transition`で滑らかに切り替える
 - 状態色は`color-mix(in srgb, ...)`でトークンの色を背景に混ぜ込む形で表現(モダンCSS関数。主要ブラウザ2024年以降のバージョンで対応)
@@ -137,7 +139,8 @@
 
 ### グラフ可視化(`src/components/visualizer/GraphVisualizer.tsx` + `src/lib/graph-visualizers.ts`)
 
-- **対応アルゴリズム: 5種類**(ベルマン・フォード法/プリム法/クラスカル法/トポロジカルソート/ボルーフカ法)。2026-07-12にトポロジカルソート・ボルーフカ法を追加
+- **対応アルゴリズム: 6種類**(ベルマン・フォード法/プリム法/クラスカル法/トポロジカルソート/ボルーフカ法/Union-Find)。2026-07-12にトポロジカルソート・ボルーフカ法・Union-Findを追加
+- **Union-Find(素集合データ構造)**は8要素・7回のunion操作の専用データセットを新設し、find()でたどる経路をハイライトしつつ、union by rank(ランクの低い根を高い方につなぐ)で木の高さを抑えながら集合を統合する様子を可視化する。経路圧縮は簡略化のため未実装。全操作後に8要素が1つの集合へ収束することを検証済み
 - BFS/DFS/ダイクストラ法/A*探索が固定迷路(グリッドグラフ)を使うのに対し、こちらは一般的な頂点+重み付き辺のグラフを円形レイアウトでCanvas 2D描画する(ノードリンク図)
 - ベルマン・フォード法は負の辺(D→E: 重み-3)を1本含む有向グラフを使い、ダイクストラ法では正しく解けない例を可視化する。全辺を頂点数-1回緩和し、各頂点の現在の距離をノード下に表示する
 - プリム法・クラスカル法・ボルーフカ法は正の重みのみの無向グラフ(最小全域木用)を共有し、採用された辺(tree)・棄却された辺(rejected、クラスカル法のみ)・検討中の辺(checking)を色分けする。3アルゴリズムとも同じMST(総重量14: DE+BC+AC+EF+BD)に収束することを検証済み
@@ -156,7 +159,8 @@
 
 ### 文字列パターンマッチングの可視化(`src/components/visualizer/StringMatchVisualizer.tsx` + `src/lib/string-visualizers.ts`、2026-07-12新規追加)
 
-- **対応アルゴリズム: KMP法・ラビン-カープ法・Z algorithmの3つ**。文字列カテゴリ(11件)で初めて可視化対応したアルゴリズム群
+- **対応アルゴリズム: KMP法・ラビン-カープ法・Z algorithm・ボイヤー・ムーア法の4つ**(2026-07-12にボイヤー・ムーア法を追加)。文字列カテゴリ(11件)で初めて可視化対応したアルゴリズム群
+- **ボイヤー・ムーア法**は不良文字則のみの簡略版(good suffix則は省略)。他の3アルゴリズムが左から右へ1文字ずつ比較するのに対し、パターンを右から左へ比較し、不一致時に「その文字がパターン内で最後に現れる位置」を見て一気に複数文字分スキップする対照的な戦略を可視化する
 - 3アルゴリズム共通で`TEXT="ABABDABACDABABCABAB"`・`PATTERN="ABABCABAB"`(位置10に1回だけ出現、CLRSの教科書的な例)を使用
 - 描画は**Canvasではなくテキスト行+CSSトランジション**(DPTableVisualizerと同じ技術選択)。text行とpattern行を整列表示し、pattern行は`marginLeft`をCSS transitionで滑らかにスライドさせることで、パターンがテキストに沿って移動する様子を表現する
 - **KMP法**は失敗関数(LPS配列)を事前計算し、不一致時にテキスト側を巻き戻さずパターン側だけをスキップする様子を可視化する
@@ -198,10 +202,10 @@
 実装時点でスコープ外にしたもの、または仮実装のままのものを列挙する。
 
 - **content/algorithms/の全163件(15カテゴリ全て)がコンテンツ充実化済み**。デザインパターン(GoF23種)を含む全カテゴリが`## 概要`・`## 仕組み`・`## 特性・トレードオフ`の3見出し構成になった(2026-07-12完了)。デザインパターンの`## 特性・トレードオフ`は他カテゴリのBig-O計算量ではなく、パターン固有のトレードオフ(拡張性とクラス数増加の綱引き、カプセル化との緊張関係など)を軸に記述している
-- **可視化はソート17種+配列探索7種+グリッド経路探索4種+グラフ5種+DP10種+木構造3種+文字列パターンマッチング3種の計49件**(2026-07-12、16件から大幅拡張)。残り114件は詳細ページを開いても「準備中」の破線パネルが表示されるだけ(コンテンツの充実化と可視化対応は別軸)
+- **可視化はソート17種+配列探索7種+グリッド経路探索4種+グラフ6種+DP12種+木構造3種+文字列パターンマッチング4種の計53件**(2026-07-12、16件から大幅拡張)。残り110件は詳細ページを開いても「準備中」の破線パネルが表示されるだけ(コンテンツの充実化と可視化対応は別軸)
 - **データ構造カテゴリ(16件)は3件(BST/AVL木/Treap)のみ可視化対応。残り13件(b-tree/bloom-filter/fenwick-tree/interval-tree/kd-tree/lru-cache/quad-tree/red-black-tree/segment-tree/skip-list/trie等)は未対応**。赤黒木はAVL木と同様のツリーの回転+再彩色が必要でTreeVisualizerを拡張すれば対応できる見込みだが、kd-tree/quad-tree(2次元空間分割)・skip-list(多段リンクリスト)・lru-cache(双方向リスト+ハッシュマップ)は既存のいずれのビジュアライザとも構造が異なり、それぞれ専用の可視化コンポーネントが必要になる
-- **文字列カテゴリ(11件)は3件(KMP法/ラビン-カープ法/Z algorithm)のみ可視化対応。残り8件(aho-corasick/boyer-moore/burrows-wheeler-transform/longest-common-substring/manacher/run-length-encoding/suffix-array/suffix-automaton)は未対応**。boyer-moore(不良文字則+good suffix則)はStringMatchVisualizerをそのまま流用できる見込みだが、suffix-array/suffix-automaton/aho-corasickは構造が大きく異なるため専用実装が必要になる
-- **配列探索(SearchVisualizer)・DPの1次元/区間/全頂点対バリエーションはいずれも既存コンポーネント(SortVisualizer型のバーチャート、DPTableVisualizer)を流用**。新規に増えたUIコンポーネントはSearchVisualizer・TreeVisualizer・StringMatchVisualizerの3つ。GraphVisualizerもトポロジカルソート・ボルーフカ法追加時に変更なし(既存の円形レイアウト+ノードリンク描画をそのまま再利用)
+- **文字列カテゴリ(11件)は4件(KMP法/ラビン-カープ法/Z algorithm/ボイヤー・ムーア法)が可視化対応。残り7件(aho-corasick/burrows-wheeler-transform/longest-common-substring/manacher/run-length-encoding/suffix-array/suffix-automaton)は未対応**。suffix-array/suffix-automaton/aho-corasichは構造が大きく異なるため専用実装が必要になる
+- **配列探索(SearchVisualizer)・DPの1次元/区間/全頂点対バリエーション・グラフのUnion-Findはいずれも既存コンポーネント(SortVisualizer型のバーチャート、DPTableVisualizer、GraphVisualizer)を流用**。新規に増えたUIコンポーネントはSearchVisualizer・TreeVisualizer・StringMatchVisualizerの3つのみ
 - **Web Worker化は「計算をworkerに移す」ところまで**。状態スナップショットのdiffベース記録・IndexedDBキャッシュは未実装。現状のworkerは`postMessage`1往復で全フレームを返すだけで、Event Sourcing的な差分記録・再生の仕組みにはなっていない(Workerインスタンス自体の使い回しは2026-07-12に対応済み、後述)
 - **モーション停止ポリシー未実装**: ui-design.md 2.5節は「デフォルト全員フル演出、reduced-motion環境の閲覧者にのみ明示的な停止ボタンを表示する」という独自ポリシーを定めているが、現状はヒーロー見出しのアニメーションとpixi.jsパーティクル演出に標準の `prefers-reduced-motion` メディアクエリでの無効化のみを適用している(暫定対応。「停止ボタン」というUIそのものは未実装)。ソート可視化本体のアニメーション(再生ループ)には停止ポリシーが未適用
 - **比較画面はfrontmatterのみを比較対象とする**。Markdown本文の`## 特性・トレードオフ`セクションを構造化して比較表に含める、という深い比較機能は未実装
@@ -237,15 +241,18 @@ Web Worker化の確認は、`.next/static(または/dev)/chunks/turbopack-worker
 
 続く文字列パターンマッチングの可視化(46件→49件、同じく2026-07-12)では、`node --experimental-strip-types`でKMP法・ラビン-カープ法・Z algorithmそれぞれを直接実行し、いずれも`TEXT.indexOf(PATTERN)`の結果(位置10)と一致する位置で「完全一致を発見」というdescriptionのフレームが生成されることを確認した。加えて`npm run build`成功・dev server起動+curlで3アルゴリズム全ての詳細ページがtext/pattern両方の文字列を含むことを確認した。
 
+続く既存ビジュアライザの拡張(49件→53件、同じく2026-07-12、新規コンポーネントなし)では、`node --experimental-strip-types`でボイヤー・ムーア法が位置10で一致を発見すること、行列連鎖乗算・卵落とし問題がそれぞれ独立実装したブルートフォース(全括弧付けパターンの再帰探索/全試行階xの再帰探索)と完全一致すること(15125・4)、Union-Findが7回のunion操作全てで実際に集合統合(no-opなし)を起こし最終的に8要素が1つの集合に収束することを確認した。加えて`npm run build`成功・dev server起動+curlで4アルゴリズム全ての詳細ページが期待する要素(text/table/canvas)を含むことを確認した。
+
 ## 次にやること候補
 
 優先度順ではなく、思いついた順のメモ。着手時にあらためて相談・計画すること。
 
-**ユーザーとの合意事項(2026-07-12)**: 次の3課題(a. アルゴリズム数を文字通り10倍の約1630件にする、b. 未可視化アルゴリズムの可視化実装、c. 比較画面での可視化表示)のうち、**bを最優先**とすることで合意済み。可視化拡張は16件→42件(ソート/探索/DP/グラフ)→46件(木構造3種+Sparse Table)→49件(文字列パターンマッチング3種)と段階的に進行中。
+**ユーザーとの合意事項(2026-07-12)**: 次の3課題(a. アルゴリズム数を文字通り10倍の約1630件にする、b. 未可視化アルゴリズムの可視化実装、c. 比較画面での可視化表示)のうち、**bを最優先**とすることで合意済み。可視化拡張は16件→42件(ソート/探索/DP/グラフ)→46件(木構造3種+Sparse Table)→49件(文字列パターンマッチング3種)→53件(既存ビジュアライザ拡張4種)と段階的に進行中。
 
-1. **可視化対応アルゴリズムのさらなる拡張(現在49件/163件)**。
+1. **可視化対応アルゴリズムのさらなる拡張(現在53件/163件)**。
    - データ構造カテゴリは16件中3件(BST/AVL木/Treap)が対応済み、残り13件が未対応。`TreeVisualizer`を拡張すれば対応できる見込み: 赤黒木(回転+再彩色)、トライ木(n分木、既存の二分木前提のレイアウトを拡張要)。専用の新規ビジュアライザが必要: kd-tree/quad-tree(2次元空間分割)、skip-list(多段リンクリスト)、lru-cache(双方向リスト+ハッシュマップ)、b-tree(多分木)、bloom-filter(ビット配列+複数ハッシュ関数)、interval-tree(区間集合)
-   - 文字列カテゴリは11件中3件(KMP法/ラビン-カープ法/Z algorithm)が対応済み、残り8件が未対応。`StringMatchVisualizer`を拡張すれば対応できる見込み: boyer-moore(不良文字則+good suffix則)。専用実装が必要: aho-corasick(複数パターン同時探索、トライ木+失敗リンク)、suffix-array/suffix-automaton(接尾辞構造)、manacher(回文専用)、burrows-wheeler-transform/run-length-encoding(圧縮系、テキスト変換のビフォーアフター表示が必要)
+   - 文字列カテゴリは11件中4件(KMP法/ラビン-カープ法/Z algorithm/ボイヤー・ムーア法)が対応済み、残り7件が未対応。専用実装が必要: aho-corasick(複数パターン同時探索、トライ木+失敗リンク)、suffix-array/suffix-automaton(接尾辞構造)、manacher(回文専用)、burrows-wheeler-transform/run-length-encoding(圧縮系、テキスト変換のビフォーアフター表示が必要)
+   - グラフの残り(tarjan-scc/最大流系(dinic/ford-fulkerson/edmonds-karp)/二部マッチング(hopcroft-karp)/johnson法)、DP残り(tsp-bitdp、ビットマスクDPで既存のDPTableVisualizerには収まりにくいため専用検討が必要)
    - 他にもグラフの残り(union-find/tarjan-scc/最大流系(dinic/ford-fulkerson/edmonds-karp)/二部マッチング(hopcroft-karp)/johnson法)、DP残り(matrix-chain-multiplication/egg-drop/tsp-bitdp)など
 2. **比較画面(/compare)への可視化表示の統合**(課題c)。選択した2〜4件が両方とも可視化対応済みの場合、比較表の下に各アルゴリズムの可視化(あるいはその簡易版)を並べて表示し、動きの違いを直接見比べられるようにする。bの進捗次第で「比較しても意味のある組み合わせ」が増えていく
 3. **アルゴリズム数を10倍(約1630件)に拡大する**(課題a)。163件時点でも既にカテゴリを相当網羅しているため、実現には新カテゴリの新設(既存15カテゴリの深掘りだけでは限界がある)や、より粒度の細かいバリエーション(同じアルゴリズムの派生・変種)を含めるかの方針検討が必要。着手前に改めて相談すること
