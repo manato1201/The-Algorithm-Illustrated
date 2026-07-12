@@ -1890,6 +1890,228 @@ export function lruCacheSteps(): DPFrame[] {
   return frames;
 }
 
+export const TFIDF_DOCUMENTS = [
+  ["the", "cat", "sat"],
+  ["the", "dog", "sat"],
+  ["the", "cat", "ran"],
+];
+export const TFIDF_TERMS = ["the", "cat", "dog", "sat", "ran"];
+
+/**
+ * TF-IDFのステップ列を生成する。TF(単語の出現頻度)は「その文書内でよく出る単語ほど重要」、
+ * IDF(逆文書頻度)は「多くの文書に出現する単語ほど重要度が低い(=ありふれた単語)」という
+ * 逆方向の直感を数式にしたもので、両者を掛け合わせることで「この文書に特徴的な単語」を
+ * 数値化できる。全文書に登場する"the"はIDF=0になり、重要度が完全に打ち消される様子が見える。
+ */
+export function tfidfSteps(): DPFrame[] {
+  const docs = TFIDF_DOCUMENTS;
+  const terms = TFIDF_TERMS;
+  const n = docs.length;
+
+  const tf = terms.map((term) => docs.map((doc) => doc.filter((w) => w === term).length));
+  const df = terms.map((_, ti) => tf[ti].filter((c) => c > 0).length);
+  const idf = df.map((d) => Math.log(n / d));
+
+  const cols = n + 1 + n;
+  const table: (number | null)[][] = terms.map(() => new Array(cols).fill(null));
+  const state: DPCellState[][] = terms.map(() => new Array(cols).fill("idle"));
+
+  const frames: DPFrame[] = [];
+  const snapshot = (description: string): DPFrame => ({
+    table: table.map((row, r) => row.map((value, c) => ({ value, state: state[r][c] }))),
+    description,
+  });
+
+  frames.push(
+    snapshot(`TF-IDFを開始。文書: ${docs.map((d, i) => `文書${i + 1}="${d.join(" ")}"`).join(", ")}`),
+  );
+
+  terms.forEach((term, ti) => {
+    for (let d = 0; d < n; d++) {
+      table[ti][d] = tf[ti][d];
+      state[ti][d] = "pivot";
+    }
+    frames.push(snapshot(`"${term}"のTF(各文書での出現回数): [${tf[ti].join(", ")}]`));
+    for (let d = 0; d < n; d++) state[ti][d] = "settled";
+
+    table[ti][n] = idf[ti];
+    state[ti][n] = "pivot";
+    frames.push(
+      snapshot(`"${term}"のIDF = log(文書数/出現文書数) = log(${n}/${df[ti]}) = ${idf[ti].toFixed(3)}`),
+    );
+    state[ti][n] = "settled";
+
+    for (let d = 0; d < n; d++) {
+      const value = Number((tf[ti][d] * idf[ti]).toFixed(3));
+      table[ti][n + 1 + d] = value;
+      state[ti][n + 1 + d] = "pivot";
+    }
+    frames.push(
+      snapshot(
+        `"${term}"のTF-IDF(各文書) = TF×IDF: [${table[ti].slice(n + 1).map((v) => v).join(", ")}]`,
+      ),
+    );
+    for (let d = 0; d < n; d++) state[ti][n + 1 + d] = "settled";
+  });
+
+  frames.push(snapshot('計算完了。"the"はIDF=0(全文書に出現するため重要度が完全に打ち消される)ことに注目'));
+  return frames;
+}
+
+export const BM25_DOCUMENTS = [
+  ["the", "cat", "sat"],
+  ["the", "dog", "sat"],
+  ["the", "cat", "ran"],
+];
+export const BM25_QUERY = ["cat", "sat"];
+export const BM25_K1 = 1.5;
+export const BM25_B = 0.75;
+
+/**
+ * BM25(Okapi BM25)のステップ列を生成する。TF-IDFと同じ「珍しい単語ほど重視する」考え方を
+ * 土台にしつつ、(1) 単語の出現回数が増えるほど寄与を頭打ちにする飽和項、
+ * (2) 文書が平均より長い場合はその分出現回数が水増しされやすいことを補正する長さ正規化項、
+ * の2つを加えることで、検索エンジンの実用ランキングとして広く使われている。
+ */
+export function bm25Steps(): DPFrame[] {
+  const docs = BM25_DOCUMENTS;
+  const query = BM25_QUERY;
+  const n = docs.length;
+  const k1 = BM25_K1;
+  const b = BM25_B;
+  const avgdl = docs.reduce((s, d) => s + d.length, 0) / n;
+
+  const idfOf = (term: string) => {
+    const df = docs.filter((d) => d.includes(term)).length;
+    return Math.log((n - df + 0.5) / (df + 0.5) + 1);
+  };
+
+  const cols = n;
+  const rowLabels = ["文書長", ...query.map((q) => `"${q}"の寄与`), "BM25スコア合計"];
+  const table: (number | null)[][] = rowLabels.map(() => new Array(cols).fill(null));
+  const state: DPCellState[][] = rowLabels.map(() => new Array(cols).fill("idle"));
+
+  const frames: DPFrame[] = [];
+  const snapshot = (description: string): DPFrame => ({
+    table: table.map((row, r) => row.map((value, c) => ({ value, state: state[r][c] }))),
+    description,
+  });
+
+  frames.push(
+    snapshot(`BM25を開始。クエリ="${query.join(" ")}"、文書: ${docs.map((d, i) => `文書${i + 1}="${d.join(" ")}"`).join(", ")}`),
+  );
+
+  for (let d = 0; d < n; d++) {
+    table[0][d] = docs[d].length;
+    state[0][d] = "settled";
+  }
+  frames.push(snapshot(`各文書の長さ: [${docs.map((d) => d.length).join(", ")}](平均長avgdl=${avgdl.toFixed(2)})`));
+
+  const totals = new Array(n).fill(0);
+  query.forEach((term, qi) => {
+    const idf = idfOf(term);
+    for (let d = 0; d < n; d++) {
+      const f = docs[d].filter((w) => w === term).length;
+      const norm = 1 - b + (b * docs[d].length) / avgdl;
+      const contribution = f === 0 ? 0 : (idf * (f * (k1 + 1))) / (f + k1 * norm);
+      const rounded = Number(contribution.toFixed(3));
+      table[1 + qi][d] = rounded;
+      state[1 + qi][d] = "pivot";
+      totals[d] += rounded;
+    }
+    frames.push(
+      snapshot(
+        `"${term}"の寄与(IDF=${idf.toFixed(3)}を各文書の出現回数・長さで重み付け): [${table[1 + qi].join(", ")}]`,
+      ),
+    );
+    for (let d = 0; d < n; d++) state[1 + qi][d] = "settled";
+  });
+
+  for (let d = 0; d < n; d++) {
+    table[rowLabels.length - 1][d] = Number(totals[d].toFixed(3));
+    state[rowLabels.length - 1][d] = "settled";
+  }
+  const ranked = totals
+    .map((score, i) => ({ score, doc: i + 1 }))
+    .sort((a, b2) => b2.score - a.score);
+  frames.push(
+    snapshot(
+      `計算完了。BM25スコア合計: [${totals.map((t) => t.toFixed(3)).join(", ")}]。ランキング: ${ranked.map((r) => `文書${r.doc}(${r.score.toFixed(3)})`).join(" > ")}`,
+    ),
+  );
+
+  return frames;
+}
+
+export type RRFRankList = Record<string, number>;
+export const RRF_KEYWORD_RANKS: RRFRankList = { A: 1, B: 3, C: 2, D: 5, E: 4 };
+export const RRF_VECTOR_RANKS: RRFRankList = { A: 2, B: 1, C: 4, D: 3, E: 5 };
+export const RRF_K = 60;
+export const RRF_DOCS = ["A", "B", "C", "D", "E"];
+
+/**
+ * RRF(Reciprocal Rank Fusion)のステップ列を生成する。キーワード検索とベクトル検索のように、
+ * スコアの尺度が全く異なる複数の検索結果を統合したいとき、スコアそのものではなく
+ * 「順位の逆数」だけを使うことで単位を揃える必要がなくなる。定数k(通常60)を順位に足すことで、
+ * 上位の順位差が過度に強調されすぎないよう緩和している。
+ */
+export function rrfSteps(): DPFrame[] {
+  const docs = RRF_DOCS;
+  const k = RRF_K;
+  const cols = docs.length;
+  const rowLabels = ["キーワード検索順位", "ベクトル検索順位", "RRFスコア"];
+  const table: (number | null)[][] = rowLabels.map(() => new Array(cols).fill(null));
+  const state: DPCellState[][] = rowLabels.map(() => new Array(cols).fill("idle"));
+
+  const frames: DPFrame[] = [];
+  const snapshot = (description: string): DPFrame => ({
+    table: table.map((row, r) => row.map((value, c) => ({ value, state: state[r][c] }))),
+    description,
+  });
+
+  frames.push(snapshot(`RRFを開始。定数k=${k}。2つの検索結果(キーワード検索・ベクトル検索)の順位を統合する`));
+
+  docs.forEach((doc, i) => {
+    table[0][i] = RRF_KEYWORD_RANKS[doc];
+    state[0][i] = "pivot";
+  });
+  frames.push(snapshot(`キーワード検索の順位: ${docs.map((d) => `${d}=${RRF_KEYWORD_RANKS[d]}位`).join(", ")}`));
+  docs.forEach((_, i) => {
+    state[0][i] = "settled";
+  });
+
+  docs.forEach((doc, i) => {
+    table[1][i] = RRF_VECTOR_RANKS[doc];
+    state[1][i] = "pivot";
+  });
+  frames.push(snapshot(`ベクトル検索の順位: ${docs.map((d) => `${d}=${RRF_VECTOR_RANKS[d]}位`).join(", ")}`));
+  docs.forEach((_, i) => {
+    state[1][i] = "settled";
+  });
+
+  const scores: number[] = [];
+  docs.forEach((doc, i) => {
+    const score = 1 / (k + RRF_KEYWORD_RANKS[doc]) + 1 / (k + RRF_VECTOR_RANKS[doc]);
+    const rounded = Number(score.toFixed(4));
+    scores.push(rounded);
+    table[2][i] = rounded;
+    state[2][i] = "pivot";
+    frames.push(
+      snapshot(
+        `${doc}のRRFスコア = 1/(k+キーワード順位) + 1/(k+ベクトル順位) = 1/(${k}+${RRF_KEYWORD_RANKS[doc]}) + 1/(${k}+${RRF_VECTOR_RANKS[doc]}) = ${rounded}`,
+      ),
+    );
+    state[2][i] = "settled";
+  });
+
+  const ranked = docs
+    .map((doc, i) => ({ doc, score: scores[i] }))
+    .sort((a, b2) => b2.score - a.score);
+  frames.push(snapshot(`計算完了。統合ランキング: ${ranked.map((r) => `${r.doc}(${r.score})`).join(" > ")}`));
+
+  return frames;
+}
+
 export type DPTableMeta = {
   /** テーブル上の情報チップ(品物一覧や対象文字列など)。 */
   chips: string[];
@@ -2115,6 +2337,28 @@ export const DP_TABLE_META: Record<string, DPTableMeta> = {
     rowHeaders: ["キー"],
     colHeaders: Array.from({ length: LRU_CAPACITY }, (_, i) => (i === 0 ? "位置0(MRU)" : i === LRU_CAPACITY - 1 ? `位置${i}(LRU)` : `位置${i}`)),
   },
+  "tf-idf": {
+    chips: TFIDF_DOCUMENTS.map((d, i) => `文書${i + 1}: "${d.join(" ")}"`),
+    cornerLabel: "単語 \\ 文書1..N・IDF・TFIDF1..N",
+    rowHeaders: TFIDF_TERMS,
+    colHeaders: [
+      ...TFIDF_DOCUMENTS.map((_, i) => `TF文書${i + 1}`),
+      "IDF",
+      ...TFIDF_DOCUMENTS.map((_, i) => `TFIDF文書${i + 1}`),
+    ],
+  },
+  bm25: {
+    chips: [`クエリ: "${BM25_QUERY.join(" ")}"`, ...BM25_DOCUMENTS.map((d, i) => `文書${i + 1}: "${d.join(" ")}"`)],
+    cornerLabel: "値 \\ 文書",
+    rowHeaders: ["文書長", ...BM25_QUERY.map((q) => `"${q}"の寄与`), "BM25スコア合計"],
+    colHeaders: BM25_DOCUMENTS.map((_, i) => `文書${i + 1}`),
+  },
+  rrf: {
+    chips: [`k=${RRF_K}`, "2つの検索結果の順位を統合"],
+    cornerLabel: "値 \\ 文書",
+    rowHeaders: ["キーワード検索順位", "ベクトル検索順位", "RRFスコア"],
+    colHeaders: RRF_DOCS,
+  },
 };
 
 export const DP_VISUALIZERS: Record<string, () => DPFrame[]> = {
@@ -2145,4 +2389,7 @@ export const DP_VISUALIZERS: Record<string, () => DPFrame[]> = {
   "lucas-lehmer": lucasLehmerSteps,
   "baby-step-giant-step": babyStepGiantStepSteps,
   "lru-cache": lruCacheSteps,
+  "tf-idf": tfidfSteps,
+  bm25: bm25Steps,
+  rrf: rrfSteps,
 };
