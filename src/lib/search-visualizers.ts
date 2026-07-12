@@ -647,6 +647,273 @@ export function bloomFilterSteps(): SearchFrame[] {
   return frames;
 }
 
+/** 山登り法・焼きなまし法のデモ用の地形(局所最適6が複数、大域最適15が1箇所)。 */
+export const HILL_CLIMBING_LANDSCAPE = [3, 5, 4, 8, 6, 9, 12, 10, 7, 5, 3, 6, 11, 15, 13, 8];
+export const HILL_CLIMBING_START = 4;
+
+/**
+ * 山登り法(Hill Climbing)のステップ列を生成する。現在地の両隣を見て、より高い方へ
+ * 移動することだけを繰り返す。両隣とも現在地以下になったら、それ以上改善できないので停止する
+ * ——この単純さゆえに、大域最適(地形全体で最も高い場所)ではなく、たまたま辿り着いた
+ * 局所最適(周囲だけを見れば最も高いが、遠くに行けばもっと高い場所がある)で止まってしまう
+ * ことがある弱点を、地形にあえて複数の山を用意することで体感できる。
+ */
+export function hillClimbingSteps(): SearchFrame[] {
+  const landscape = HILL_CLIMBING_LANDSCAPE;
+  let pos = HILL_CLIMBING_START;
+
+  const frames: SearchFrame[] = [
+    frame(landscape, { [pos]: "pivot" }, `山登り法を開始。開始位置=${pos}(高さ${landscape[pos]})`),
+  ];
+
+  for (;;) {
+    const left = pos > 0 ? landscape[pos - 1] : -Infinity;
+    const right = pos < landscape.length - 1 ? landscape[pos + 1] : -Infinity;
+    const current = landscape[pos];
+
+    if (left <= current && right <= current) {
+      frames.push(
+        frame(landscape, { [pos]: "settled" }, `両隣(${left === -Infinity ? "端" : left}, ${right === -Infinity ? "端" : right})とも現在地(${current})以下 → これ以上改善できないので停止`),
+      );
+      break;
+    }
+
+    const moveRight = right > left;
+    const newPos = moveRight ? pos + 1 : pos - 1;
+    frames.push(
+      frame(
+        landscape,
+        { [pos]: "comparing", [newPos]: "comparing" },
+        `${moveRight ? "右" : "左"}隣(高さ${landscape[newPos]})の方が現在地(高さ${current})より高い → 移動`,
+      ),
+    );
+    pos = newPos;
+    frames.push(frame(landscape, { [pos]: "pivot" }, `位置${pos}(高さ${landscape[pos]})に移動`));
+  }
+
+  frames.push(
+    frame(
+      landscape,
+      { [pos]: "settled" },
+      `計算完了。到達した位置=${pos}(高さ${landscape[pos]})。地形全体の最大値は${Math.max(...landscape)}(位置${landscape.indexOf(Math.max(...landscape))})なので、${landscape[pos] === Math.max(...landscape) ? "たまたま大域最適に到達できた" : "局所最適に陥り、大域最適を見逃した"}`,
+    ),
+  );
+
+  return frames;
+}
+
+/** 決定論的な乱数列を生成する線形合同法(LCG)。焼きなまし法の受理判定を再現可能にするために使う。 */
+function createLcg(seed: number): () => number {
+  let state = seed;
+  return () => {
+    state = (state * 1103515245 + 12345) % 2147483648;
+    return state / 2147483648;
+  };
+}
+
+export const SIMULATED_ANNEALING_LANDSCAPE = HILL_CLIMBING_LANDSCAPE;
+export const SIMULATED_ANNEALING_START = 4;
+export const SIMULATED_ANNEALING_SEED = 92;
+export const SIMULATED_ANNEALING_ITERATIONS = 20;
+
+/**
+ * 焼きなまし法(シミュレーテッド・アニーリング)のステップ列を生成する。山登り法と同じ地形・
+ * 同じ開始位置を使い、違いを対比できるようにしている。改善する移動は必ず受理するが、
+ * 悪化する移動も確率exp(Δ/温度)で受理することで、山登り法なら止まってしまう局所最適から
+ * 抜け出せる可能性がある。温度を反復のたびに下げていく(冷却)ことで、序盤は探索的に、
+ * 終盤は山登り法に近い挙動へと収束させる。乱数は再現性のため決定論的なLCGを使う。
+ */
+export function simulatedAnnealingSteps(): SearchFrame[] {
+  const landscape = SIMULATED_ANNEALING_LANDSCAPE;
+  const rng = createLcg(SIMULATED_ANNEALING_SEED);
+  let pos = SIMULATED_ANNEALING_START;
+  let best = pos;
+  let temperature = 10;
+
+  const frames: SearchFrame[] = [
+    frame(
+      landscape,
+      { [pos]: "pivot" },
+      `焼きなまし法を開始。開始位置=${pos}(高さ${landscape[pos]})、初期温度=${temperature}`,
+    ),
+  ];
+
+  for (let iter = 1; iter <= SIMULATED_ANNEALING_ITERATIONS; iter++) {
+    const goRight = rng() < 0.5;
+    const candidate = goRight ? pos + 1 : pos - 1;
+    if (candidate < 0 || candidate >= landscape.length) {
+      temperature *= 0.85;
+      continue;
+    }
+
+    const delta = landscape[candidate] - landscape[pos];
+    let accepted: boolean;
+    if (delta >= 0) {
+      accepted = true;
+    } else {
+      const acceptProb = Math.exp(delta / temperature);
+      accepted = rng() < acceptProb;
+    }
+
+    frames.push(
+      frame(
+        landscape,
+        { [pos]: "comparing", [candidate]: "comparing" },
+        `[反復${iter}] 温度${temperature.toFixed(2)}: 位置${candidate}(高さ${landscape[candidate]})を検討。差分Δ=${delta} → ${accepted ? "受理" : "却下"}${delta < 0 && accepted ? "(悪化するが確率的に受理)" : ""}`,
+      ),
+    );
+
+    if (accepted) {
+      pos = candidate;
+      if (landscape[pos] > landscape[best]) best = pos;
+      frames.push(frame(landscape, { [pos]: "pivot", [best]: "settled" }, `位置${pos}(高さ${landscape[pos]})に移動`));
+    }
+
+    temperature *= 0.85;
+  }
+
+  frames.push(
+    frame(
+      landscape,
+      { [best]: "settled" },
+      `計算完了(${SIMULATED_ANNEALING_ITERATIONS}回反復)。これまでで最も高かった位置=${best}(高さ${landscape[best]})。地形全体の最大値は${Math.max(...landscape)}`,
+    ),
+  );
+
+  return frames;
+}
+
+export const GRADIENT_DESCENT_MIN_X = 3;
+export const GRADIENT_DESCENT_START_X = -2;
+export const GRADIENT_DESCENT_LEARNING_RATE = 0.3;
+export const GRADIENT_DESCENT_ITERATIONS = 8;
+
+function gradientDescentF(x: number): number {
+  return (x - GRADIENT_DESCENT_MIN_X) ** 2 + 1;
+}
+function gradientDescentDerivative(x: number): number {
+  return 2 * (x - GRADIENT_DESCENT_MIN_X);
+}
+
+/**
+ * 勾配降下法のステップ列を生成する。損失関数f(x)=(x-3)²+1(最小値はx=3)に対し、
+ * 「現在地の傾き(勾配)と逆方向に、学習率の分だけ動く」というルールだけを繰り返すと、
+ * 傾きが急なところでは大きく、緩やかなところでは小さく動きながら最小値に近づいていく様子を
+ * 可視化する。連続な関数をバーチャートに乗せるため、値の範囲をサンプリングした配列を
+ * 「地形」として表示し、現在のxに最も近いサンプル位置をハイライトする。
+ */
+export function gradientDescentSteps(): SearchFrame[] {
+  const sampleXs = Array.from({ length: 25 }, (_, i) => -3 + i * 0.5);
+  const landscape = sampleXs.map((x) => gradientDescentF(x));
+  const nearestIndex = (x: number) =>
+    sampleXs.reduce(
+      (best, sx, i) => (Math.abs(sx - x) < Math.abs(sampleXs[best] - x) ? i : best),
+      0,
+    );
+
+  let x = GRADIENT_DESCENT_START_X;
+  const frames: SearchFrame[] = [
+    frame(
+      landscape,
+      { [nearestIndex(x)]: "pivot" },
+      `勾配降下法を開始。f(x)=(x-${GRADIENT_DESCENT_MIN_X})²+1を最小化する。開始x=${x}、学習率=${GRADIENT_DESCENT_LEARNING_RATE}`,
+    ),
+  ];
+
+  for (let iter = 1; iter <= GRADIENT_DESCENT_ITERATIONS; iter++) {
+    const grad = gradientDescentDerivative(x);
+    const nextX = x - GRADIENT_DESCENT_LEARNING_RATE * grad;
+    frames.push(
+      frame(
+        landscape,
+        { [nearestIndex(x)]: "comparing" },
+        `[反復${iter}] x=${x.toFixed(3)}での勾配f'(x)=${grad.toFixed(3)}。x ← x - 学習率×勾配 = ${x.toFixed(3)} - ${GRADIENT_DESCENT_LEARNING_RATE}×${grad.toFixed(3)} = ${nextX.toFixed(3)}`,
+      ),
+    );
+    x = nextX;
+    frames.push(frame(landscape, { [nearestIndex(x)]: "pivot" }, `x=${x.toFixed(3)}に更新(f(x)=${gradientDescentF(x).toFixed(3)})`));
+  }
+
+  frames.push(
+    frame(
+      landscape,
+      { [nearestIndex(x)]: "settled" },
+      `計算完了(${GRADIENT_DESCENT_ITERATIONS}回反復)。x=${x.toFixed(3)}、f(x)=${gradientDescentF(x).toFixed(3)}(真の最小値はx=${GRADIENT_DESCENT_MIN_X}、f=1)`,
+    ),
+  );
+
+  return frames;
+}
+
+export type KnnDataPoint = { value: number; label: string };
+export const KNN_DATA: KnnDataPoint[] = [
+  { value: 2, label: "A" },
+  { value: 4, label: "A" },
+  { value: 5, label: "B" },
+  { value: 8, label: "B" },
+  { value: 9, label: "A" },
+  { value: 12, label: "B" },
+  { value: 15, label: "A" },
+];
+export const KNN_QUERY = 7;
+export const KNN_K = 3;
+
+/**
+ * k近傍法(k-NN)のステップ列を生成する。学習フェーズを持たず、予測したい点が来るたびに
+ * 全データとの距離を計算し、最も近いk個を多数決させるだけの怠惰学習(lazy learning)。
+ * ここでは1次元の値の距離(絶対値の差)で単純化しているが、実際には多次元のユークリッド距離
+ * 等が使われることが多い、という点も踏まえて考えると理解しやすい。
+ */
+export function knnSteps(): SearchFrame[] {
+  const data = KNN_DATA;
+  const query = KNN_QUERY;
+  const k = KNN_K;
+  const values = data.map((d) => d.value);
+
+  const frames: SearchFrame[] = [
+    frame(values, {}, `k近傍法を開始。クエリ値=${query}、k=${k}。全データとの距離を計算する`),
+  ];
+
+  const distances = data.map((d, i) => ({ index: i, distance: Math.abs(d.value - query) }));
+  distances.forEach(({ index, distance }) => {
+    frames.push(
+      frame(values, { [index]: "comparing" }, `データ[${index}]=${data[index].value}(ラベル${data[index].label})との距離 = |${data[index].value}-${query}| = ${distance}`),
+    );
+  });
+
+  const sorted = [...distances].sort((a, b) => a.distance - b.distance || a.index - b.index);
+  const nearestK = sorted.slice(0, k);
+  const highlight: Partial<Record<number, StateColorKey>> = {};
+  nearestK.forEach(({ index }) => {
+    highlight[index] = "settled";
+  });
+  frames.push(
+    frame(
+      values,
+      highlight,
+      `距離が近い順にソートし、最も近い${k}個を選択: ${nearestK.map(({ index }) => `[${index}]=${data[index].value}(${data[index].label})`).join(", ")}`,
+    ),
+  );
+
+  const votes = new Map<string, number>();
+  nearestK.forEach(({ index }) => {
+    const label = data[index].label;
+    votes.set(label, (votes.get(label) ?? 0) + 1);
+  });
+  const ranked = [...votes.entries()].sort((a, b) => b[1] - a[1]);
+  const predicted = ranked[0][0];
+
+  frames.push(
+    frame(
+      values,
+      highlight,
+      `計算完了。多数決: ${ranked.map(([label, count]) => `${label}=${count}票`).join(", ")} → 予測ラベル = "${predicted}"`,
+    ),
+  );
+
+  return frames;
+}
+
 export const SEARCH_VISUALIZERS: Record<string, () => SearchFrame[]> = {
   "linear-search": linearSearchSteps,
   "binary-search": binarySearchSteps,
@@ -659,4 +926,8 @@ export const SEARCH_VISUALIZERS: Record<string, () => SearchFrame[]> = {
   "sieve-of-eratosthenes": sieveOfEratosthenesSteps,
   "fenwick-tree": fenwickTreeSteps,
   "bloom-filter": bloomFilterSteps,
+  "hill-climbing": hillClimbingSteps,
+  "simulated-annealing": simulatedAnnealingSteps,
+  "gradient-descent": gradientDescentSteps,
+  knn: knnSteps,
 };
