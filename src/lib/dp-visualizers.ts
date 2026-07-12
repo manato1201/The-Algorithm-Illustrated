@@ -1808,6 +1808,88 @@ export function babyStepGiantStepSteps(): DPFrame[] {
   return frames;
 }
 
+export type LRUOperation = { type: "put" | "get"; key: number; value?: number };
+export const LRU_CAPACITY = 3;
+export const LRU_OPERATIONS: LRUOperation[] = [
+  { type: "put", key: 1, value: 10 },
+  { type: "put", key: 2, value: 20 },
+  { type: "put", key: 3, value: 30 },
+  { type: "get", key: 1 },
+  { type: "put", key: 4, value: 40 },
+  { type: "get", key: 2 },
+  { type: "get", key: 3 },
+];
+
+/**
+ * LRUキャッシュのステップ列を生成する。キーを「MRU(直近アクセス)→LRU(最も古い)」順に
+ * 並べたリストとして管理し、put/getいずれの操作でも対象キーをリストの先頭(MRU)に
+ * 移動させる。容量を超えるputが発生した場合はリスト末尾(LRU)のキーを追い出す。
+ * 「双方向連結リスト+ハッシュマップ」という実装がO(1)を実現する仕組みそのものよりも、
+ * 「アクセスされた順に並べ替え、はみ出た分を末尾から削る」という操作の意味を可視化することに重点を置く。
+ */
+export function lruCacheSteps(): DPFrame[] {
+  const capacity = LRU_CAPACITY;
+  let order: number[] = [];
+  const values = new Map<number, number>();
+
+  const cols = capacity;
+  const table: (number | null)[][] = [new Array(cols).fill(null)];
+  const state: DPCellState[][] = [new Array(cols).fill("idle")];
+
+  const frames: DPFrame[] = [];
+  const snapshot = (description: string): DPFrame => ({
+    table: table.map((row, r) => row.map((value, c) => ({ value, state: state[r][c] }))),
+    description,
+  });
+
+  const syncTable = () => {
+    for (let c = 0; c < cols; c++) {
+      table[0][c] = c < order.length ? order[c] : null;
+    }
+  };
+
+  frames.push(snapshot(`LRUキャッシュ(容量${capacity})を開始。左から順にMRU(直近アクセス)→LRU(最も古い)`));
+
+  for (const op of LRU_OPERATIONS) {
+    if (op.type === "put") {
+      const existed = order.includes(op.key);
+      if (existed) {
+        order = order.filter((k) => k !== op.key);
+      }
+      if (!existed && order.length >= capacity) {
+        const evicted = order.pop()!;
+        values.delete(evicted);
+        syncTable();
+        for (let c = 0; c < cols; c++) state[0][c] = "idle";
+        frames.push(
+          snapshot(`put(${op.key}, ${op.value}): 容量超過のためLRU(最も使われていない)のキー${evicted}を追い出す`),
+        );
+      }
+      order.unshift(op.key);
+      values.set(op.key, op.value!);
+      syncTable();
+      for (let c = 0; c < cols; c++) state[0][c] = c === 0 ? "pivot" : "idle";
+      frames.push(snapshot(`put(${op.key}, ${op.value}): キー${op.key}をMRU位置に配置`));
+    } else {
+      const hit = order.includes(op.key);
+      if (hit) {
+        order = order.filter((k) => k !== op.key);
+        order.unshift(op.key);
+        syncTable();
+        for (let c = 0; c < cols; c++) state[0][c] = c === 0 ? "settled" : "idle";
+        frames.push(snapshot(`get(${op.key}): ヒット(値=${values.get(op.key)})。アクセスしたのでMRU位置に移動`));
+      } else {
+        syncTable();
+        for (let c = 0; c < cols; c++) state[0][c] = "idle";
+        frames.push(snapshot(`get(${op.key}): ミス(キャッシュに存在しない、または既に追い出された)`));
+      }
+    }
+  }
+
+  frames.push(snapshot(`計算完了。最終的なキャッシュ内容(MRU→LRU): [${order.join(", ")}]`));
+  return frames;
+}
+
 export type DPTableMeta = {
   /** テーブル上の情報チップ(品物一覧や対象文字列など)。 */
   chips: string[];
@@ -2027,6 +2109,12 @@ export const DP_TABLE_META: Record<string, DPTableMeta> = {
     rowHeaders: ["j(ベビー)", "g^j mod p", "i(ジャイアント)", "y_i mod p"],
     colHeaders: Array.from({ length: Math.ceil(Math.sqrt(BSGS_P - 1)) }, (_, i) => String(i)),
   },
+  "lru-cache": {
+    chips: [`容量: ${LRU_CAPACITY}`, `操作列: ${LRU_OPERATIONS.map((op) => (op.type === "put" ? `put(${op.key},${op.value})` : `get(${op.key})`)).join(" → ")}`],
+    cornerLabel: "キー(MRU→LRU順)",
+    rowHeaders: ["キー"],
+    colHeaders: Array.from({ length: LRU_CAPACITY }, (_, i) => (i === 0 ? "位置0(MRU)" : i === LRU_CAPACITY - 1 ? `位置${i}(LRU)` : `位置${i}`)),
+  },
 };
 
 export const DP_VISUALIZERS: Record<string, () => DPFrame[]> = {
@@ -2056,4 +2144,5 @@ export const DP_VISUALIZERS: Record<string, () => DPFrame[]> = {
   rsa: rsaSteps,
   "lucas-lehmer": lucasLehmerSteps,
   "baby-step-giant-step": babyStepGiantStepSteps,
+  "lru-cache": lruCacheSteps,
 };

@@ -28,6 +28,12 @@ const TARGET_SEARCH_ALGORITHMS = new Set([
   "fibonacci-search",
 ]);
 
+/** stateColors.swapping(通常は「交換中」の意味)を別の意味で使うアルゴリズムの凡例ラベル。 */
+const SWAPPING_LEGEND_LABEL: Partial<Record<string, string>> = {
+  "sieve-of-eratosthenes": "合成数(篩い落とし済み)",
+  "bloom-filter": "確実に未追加、または偽陽性",
+};
+
 type SearchVisualizerProps = {
   algorithmId: string;
 };
@@ -143,14 +149,14 @@ export function SearchVisualizer({ algorithmId }: SearchVisualizerProps) {
             {item.label}
           </li>
         ))}
-        {algorithmId === "sieve-of-eratosthenes" ? (
+        {SWAPPING_LEGEND_LABEL[algorithmId] ? (
           <li className={styles.legendItem}>
             <span
               className={styles.legendSwatch}
               style={{ backgroundColor: stateColors.swapping }}
               aria-hidden="true"
             />
-            合成数(篩い落とし済み)
+            {SWAPPING_LEGEND_LABEL[algorithmId]}
           </li>
         ) : null}
       </ul>

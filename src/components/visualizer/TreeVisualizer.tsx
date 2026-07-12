@@ -122,16 +122,18 @@ export function TreeVisualizer({ algorithmId }: TreeVisualizerProps) {
     Object.values(currentFrame.nodes).forEach((node) => {
       const state = currentFrame.nodeStates[node.id] ?? "idle";
       const isRedBlackNode = node.color !== undefined;
+      const isIntervalNode = node.hi !== undefined;
       const fillColor = isRedBlackNode ? (node.color === "red" ? RB_RED : RB_BLACK) : NODE_COLORS[state];
       const isTransient = state === "visiting" || state === "rotating";
       const showGlow = isRedBlackNode ? isTransient : state !== "idle";
       const { x, y } = point(node.id);
+      const radius = isIntervalNode ? 22 : 16;
 
       ctx.shadowColor = showGlow ? NODE_COLORS[state] : "transparent";
       ctx.shadowBlur = showGlow ? 12 : 0;
       ctx.fillStyle = fillColor;
       ctx.beginPath();
-      ctx.arc(x, y, 16, 0, Math.PI * 2);
+      ctx.arc(x, y, radius, 0, Math.PI * 2);
       ctx.fill();
 
       ctx.shadowBlur = 0;
@@ -142,7 +144,19 @@ export function TreeVisualizer({ algorithmId }: TreeVisualizerProps) {
       }
 
       ctx.fillStyle = isRedBlackNode && node.color === "black" ? "#edf0f5" : "#06070a";
-      ctx.fillText(String(node.value), x, y);
+      if (isIntervalNode) {
+        ctx.font = "10px var(--font-mono), monospace";
+        ctx.fillText(`[${node.value},${node.hi}]`, x, y);
+        ctx.font = "12px var(--font-mono), monospace";
+        if (node.maxHigh !== undefined) {
+          ctx.fillStyle = NODE_COLORS[state];
+          ctx.font = "10px var(--font-mono), monospace";
+          ctx.fillText(`max=${node.maxHigh}`, x, y + radius + 10);
+          ctx.font = "12px var(--font-mono), monospace";
+        }
+      } else {
+        ctx.fillText(String(node.value), x, y);
+      }
     });
   }, [frames, stepIndex]);
 

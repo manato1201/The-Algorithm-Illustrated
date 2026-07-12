@@ -1002,6 +1002,377 @@ export function floydCycleDetectionSteps(): GraphFrame[] {
   return frames;
 }
 
+type SegmentTreeInternalNode = {
+  id: string;
+  lo: number;
+  hi: number;
+  sum: number;
+  left: string | null;
+  right: string | null;
+};
+
+/** セグメント木のデモ用配列(6要素)。区間和クエリを求める。 */
+export const SEGMENT_TREE_DATA = [2, 5, 1, 4, 9, 3];
+export const SEGMENT_TREE_QUERY_RANGE: [number, number] = [1, 5];
+export const SEGMENT_TREE_UPDATE_INDEX = 2;
+export const SEGMENT_TREE_UPDATE_VALUE = 10;
+
+function buildSegmentTree(
+  arr: number[],
+  lo: number,
+  hi: number,
+  nodes: Record<string, SegmentTreeInternalNode>,
+): string {
+  const id = `seg_${lo}_${hi}`;
+  if (hi - lo === 1) {
+    nodes[id] = { id, lo, hi, sum: arr[lo], left: null, right: null };
+    return id;
+  }
+  const mid = Math.floor((lo + hi) / 2);
+  const leftId = buildSegmentTree(arr, lo, mid, nodes);
+  const rightId = buildSegmentTree(arr, mid, hi, nodes);
+  nodes[id] = { id, lo, hi, sum: nodes[leftId].sum + nodes[rightId].sum, left: leftId, right: rightId };
+  return id;
+}
+
+function computeSegmentTreeLayout(
+  nodes: Record<string, SegmentTreeInternalNode>,
+  rootId: string,
+): Record<string, { x: number; y: number }> {
+  const positions: Record<string, { x: number; y: number }> = {};
+  let counter = 0;
+  let maxDepth = 0;
+
+  const visit = (id: string, depth: number) => {
+    const node = nodes[id];
+    maxDepth = Math.max(maxDepth, depth);
+    if (node.left === null && node.right === null) {
+      positions[id] = { x: counter, y: depth };
+      counter++;
+      return;
+    }
+    if (node.left !== null) visit(node.left, depth + 1);
+    if (node.right !== null) visit(node.right, depth + 1);
+    const childIds = [node.left, node.right].filter((v): v is string => v !== null);
+    const childXs = childIds.map((cid) => positions[cid].x);
+    positions[id] = { x: (Math.min(...childXs) + Math.max(...childXs)) / 2, y: depth };
+  };
+  visit(rootId, 0);
+
+  const totalLeaves = counter;
+  Object.keys(positions).forEach((id) => {
+    positions[id] = {
+      x: totalLeaves > 1 ? positions[id].x / (totalLeaves - 1) : 0.5,
+      y: maxDepth > 0 ? positions[id].y / maxDepth : 0,
+    };
+  });
+  return positions;
+}
+
+const SEGMENT_TREE_NODES_MAP: Record<string, SegmentTreeInternalNode> = {};
+const SEGMENT_TREE_ROOT_ID = buildSegmentTree(SEGMENT_TREE_DATA, 0, SEGMENT_TREE_DATA.length, SEGMENT_TREE_NODES_MAP);
+const SEGMENT_TREE_LAYOUT = computeSegmentTreeLayout(SEGMENT_TREE_NODES_MAP, SEGMENT_TREE_ROOT_ID);
+
+export const SEGMENT_TREE_GRAPH_NODES: GraphNode[] = Object.values(SEGMENT_TREE_NODES_MAP).map((n) => ({
+  id: n.id,
+  label: n.hi - n.lo === 1 ? String(n.sum) : "Σ",
+  x: SEGMENT_TREE_LAYOUT[n.id].x,
+  y: SEGMENT_TREE_LAYOUT[n.id].y,
+}));
+export const SEGMENT_TREE_GRAPH_EDGES: GraphEdge[] = Object.values(SEGMENT_TREE_NODES_MAP).flatMap((n) => {
+  const edges: GraphEdge[] = [];
+  if (n.left !== null) edges.push({ id: `${n.id}-${n.left}`, from: n.id, to: n.left, weight: 1 });
+  if (n.right !== null) edges.push({ id: `${n.id}-${n.right}`, from: n.id, to: n.right, weight: 1 });
+  return edges;
+});
+
+/**
+ * セグメント木の構築・区間和クエリ・点更新のステップ列を生成する。GraphVisualizerを
+ * ハフマン符号化と同じ手法(実行結果として木構造を先に構築し、その最終形を固定レイアウトの
+ * ノードリンク図として使う)で再利用している。各内部頂点は自分がカバーする区間の合計を持ち、
+ * クエリ区間と各頂点の区間の関係(完全に含む/一部重なる/交わらない)で再帰を枝刈りすることで、
+ * 配列を毎回全走査するO(n)ではなくO(log n)で区間和が求まる。点更新も、対象の葉から
+ * ルートまでの1本道(O(log n)個)の頂点だけを更新すれば済む。
+ */
+export function segmentTreeSteps(): GraphFrame[] {
+  const nodesMap: Record<string, SegmentTreeInternalNode> = {};
+  buildSegmentTree(SEGMENT_TREE_DATA, 0, SEGMENT_TREE_DATA.length, nodesMap);
+  const rootId = SEGMENT_TREE_ROOT_ID;
+  const graphNodes = SEGMENT_TREE_GRAPH_NODES;
+  const graphEdges = SEGMENT_TREE_GRAPH_EDGES;
+
+  const nodeStates = initNodeStates(graphNodes, "idle");
+  const edgeStates = initEdgeStates(graphEdges, "idle");
+  const sums: Record<string, number | null> = {};
+  graphNodes.forEach((n) => {
+    sums[n.id] = null;
+  });
+
+  const frames: GraphFrame[] = [
+    {
+      nodeStates: { ...nodeStates },
+      edgeStates: { ...edgeStates },
+      distances: { ...sums },
+      description: `セグメント木の構築を開始。元データ: [${SEGMENT_TREE_DATA.join(", ")}](頂点下の数字が区間和)`,
+    },
+  ];
+
+  const buildOrderVisit = (id: string) => {
+    const node = nodesMap[id];
+    if (node.left !== null) buildOrderVisit(node.left);
+    if (node.right !== null) buildOrderVisit(node.right);
+    nodeStates[id] = "settled";
+    if (node.left !== null) edgeStates[`${id}-${node.left}`] = "tree";
+    if (node.right !== null) edgeStates[`${id}-${node.right}`] = "tree";
+    sums[id] = node.sum;
+    frames.push({
+      nodeStates: { ...nodeStates },
+      edgeStates: { ...edgeStates },
+      distances: { ...sums },
+      description:
+        node.left === null && node.right === null
+          ? `葉[${node.lo},${node.hi})を確定(値=${node.sum})`
+          : `頂点[${node.lo},${node.hi})を確定(左右の子の和 = ${node.sum})`,
+    });
+  };
+  buildOrderVisit(rootId);
+
+  frames.push({
+    nodeStates: { ...nodeStates },
+    edgeStates: { ...edgeStates },
+    distances: { ...sums },
+    description: "構築完了。ここから区間和クエリを実行する",
+  });
+
+  const [qLo, qHi] = SEGMENT_TREE_QUERY_RANGE;
+  let queryResult = 0;
+  const queryVisit = (id: string): void => {
+    const node = nodesMap[id];
+    nodeStates[id] = "visited";
+    if (qHi <= node.lo || node.hi <= qLo) {
+      frames.push({
+        nodeStates: { ...nodeStates },
+        edgeStates: { ...edgeStates },
+        distances: { ...sums },
+        description: `頂点[${node.lo},${node.hi})はクエリ区間[${qLo},${qHi})と交わらない → 枝刈り(和に加算せず終了)`,
+      });
+      return;
+    }
+    if (qLo <= node.lo && node.hi <= qHi) {
+      queryResult += node.sum;
+      frames.push({
+        nodeStates: { ...nodeStates },
+        edgeStates: { ...edgeStates },
+        distances: { ...sums },
+        description: `頂点[${node.lo},${node.hi})はクエリ区間に完全に含まれる → 和${node.sum}を加算(累計${queryResult})。この頂点の子はもう見ない`,
+      });
+      return;
+    }
+    frames.push({
+      nodeStates: { ...nodeStates },
+      edgeStates: { ...edgeStates },
+      distances: { ...sums },
+      description: `頂点[${node.lo},${node.hi})はクエリ区間と一部だけ重なる → 左右の子を再帰的に検査`,
+    });
+    if (node.left !== null) queryVisit(node.left);
+    if (node.right !== null) queryVisit(node.right);
+  };
+  queryVisit(rootId);
+
+  frames.push({
+    nodeStates: { ...nodeStates },
+    edgeStates: { ...edgeStates },
+    distances: { ...sums },
+    description: `区間和クエリ完了。[${qLo},${qHi})の和 = ${queryResult}`,
+  });
+
+  const updateIndex = SEGMENT_TREE_UPDATE_INDEX;
+  const updateValue = SEGMENT_TREE_UPDATE_VALUE;
+  const findLeafPath = (id: string, path: string[]): void => {
+    path.push(id);
+    const node = nodesMap[id];
+    if (node.hi - node.lo === 1) return;
+    const mid = Math.floor((node.lo + node.hi) / 2);
+    if (updateIndex < mid) findLeafPath(node.left!, path);
+    else findLeafPath(node.right!, path);
+  };
+  const path: string[] = [];
+  findLeafPath(rootId, path);
+
+  for (let i = path.length - 1; i >= 0; i--) {
+    const id = path[i];
+    const node = nodesMap[id];
+    if (node.hi - node.lo === 1) {
+      node.sum = updateValue;
+    } else {
+      node.sum = nodesMap[node.left!].sum + nodesMap[node.right!].sum;
+    }
+    sums[id] = node.sum;
+    nodeStates[id] = "settled";
+    frames.push({
+      nodeStates: { ...nodeStates },
+      edgeStates: { ...edgeStates },
+      distances: { ...sums },
+      description:
+        node.hi - node.lo === 1
+          ? `点更新: 添字${updateIndex}の値を${updateValue}に変更(葉[${node.lo},${node.hi})を更新)`
+          : `点更新の伝播: 頂点[${node.lo},${node.hi})の和を子の和から再計算 = ${node.sum}`,
+    });
+  }
+
+  frames.push({
+    nodeStates: { ...nodeStates },
+    edgeStates: { ...edgeStates },
+    distances: { ...sums },
+    description: `計算完了。添字${updateIndex}を${updateValue}に更新後、ルートの合計は${nodesMap[rootId].sum}`,
+  });
+
+  return frames;
+}
+
+/** スキップリストのデモ用データ。各値の「塔の高さ」に応じて上位レベルほど疎になる。 */
+export const SKIP_LIST_LEVELS: number[][] = [
+  [3, 6, 7, 9, 12, 17, 19, 21, 25, 26],
+  [6, 9, 17, 19, 21, 25],
+  [9, 19],
+  [19],
+];
+export const SKIP_LIST_TARGET = 25;
+
+const SKIP_LIST_NUM_LEVELS = SKIP_LIST_LEVELS.length;
+const SKIP_LIST_ALL_VALUES = SKIP_LIST_LEVELS[0];
+
+function skipListNodeId(level: number, item: number | "H"): string {
+  return `L${level}_${item}`;
+}
+
+function skipListX(item: number | "H"): number {
+  if (item === "H") return 0.05;
+  const idx = SKIP_LIST_ALL_VALUES.indexOf(item);
+  return 0.16 + (idx / (SKIP_LIST_ALL_VALUES.length - 1)) * 0.8;
+}
+
+function skipListY(level: number): number {
+  return SKIP_LIST_NUM_LEVELS > 1 ? 0.85 - level * (0.7 / (SKIP_LIST_NUM_LEVELS - 1)) : 0.5;
+}
+
+export const SKIP_LIST_NODES: GraphNode[] = SKIP_LIST_LEVELS.flatMap((values, level) => [
+  { id: skipListNodeId(level, "H"), label: "H", x: skipListX("H"), y: skipListY(level) },
+  ...values.map((v) => ({ id: skipListNodeId(level, v), label: String(v), x: skipListX(v), y: skipListY(level) })),
+]);
+
+export const SKIP_LIST_EDGES: GraphEdge[] = [
+  ...SKIP_LIST_LEVELS.flatMap((values, level) => {
+    const list: (number | "H")[] = ["H", ...values];
+    const edges: GraphEdge[] = [];
+    for (let i = 0; i < list.length - 1; i++) {
+      edges.push({
+        id: `${skipListNodeId(level, list[i])}-${skipListNodeId(level, list[i + 1])}`,
+        from: skipListNodeId(level, list[i]),
+        to: skipListNodeId(level, list[i + 1]),
+        weight: 1,
+      });
+    }
+    return edges;
+  }),
+  ...SKIP_LIST_LEVELS.slice(1).flatMap((values, i) => {
+    const level = i + 1;
+    const items: (number | "H")[] = ["H", ...values];
+    return items.map((item) => ({
+      id: `drop_${level}_${item}`,
+      from: skipListNodeId(level, item),
+      to: skipListNodeId(level - 1, item),
+      weight: 1,
+    }));
+  }),
+];
+
+/**
+ * スキップリストの探索のステップ列を生成する。各要素は確率的に決まる「塔の高さ」を持ち、
+ * 高さが高いほど上位レベルの疎な連結リストにも登場する。探索は最上位レベルの先頭から始め、
+ * 「次の値が目標以下なら右へ進み、それ以上進めなければ1つ下のレベルへ降りる」を繰り返す。
+ * 上位レベルでは大きく飛ばして候補を絞り込み、下位レベルに降りるほど細かく調整するという
+ * 二分探索的な考え方を、ソート済み配列ではなく連結リストの上で実現している。
+ */
+export function skipListSteps(): GraphFrame[] {
+  const nodes = SKIP_LIST_NODES;
+  const edges = SKIP_LIST_EDGES;
+  const target = SKIP_LIST_TARGET;
+  const numLevels = SKIP_LIST_NUM_LEVELS;
+
+  const nodeStates = initNodeStates(nodes, "idle");
+  const edgeStates = initEdgeStates(edges, "idle");
+
+  const frames: GraphFrame[] = [
+    {
+      nodeStates: { ...nodeStates },
+      edgeStates: { ...edgeStates },
+      distances: {},
+      description: `スキップリストの探索を開始。目的の値=${target}を、最上位レベル(レベル${numLevels - 1})から探す`,
+    },
+  ];
+
+  const nextInLevel = (level: number, id: string): string | null => {
+    const list: (number | "H")[] = ["H", ...SKIP_LIST_LEVELS[level]];
+    const idx = list.findIndex((v) => skipListNodeId(level, v) === id);
+    if (idx === -1 || idx === list.length - 1) return null;
+    return skipListNodeId(level, list[idx + 1]);
+  };
+  const valueOf = (id: string): number | "H" => {
+    const raw = id.slice(id.indexOf("_") + 1);
+    return raw === "H" ? "H" : Number(raw);
+  };
+
+  let cur = skipListNodeId(numLevels - 1, "H");
+  nodeStates[cur] = "visited";
+  for (let level = numLevels - 1; level >= 0; level--) {
+    for (;;) {
+      const nxt = nextInLevel(level, cur);
+      if (nxt === null) break;
+      const nxtValue = valueOf(nxt);
+      if (nxtValue !== "H" && nxtValue <= target) {
+        const edgeId = `${cur}-${nxt}`;
+        edgeStates[edgeId] = "tree";
+        cur = nxt;
+        nodeStates[cur] = "visited";
+        frames.push({
+          nodeStates: { ...nodeStates },
+          edgeStates: { ...edgeStates },
+          distances: {},
+          description: `レベル${level}: 次の値${nxtValue}は目標${target}以下 → 右へ移動`,
+        });
+      } else {
+        break;
+      }
+    }
+    nodeStates[cur] = "settled";
+    if (level > 0) {
+      const curValue = valueOf(cur);
+      const belowId = skipListNodeId(level - 1, curValue);
+      const dropEdgeId = `drop_${level}_${curValue}`;
+      edgeStates[dropEdgeId] = "tree";
+      frames.push({
+        nodeStates: { ...nodeStates },
+        edgeStates: { ...edgeStates },
+        distances: {},
+        description: `レベル${level}でこれ以上右に進めない → 1つ下のレベル${level - 1}に降りる`,
+      });
+      cur = belowId;
+      nodeStates[cur] = "visited";
+    }
+  }
+
+  const found = valueOf(cur) === target;
+  frames.push({
+    nodeStates: { ...nodeStates },
+    edgeStates: { ...edgeStates },
+    distances: {},
+    description: `計算完了。値${target}を${found ? "発見" : "発見できず"}(最下位レベル0で最終確認)`,
+  });
+
+  return frames;
+}
+
 export type GraphDataset = {
   nodes: GraphNode[];
   edges: GraphEdge[];
@@ -1914,6 +2285,8 @@ export const GRAPH_DATASETS: Record<string, GraphDataset> = {
   johnson: { nodes: SHORTEST_PATH_NODES, edges: SHORTEST_PATH_EDGES, directed: true },
   "huffman-coding": { nodes: HUFFMAN_NODES, edges: HUFFMAN_EDGES, directed: true },
   "floyd-cycle-detection": { nodes: CYCLE_DETECTION_NODES, edges: CYCLE_DETECTION_EDGES, directed: true },
+  "segment-tree": { nodes: SEGMENT_TREE_GRAPH_NODES, edges: SEGMENT_TREE_GRAPH_EDGES, directed: true },
+  "skip-list": { nodes: SKIP_LIST_NODES, edges: SKIP_LIST_EDGES, directed: true },
 };
 
 export const GRAPH_VISUALIZERS: Record<string, () => GraphFrame[]> = {
@@ -1932,4 +2305,6 @@ export const GRAPH_VISUALIZERS: Record<string, () => GraphFrame[]> = {
   johnson: johnsonSteps,
   "huffman-coding": huffmanCodingSteps,
   "floyd-cycle-detection": floydCycleDetectionSteps,
+  "segment-tree": segmentTreeSteps,
+  "skip-list": skipListSteps,
 };
