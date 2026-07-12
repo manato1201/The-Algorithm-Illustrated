@@ -1373,6 +1373,307 @@ export function skipListSteps(): GraphFrame[] {
   return frames;
 }
 
+/** PageRank・HITSのデモ用有向グラフ。DがCにリンクするが誰からもリンクされない(ぶら下がりに近い)頂点を含む。 */
+export const RANKING_GRAPH_NODES: GraphNode[] = circleLayout(["A", "B", "C", "D"]);
+export const RANKING_GRAPH_EDGES: GraphEdge[] = [
+  { id: "AB", from: "A", to: "B", weight: 1 },
+  { id: "AC", from: "A", to: "C", weight: 1 },
+  { id: "BC", from: "B", to: "C", weight: 1 },
+  { id: "CA", from: "C", to: "A", weight: 1 },
+  { id: "DC", from: "D", to: "C", weight: 1 },
+];
+export const PAGERANK_DAMPING = 0.85;
+export const PAGERANK_ITERATIONS = 8;
+
+/**
+ * PageRankのステップ列を生成する。「重要な頂点からリンクされている頂点は重要」という
+ * 再帰的な定義を、初期値を全頂点で均等にした上で反復的に更新することで固有ベクトルに
+ * 収束させる(べき乗法)。ダンピング係数dは「確率1-dでランダムな頂点にジャンプする」
+ * という項を加えることで、リンクの閉路だけでスコアが集中してしまう問題を防いでいる。
+ */
+export function pagerankSteps(): GraphFrame[] {
+  const nodes = RANKING_GRAPH_NODES;
+  const edges = RANKING_GRAPH_EDGES;
+  const n = nodes.length;
+  const d = PAGERANK_DAMPING;
+
+  const outDegree = new Map<string, number>();
+  nodes.forEach((node) => {
+    outDegree.set(node.id, edges.filter((e) => e.from === node.id).length);
+  });
+  const incoming = new Map<string, string[]>();
+  nodes.forEach((node) => incoming.set(node.id, []));
+  edges.forEach((e) => incoming.get(e.to)!.push(e.from));
+
+  let rank = new Map<string, number>();
+  nodes.forEach((node) => rank.set(node.id, 1 / n));
+
+  const nodeStates = initNodeStates(nodes, "idle");
+  const edgeStates = initEdgeStates(edges, "idle");
+  const rankDisplay = (): Record<string, number | null> =>
+    Object.fromEntries(nodes.map((n2) => [n2.id, Number(rank.get(n2.id)!.toFixed(4))]));
+
+  const frames: GraphFrame[] = [
+    {
+      nodeStates: { ...nodeStates },
+      edgeStates: { ...edgeStates },
+      distances: rankDisplay(),
+      description: `PageRankを開始。全頂点のランクを均等(1/${n})に初期化。ダンピング係数d=${d}(頂点下の数字がランク)`,
+    },
+  ];
+
+  for (let iter = 1; iter <= PAGERANK_ITERATIONS; iter++) {
+    const next = new Map<string, number>();
+    nodes.forEach((node) => {
+      const inSum = incoming
+        .get(node.id)!
+        .reduce((sum, from) => sum + rank.get(from)! / outDegree.get(from)!, 0);
+      next.set(node.id, (1 - d) / n + d * inSum);
+    });
+    rank = next;
+    frames.push({
+      nodeStates: { ...nodeStates },
+      edgeStates: { ...edgeStates },
+      distances: rankDisplay(),
+      description: `[反復${iter}] 各頂点のランク = (1-d)/N + d×Σ(リンク元のランク/リンク元の出次数)`,
+    });
+  }
+
+  nodes.forEach((node) => {
+    nodeStates[node.id] = "settled";
+  });
+  const ranked = [...rank.entries()].sort((a, b) => b[1] - a[1]);
+  frames.push({
+    nodeStates: { ...nodeStates },
+    edgeStates: { ...edgeStates },
+    distances: rankDisplay(),
+    description: `計算完了(${PAGERANK_ITERATIONS}回反復)。ランキング: ${ranked.map(([id, r]) => `${id}(${r.toFixed(4)})`).join(" > ")}`,
+  });
+
+  return frames;
+}
+
+export const HITS_ITERATIONS = 6;
+
+/**
+ * HITS(Hyperlink-Induced Topic Search)のステップ列を生成する。「良いハブ(良いオーソリティに
+ * 数多くリンクしている頂点)」と「良いオーソリティ(良いハブから数多くリンクされている頂点)」
+ * を相互に定義し、authority(p) = Σ hub(q)(pへリンクするq)、hub(p) = Σ authority(q)
+ * (pがリンクするq)という2つの更新を交互に繰り返す。発散を防ぐため毎回正規化(2乗和の平方根で割る)する。
+ * PageRankと同じグラフを使うことで、リンク構造の中心性を測る2つのアプローチの違いを対比できる。
+ */
+export function hitsSteps(): GraphFrame[] {
+  const nodes = RANKING_GRAPH_NODES;
+  const edges = RANKING_GRAPH_EDGES;
+
+  let hub = new Map<string, number>();
+  let authority = new Map<string, number>();
+  nodes.forEach((node) => {
+    hub.set(node.id, 1);
+    authority.set(node.id, 1);
+  });
+
+  const nodeStates = initNodeStates(nodes, "idle");
+  const edgeStates = initEdgeStates(edges, "idle");
+  const display = (m: Map<string, number>): Record<string, number | null> =>
+    Object.fromEntries(nodes.map((n2) => [n2.id, Number(m.get(n2.id)!.toFixed(4))]));
+
+  const frames: GraphFrame[] = [
+    {
+      nodeStates: { ...nodeStates },
+      edgeStates: { ...edgeStates },
+      distances: display(hub),
+      description: "HITSを開始。全頂点のhub値・authority値を1に初期化(頂点下の数字はhub値)",
+    },
+  ];
+
+  const normalize = (m: Map<string, number>) => {
+    const norm = Math.sqrt([...m.values()].reduce((s, v) => s + v * v, 0));
+    m.forEach((v, k) => m.set(k, norm === 0 ? 0 : v / norm));
+  };
+
+  for (let iter = 1; iter <= HITS_ITERATIONS; iter++) {
+    const newAuthority = new Map<string, number>();
+    nodes.forEach((node) => {
+      const inSum = edges.filter((e) => e.to === node.id).reduce((s, e) => s + hub.get(e.from)!, 0);
+      newAuthority.set(node.id, inSum);
+    });
+    normalize(newAuthority);
+    authority = newAuthority;
+    frames.push({
+      nodeStates: { ...nodeStates },
+      edgeStates: { ...edgeStates },
+      distances: display(authority),
+      description: `[反復${iter}] authority値を更新(頂点下の数字はauthority値): 自分にリンクする頂点のhub値の合計を正規化`,
+    });
+
+    const newHub = new Map<string, number>();
+    nodes.forEach((node) => {
+      const outSum = edges.filter((e) => e.from === node.id).reduce((s, e) => s + authority.get(e.to)!, 0);
+      newHub.set(node.id, outSum);
+    });
+    normalize(newHub);
+    hub = newHub;
+    frames.push({
+      nodeStates: { ...nodeStates },
+      edgeStates: { ...edgeStates },
+      distances: display(hub),
+      description: `[反復${iter}] hub値を更新(頂点下の数字はhub値): 自分がリンクする頂点のauthority値の合計を正規化`,
+    });
+  }
+
+  nodes.forEach((node) => {
+    nodeStates[node.id] = "settled";
+  });
+  const rankedAuth = [...authority.entries()].sort((a, b) => b[1] - a[1]);
+  const rankedHub = [...hub.entries()].sort((a, b) => b[1] - a[1]);
+  frames.push({
+    nodeStates: { ...nodeStates },
+    edgeStates: { ...edgeStates },
+    distances: display(authority),
+    description: `計算完了(${HITS_ITERATIONS}回反復)。authorityランキング: ${rankedAuth.map(([id, v]) => `${id}(${v.toFixed(3)})`).join(" > ")} / hubランキング: ${rankedHub.map(([id, v]) => `${id}(${v.toFixed(3)})`).join(" > ")}`,
+  });
+
+  return frames;
+}
+
+/** 一貫性ハッシュ法のデモ用データ。ハッシュ空間はリング状の0〜99。 */
+export const CONSISTENT_HASHING_RING_SIZE = 100;
+export const CONSISTENT_HASHING_SERVERS: { id: string; hash: number }[] = [
+  { id: "S1", hash: 10 },
+  { id: "S2", hash: 35 },
+  { id: "S3", hash: 60 },
+  { id: "S4", hash: 85 },
+];
+export const CONSISTENT_HASHING_KEYS: { id: string; hash: number }[] = [
+  { id: "K1", hash: 5 },
+  { id: "K2", hash: 20 },
+  { id: "K3", hash: 40 },
+  { id: "K4", hash: 55 },
+  { id: "K5", hash: 70 },
+  { id: "K6", hash: 90 },
+];
+export const CONSISTENT_HASHING_NEW_SERVER = { id: "S5", hash: 48 };
+
+function consistentHashingPosition(hash: number): { x: number; y: number } {
+  const angle = (hash / CONSISTENT_HASHING_RING_SIZE) * Math.PI * 2 - Math.PI / 2;
+  return { x: 0.5 + 0.4 * Math.cos(angle), y: 0.5 + 0.42 * Math.sin(angle) };
+}
+
+export const CONSISTENT_HASHING_NODES: GraphNode[] = [
+  ...CONSISTENT_HASHING_SERVERS.map((s) => ({ id: s.id, label: s.id, ...consistentHashingPosition(s.hash) })),
+  { id: CONSISTENT_HASHING_NEW_SERVER.id, label: CONSISTENT_HASHING_NEW_SERVER.id, ...consistentHashingPosition(CONSISTENT_HASHING_NEW_SERVER.hash) },
+  ...CONSISTENT_HASHING_KEYS.map((k) => ({ id: k.id, label: k.id, ...consistentHashingPosition(k.hash) })),
+];
+export const CONSISTENT_HASHING_EDGES: GraphEdge[] = CONSISTENT_HASHING_KEYS.map((k) => ({
+  id: `${k.id}-edge`,
+  from: k.id,
+  to: "S1",
+  weight: 1,
+}));
+
+function assignServer(keyHash: number, servers: { id: string; hash: number }[]): string {
+  const sorted = [...servers].sort((a, b) => a.hash - b.hash);
+  const found = sorted.find((s) => s.hash >= keyHash);
+  return (found ?? sorted[0]).id;
+}
+
+/**
+ * 一貫性ハッシュ法のステップ列を生成する。サーバーとキーを同じハッシュ空間の環(リング)上に
+ * 配置し、各キーは「時計回りに最初に出会うサーバー」に割り当てる。単純な mod N ハッシュだと
+ * サーバー台数Nが変わるたびにほぼ全てのキーの担当が変わってしまうが、リング上での割り当てなら
+ * 新しいサーバーを追加したとき、そのサーバーの直前の区間に属していたキーだけが再配置されれば済む
+ * (残りのキーは担当が変わらない)——分散キャッシュやDHTで再配置コストを最小化できる理由がここにある。
+ */
+export function consistentHashingSteps(): GraphFrame[] {
+  const nodes = CONSISTENT_HASHING_NODES.filter((n) => n.id !== CONSISTENT_HASHING_NEW_SERVER.id);
+  const edges = CONSISTENT_HASHING_EDGES;
+  const ringSize = CONSISTENT_HASHING_RING_SIZE;
+
+  const nodeStates = initNodeStates(nodes, "idle");
+  const edgeStates = initEdgeStates(edges, "idle");
+  CONSISTENT_HASHING_SERVERS.forEach((s) => {
+    nodeStates[s.id] = "settled";
+  });
+
+  const frames: GraphFrame[] = [
+    {
+      nodeStates: { ...nodeStates },
+      edgeStates: { ...edgeStates },
+      distances: {},
+      description: `一貫性ハッシュ法を開始。ハッシュ空間0〜${ringSize - 1}をリング状に扱い、サーバー${CONSISTENT_HASHING_SERVERS.map((s) => `${s.id}(${s.hash})`).join(", ")}を配置`,
+    },
+  ];
+
+  const assignments = new Map<string, string>();
+  for (const key of CONSISTENT_HASHING_KEYS) {
+    const server = assignServer(key.hash, CONSISTENT_HASHING_SERVERS);
+    assignments.set(key.id, server);
+    edgeStates[`${key.id}-edge`] = "tree";
+    nodeStates[key.id] = "visited";
+    frames.push({
+      nodeStates: { ...nodeStates },
+      edgeStates: { ...edgeStates },
+      distances: {},
+      description: `キー${key.id}(ハッシュ${key.hash})を時計回りに進めて最初に出会うサーバー${server}に割り当て`,
+    });
+  }
+
+  frames.push({
+    nodeStates: { ...nodeStates },
+    edgeStates: { ...edgeStates },
+    distances: {},
+    description: `初期割り当て完了: ${[...assignments.entries()].map(([k, s]) => `${k}→${s}`).join(", ")}`,
+  });
+
+  const allServers = [...CONSISTENT_HASHING_SERVERS, CONSISTENT_HASHING_NEW_SERVER];
+  const newNodeStates = initNodeStates(CONSISTENT_HASHING_NODES, "idle");
+  Object.assign(newNodeStates, nodeStates);
+  newNodeStates[CONSISTENT_HASHING_NEW_SERVER.id] = "settled";
+  const newEdgeStates = { ...edgeStates };
+
+  const framesAfterAdd: GraphFrame[] = [
+    {
+      nodeStates: { ...newNodeStates },
+      edgeStates: { ...newEdgeStates },
+      distances: {},
+      description: `新サーバー${CONSISTENT_HASHING_NEW_SERVER.id}(ハッシュ${CONSISTENT_HASHING_NEW_SERVER.hash})をリングに追加`,
+    },
+  ];
+
+  let movedCount = 0;
+  for (const key of CONSISTENT_HASHING_KEYS) {
+    const newServer = assignServer(key.hash, allServers);
+    const oldServer = assignments.get(key.id)!;
+    if (newServer !== oldServer) {
+      movedCount++;
+      newEdgeStates[`${key.id}-edge`] = "relaxed";
+      framesAfterAdd.push({
+        nodeStates: { ...newNodeStates },
+        edgeStates: { ...newEdgeStates },
+        distances: {},
+        description: `キー${key.id}(ハッシュ${key.hash})の担当が${oldServer}→${newServer}に変わる(新サーバーの直前の区間に入ったため)`,
+      });
+    } else {
+      framesAfterAdd.push({
+        nodeStates: { ...newNodeStates },
+        edgeStates: { ...newEdgeStates },
+        distances: {},
+        description: `キー${key.id}(ハッシュ${key.hash})の担当は${oldServer}のまま変わらない`,
+      });
+    }
+  }
+
+  framesAfterAdd.push({
+    nodeStates: { ...newNodeStates },
+    edgeStates: { ...newEdgeStates },
+    distances: {},
+    description: `計算完了。サーバー追加により再配置されたキーは${movedCount}/${CONSISTENT_HASHING_KEYS.length}件のみ(単純なmod Nハッシュならほぼ全件が再配置されていたはず)`,
+  });
+
+  return [...frames, ...framesAfterAdd];
+}
+
 export type GraphDataset = {
   nodes: GraphNode[];
   edges: GraphEdge[];
@@ -2287,6 +2588,9 @@ export const GRAPH_DATASETS: Record<string, GraphDataset> = {
   "floyd-cycle-detection": { nodes: CYCLE_DETECTION_NODES, edges: CYCLE_DETECTION_EDGES, directed: true },
   "segment-tree": { nodes: SEGMENT_TREE_GRAPH_NODES, edges: SEGMENT_TREE_GRAPH_EDGES, directed: true },
   "skip-list": { nodes: SKIP_LIST_NODES, edges: SKIP_LIST_EDGES, directed: true },
+  pagerank: { nodes: RANKING_GRAPH_NODES, edges: RANKING_GRAPH_EDGES, directed: true },
+  hits: { nodes: RANKING_GRAPH_NODES, edges: RANKING_GRAPH_EDGES, directed: true },
+  "consistent-hashing": { nodes: CONSISTENT_HASHING_NODES, edges: CONSISTENT_HASHING_EDGES, directed: false },
 };
 
 export const GRAPH_VISUALIZERS: Record<string, () => GraphFrame[]> = {
@@ -2307,4 +2611,7 @@ export const GRAPH_VISUALIZERS: Record<string, () => GraphFrame[]> = {
   "floyd-cycle-detection": floydCycleDetectionSteps,
   "segment-tree": segmentTreeSteps,
   "skip-list": skipListSteps,
+  pagerank: pagerankSteps,
+  hits: hitsSteps,
+  "consistent-hashing": consistentHashingSteps,
 };
