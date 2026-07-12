@@ -711,6 +711,297 @@ export function boruvkaSteps(): GraphFrame[] {
   return frames;
 }
 
+type HuffmanInternalNode = {
+  id: string;
+  freq: number;
+  char: string | null;
+  left: string | null;
+  right: string | null;
+};
+
+/** ハフマン符号化の例題。Wikipedia等で広く引用される古典的な6文字の頻度分布。 */
+export const HUFFMAN_FREQUENCIES: [string, number][] = [
+  ["A", 5],
+  ["B", 9],
+  ["C", 12],
+  ["D", 13],
+  ["E", 16],
+  ["F", 45],
+];
+
+function buildHuffmanTree(): {
+  nodes: Record<string, HuffmanInternalNode>;
+  rootId: string;
+  mergeOrder: { leftId: string; rightId: string; newId: string }[];
+} {
+  const nodes: Record<string, HuffmanInternalNode> = {};
+  HUFFMAN_FREQUENCIES.forEach(([char, freq]) => {
+    nodes[char] = { id: char, freq, char, left: null, right: null };
+  });
+
+  let pool = HUFFMAN_FREQUENCIES.map(([char]) => char);
+  const mergeOrder: { leftId: string; rightId: string; newId: string }[] = [];
+  let nextInternalId = 1;
+
+  while (pool.length > 1) {
+    pool = [...pool].sort((a, b) => nodes[a].freq - nodes[b].freq);
+    const leftId = pool[0];
+    const rightId = pool[1];
+    const newId = `I${nextInternalId}`;
+    nextInternalId++;
+    nodes[newId] = {
+      id: newId,
+      freq: nodes[leftId].freq + nodes[rightId].freq,
+      char: null,
+      left: leftId,
+      right: rightId,
+    };
+    mergeOrder.push({ leftId, rightId, newId });
+    pool = [newId, ...pool.slice(2)];
+  }
+
+  return { nodes, rootId: pool[0], mergeOrder };
+}
+
+function computeHuffmanLayout(
+  nodes: Record<string, HuffmanInternalNode>,
+  rootId: string,
+): Record<string, { x: number; y: number }> {
+  const positions: Record<string, { x: number; y: number }> = {};
+  let counter = 0;
+  let maxDepth = 0;
+
+  const visit = (id: string, depth: number) => {
+    const node = nodes[id];
+    maxDepth = Math.max(maxDepth, depth);
+    if (node.left === null && node.right === null) {
+      positions[id] = { x: counter, y: depth };
+      counter++;
+      return;
+    }
+    if (node.left !== null) visit(node.left, depth + 1);
+    if (node.right !== null) visit(node.right, depth + 1);
+    const childIds = [node.left, node.right].filter((v): v is string => v !== null);
+    const childXs = childIds.map((cid) => positions[cid].x);
+    positions[id] = { x: (Math.min(...childXs) + Math.max(...childXs)) / 2, y: depth };
+  };
+  visit(rootId, 0);
+
+  const totalLeaves = counter;
+  Object.keys(positions).forEach((id) => {
+    positions[id] = {
+      x: totalLeaves > 1 ? positions[id].x / (totalLeaves - 1) : 0.5,
+      y: maxDepth > 0 ? positions[id].y / maxDepth : 0,
+    };
+  });
+  return positions;
+}
+
+const HUFFMAN_TREE = buildHuffmanTree();
+const HUFFMAN_LAYOUT = computeHuffmanLayout(HUFFMAN_TREE.nodes, HUFFMAN_TREE.rootId);
+
+export const HUFFMAN_NODES: GraphNode[] = Object.values(HUFFMAN_TREE.nodes).map((n) => ({
+  id: n.id,
+  label: n.char ?? "",
+  x: HUFFMAN_LAYOUT[n.id].x,
+  y: HUFFMAN_LAYOUT[n.id].y,
+}));
+export const HUFFMAN_EDGES: GraphEdge[] = Object.values(HUFFMAN_TREE.nodes).flatMap((n) => {
+  const edges: GraphEdge[] = [];
+  if (n.left !== null) edges.push({ id: `${n.id}-${n.left}`, from: n.id, to: n.left, weight: 1 });
+  if (n.right !== null) edges.push({ id: `${n.id}-${n.right}`, from: n.id, to: n.right, weight: 1 });
+  return edges;
+});
+
+/**
+ * ハフマン符号化(ハフマン木の構築)のステップ列を生成する。GraphVisualizerを再利用しているが、
+ * 他のグラフアルゴリズムと違い、木構造自体をこのアルゴリズムの実行結果として一度構築してから
+ * その最終形をノードリンク図の固定レイアウトとして使い、貪欲法による構築過程を辺・頂点の
+ * 状態遷移で再現する(最小全域木アルゴリズム(プリム法・クラスカル法)と同じ「全体を先に表示し
+ * 採用済み辺をハイライトする」表現方法)。毎回「頻度が最小の2つの木を1つに併合する」操作を
+ * 繰り返すだけで、出現頻度の低い文字ほど根から遠い(=符号が長い)木が自動的にできあがる。
+ */
+export function huffmanCodingSteps(): GraphFrame[] {
+  const { nodes, mergeOrder } = HUFFMAN_TREE;
+  const graphNodes = HUFFMAN_NODES;
+  const graphEdges = HUFFMAN_EDGES;
+
+  const nodeStates = initNodeStates(graphNodes, "idle");
+  const edgeStates = initEdgeStates(graphEdges, "idle");
+  const freqs: Record<string, number | null> = {};
+  HUFFMAN_FREQUENCIES.forEach(([char, freq]) => {
+    freqs[char] = freq;
+  });
+  graphNodes.forEach((n) => {
+    if (!(n.id in freqs)) freqs[n.id] = null;
+  });
+
+  const frames: GraphFrame[] = [
+    {
+      nodeStates: { ...nodeStates },
+      edgeStates: { ...edgeStates },
+      distances: { ...freqs },
+      description: `ハフマン符号化を開始。出現頻度: ${HUFFMAN_FREQUENCIES.map(([c, f]) => `${c}=${f}`).join(", ")}(頂点下の数字が頻度)`,
+    },
+  ];
+
+  for (const { leftId, rightId, newId } of mergeOrder) {
+    const highlightNodes = { ...nodeStates };
+    highlightNodes[leftId] = "visited";
+    highlightNodes[rightId] = "visited";
+    frames.push({
+      nodeStates: highlightNodes,
+      edgeStates: { ...edgeStates },
+      distances: { ...freqs },
+      description: `最小頻度の2つの木を選択: ${leftId}(頻度${nodes[leftId].freq}) と ${rightId}(頻度${nodes[rightId].freq})`,
+    });
+
+    edgeStates[`${newId}-${leftId}`] = "tree";
+    edgeStates[`${newId}-${rightId}`] = "tree";
+    nodeStates[leftId] = "settled";
+    nodeStates[rightId] = "settled";
+    nodeStates[newId] = "settled";
+    freqs[newId] = nodes[newId].freq;
+    frames.push({
+      nodeStates: { ...nodeStates },
+      edgeStates: { ...edgeStates },
+      distances: { ...freqs },
+      description: `頂点${newId}(頻度${nodes[newId].freq}=${nodes[leftId].freq}+${nodes[rightId].freq})を作成し、${leftId}と${rightId}をその子として接続`,
+    });
+  }
+
+  const totalWeightedLength = HUFFMAN_FREQUENCIES.reduce((sum, [char, freq]) => {
+    let depth = 0;
+    let cur = char;
+    while (cur !== HUFFMAN_TREE.rootId) {
+      const parent = Object.values(nodes).find((n) => n.left === cur || n.right === cur)!;
+      cur = parent.id;
+      depth++;
+    }
+    return sum + freq * depth;
+  }, 0);
+
+  frames.push({
+    nodeStates: { ...nodeStates },
+    edgeStates: { ...edgeStates },
+    distances: { ...freqs },
+    description: `計算完了。全ての文字が1つの木にまとまった。符号長の合計(頻度×深さの総和) = ${totalWeightedLength}ビット`,
+  });
+
+  return frames;
+}
+
+/**
+ * ρ(ロー)字型の連結リストを表す固定データセット。0→1→2で末尾に到達したのち、
+ * 3→4→5→6→7→3という長さ5の循環に入る(フロイドの循環検出法の教科書的な形)。
+ */
+export const CYCLE_DETECTION_NODES: GraphNode[] = [
+  { id: "0", label: "0", x: 0.08, y: 0.5 },
+  { id: "1", label: "1", x: 0.22, y: 0.5 },
+  { id: "2", label: "2", x: 0.36, y: 0.5 },
+  { id: "3", label: "3", x: 0.55, y: 0.72 },
+  { id: "4", label: "4", x: 0.72, y: 0.62 },
+  { id: "5", label: "5", x: 0.78, y: 0.42 },
+  { id: "6", label: "6", x: 0.65, y: 0.25 },
+  { id: "7", label: "7", x: 0.48, y: 0.35 },
+];
+const CYCLE_DETECTION_NEXT: Record<string, string> = {
+  "0": "1",
+  "1": "2",
+  "2": "3",
+  "3": "4",
+  "4": "5",
+  "5": "6",
+  "6": "7",
+  "7": "3",
+};
+export const CYCLE_DETECTION_EDGES: GraphEdge[] = Object.entries(CYCLE_DETECTION_NEXT).map(
+  ([from, to]) => ({ id: `${from}-${to}`, from, to, weight: 1 }),
+);
+
+/**
+ * フロイドの循環検出法(Tortoise and Hare)のステップ列を生成する。追加メモリを使わず、
+ * 1歩ずつ進む遅いポインタと2歩ずつ進む速いポインタを同時に動かすと、リストに循環があれば
+ * 必ずどこかで2つのポインタが同じ頂点で出会う(循環がなければ速いポインタが先に終端に達する)。
+ * 出会った後、片方を先頭に戻して両方とも1歩ずつ進めると、今度は循環の入口で出会う
+ * ——これは循環部分の長さがcで、先頭から入口までの距離がμのとき、最初の出会いが
+ * 入口からc-μ歩の位置になるという数学的性質を利用している。
+ */
+export function floydCycleDetectionSteps(): GraphFrame[] {
+  const nodes = CYCLE_DETECTION_NODES;
+  const edges = CYCLE_DETECTION_EDGES;
+  const next = CYCLE_DETECTION_NEXT;
+
+  const nodeStates = initNodeStates(nodes, "idle");
+  const edgeStates = initEdgeStates(edges, "idle");
+
+  const frames: GraphFrame[] = [
+    {
+      nodeStates: { ...nodeStates },
+      edgeStates: { ...edgeStates },
+      distances: {},
+      description: "フロイドの循環検出法を開始。頂点0から出発し、遅い/速いポインタで循環を検出する",
+    },
+  ];
+
+  let slow = "0";
+  let fast = "0";
+  let round = 0;
+  for (;;) {
+    round++;
+    slow = next[slow];
+    fast = next[next[fast]];
+    const states = { ...nodeStates };
+    states[slow] = "visited";
+    states[fast] = fast === slow ? "visited" : "settled";
+    frames.push({
+      nodeStates: states,
+      edgeStates: { ...edgeStates },
+      distances: {},
+      description: `[フェーズ1: 出会うまで] ラウンド${round}: 遅いポインタ→${slow}(1歩)、速いポインタ→${fast}(2歩)`,
+    });
+    if (slow === fast) break;
+  }
+  const meetingPoint = slow;
+  frames.push({
+    nodeStates: { ...nodeStates, [meetingPoint]: "settled" },
+    edgeStates: { ...edgeStates },
+    distances: {},
+    description: `頂点${meetingPoint}で2つのポインタが出会った。循環の存在が確定。ここから循環の入口を探す`,
+  });
+
+  let ptr1 = "0";
+  let ptr2 = meetingPoint;
+  round = 0;
+  if (ptr1 !== ptr2) {
+    for (;;) {
+      round++;
+      ptr1 = next[ptr1];
+      ptr2 = next[ptr2];
+      const states = { ...nodeStates };
+      states[ptr1] = "visited";
+      states[ptr2] = ptr2 === ptr1 ? "visited" : "settled";
+      frames.push({
+        nodeStates: states,
+        edgeStates: { ...edgeStates },
+        distances: {},
+        description: `[フェーズ2: 循環の入口を探す] ラウンド${round}: 先頭から来たポインタ→${ptr1}、出会った点から来たポインタ→${ptr2}`,
+      });
+      if (ptr1 === ptr2) break;
+    }
+  }
+  const cycleStart = ptr1;
+
+  frames.push({
+    nodeStates: { ...nodeStates, [cycleStart]: "settled" },
+    edgeStates: { ...edgeStates },
+    distances: {},
+    description: `計算完了。循環の入口は頂点${cycleStart}(2つのポインタが再び一致した頂点)`,
+  });
+
+  return frames;
+}
+
 export type GraphDataset = {
   nodes: GraphNode[];
   edges: GraphEdge[];
@@ -1621,6 +1912,8 @@ export const GRAPH_DATASETS: Record<string, GraphDataset> = {
   "hopcroft-karp": { nodes: BIPARTITE_NODES, edges: BIPARTITE_EDGES, directed: false },
   kahn: { nodes: SHORTEST_PATH_NODES, edges: SHORTEST_PATH_EDGES, directed: true },
   johnson: { nodes: SHORTEST_PATH_NODES, edges: SHORTEST_PATH_EDGES, directed: true },
+  "huffman-coding": { nodes: HUFFMAN_NODES, edges: HUFFMAN_EDGES, directed: true },
+  "floyd-cycle-detection": { nodes: CYCLE_DETECTION_NODES, edges: CYCLE_DETECTION_EDGES, directed: true },
 };
 
 export const GRAPH_VISUALIZERS: Record<string, () => GraphFrame[]> = {
@@ -1637,4 +1930,6 @@ export const GRAPH_VISUALIZERS: Record<string, () => GraphFrame[]> = {
   "hopcroft-karp": hopcroftKarpSteps,
   kahn: kahnSteps,
   johnson: johnsonSteps,
+  "huffman-coding": huffmanCodingSteps,
+  "floyd-cycle-detection": floydCycleDetectionSteps,
 };

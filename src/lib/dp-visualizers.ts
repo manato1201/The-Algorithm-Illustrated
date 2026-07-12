@@ -1317,6 +1317,497 @@ export function diffieHellmanSteps(): DPFrame[] {
   return frames;
 }
 
+export const MILLER_RABIN_N = 561;
+export const MILLER_RABIN_WITNESSES = [2, 3, 5, 7];
+
+function millerRabinModPow(base: number, exp: number, mod: number): number {
+  let result = 1;
+  let b = base % mod;
+  let e = exp;
+  while (e > 0) {
+    if (e & 1) result = (result * b) % mod;
+    b = (b * b) % mod;
+    e = Math.floor(e / 2);
+  }
+  return result;
+}
+
+/**
+ * ミラー・ラビン素数判定法のステップ列を生成する。判定対象n=561は実はカーマイケル数
+ * (3×11×17の合成数でありながら、素朴なフェルマーテストではほぼ全ての底で「素数らしい」
+ * 結果になってしまう厄介な例)。ミラー・ラビン法はn-1=2^r×dと分解した上で、
+ * 各証人aについてa^d mod nが1かn-1でなければ、r-1回まで2乗を繰り返してn-1が
+ * 現れるかを追加でチェックする——この追加チェックにより、フェルマーテストが見逃す
+ * カーマイケル数も高い確率で合成数と見抜けるようになる。
+ */
+export function millerRabinSteps(): DPFrame[] {
+  const n = MILLER_RABIN_N;
+  const witnesses = MILLER_RABIN_WITNESSES;
+
+  let d = n - 1;
+  let r = 0;
+  while (d % 2 === 0) {
+    d = d / 2;
+    r++;
+  }
+
+  type Row = { a: number; verdict: number; note: string };
+  const rows: Row[] = [];
+  for (const a of witnesses) {
+    let x = millerRabinModPow(a, d, n);
+    let isProbablyPrime = x === 1 || x === n - 1;
+    let note: string;
+    if (isProbablyPrime) {
+      note = `a^d mod n = ${x}(1またはn-1) → このaでは合成数と判定できない`;
+    } else {
+      let composite = true;
+      for (let i = 0; i < r - 1; i++) {
+        x = (x * x) % n;
+        if (x === n - 1) {
+          composite = false;
+          break;
+        }
+      }
+      isProbablyPrime = !composite;
+      note = composite
+        ? "2乗を繰り返してもn-1が現れない → 合成数の確実な証拠"
+        : "2乗の過程でn-1が出現 → このaでは合成数と判定できない";
+    }
+    rows.push({ a, verdict: isProbablyPrime ? 1 : 0, note });
+  }
+
+  const cols = witnesses.length;
+  const table: (number | null)[][] = [new Array(cols).fill(null), new Array(cols).fill(null)];
+  const state: DPCellState[][] = [new Array(cols).fill("idle"), new Array(cols).fill("idle")];
+
+  const frames: DPFrame[] = [];
+  const snapshot = (description: string): DPFrame => ({
+    table: table.map((row, r2) => row.map((value, c) => ({ value, state: state[r2][c] }))),
+    description,
+  });
+
+  frames.push(
+    snapshot(
+      `ミラー・ラビン素数判定法を開始。n=${n}を判定する(n-1=${n - 1}=2^${r}×${d}に分解)。nは実はカーマイケル数(561=3×11×17)で、素朴なフェルマーテストでは合成数と見抜けない厄介な例`,
+    ),
+  );
+
+  let foundComposite = false;
+  for (let c = 0; c < cols; c++) {
+    table[0][c] = rows[c].a;
+    table[1][c] = rows[c].verdict;
+    state[0][c] = "pivot";
+    state[1][c] = "pivot";
+    frames.push(snapshot(`証人a=${rows[c].a}でテスト: ${rows[c].note}`));
+    state[0][c] = "settled";
+    state[1][c] = "settled";
+    if (rows[c].verdict === 0) foundComposite = true;
+  }
+
+  frames.push(
+    snapshot(
+      foundComposite
+        ? `計算完了。少なくとも1つの証人が合成数の確実な証拠を示したため、n=${n}は合成数と判定(実際に3×11×17=561)`
+        : `計算完了。試した証人${witnesses.join(",")}では合成数と判定できなかった(証人を増やすとより高い確率で判定できる)`,
+    ),
+  );
+  return frames;
+}
+
+export const POLLARDS_RHO_N = 8051;
+
+function pollardsRhoF(x: number, n: number): number {
+  return (x * x + 1) % n;
+}
+
+function pollardsRhoGcd(a: number, b: number): number {
+  let x = a;
+  let y = b;
+  while (y !== 0) {
+    [x, y] = [y, x % y];
+  }
+  return x;
+}
+
+/**
+ * ポラードのロー法のステップ列を生成する。f(x)=x²+1 mod nという疑似乱数列を
+ * 遅いポインタ(1歩ずつ)と速いポインタ(2歩ずつ)で辿り、gcd(|x-y|, n)が1より
+ * 大きくなった時点でnの非自明な約数が見つかる。数列がいずれ循環すること
+ * (フロイドの循環検出法と同じ考え方)を利用して、素因数分解の困難さの根拠である
+ * 「大きな数の約数を総当たりで探すのは非現実的」という前提を、確率的な近道で突破する。
+ */
+export function pollardsRhoSteps(): DPFrame[] {
+  const n = POLLARDS_RHO_N;
+  type Row = { x: number; y: number; d: number };
+  const rows: Row[] = [];
+  let x = 2;
+  let y = 2;
+  let d = 1;
+  while (d === 1) {
+    x = pollardsRhoF(x, n);
+    y = pollardsRhoF(pollardsRhoF(y, n), n);
+    d = pollardsRhoGcd(Math.abs(x - y), n);
+    rows.push({ x, y, d });
+  }
+
+  const cols = rows.length;
+  const table: (number | null)[][] = [
+    new Array(cols).fill(null),
+    new Array(cols).fill(null),
+    new Array(cols).fill(null),
+  ];
+  const state: DPCellState[][] = [
+    new Array(cols).fill("idle"),
+    new Array(cols).fill("idle"),
+    new Array(cols).fill("idle"),
+  ];
+
+  const frames: DPFrame[] = [];
+  const snapshot = (description: string): DPFrame => ({
+    table: table.map((row, r) => row.map((value, c) => ({ value, state: state[r][c] }))),
+    description,
+  });
+
+  frames.push(
+    snapshot(
+      `ポラードのロー法を開始。n=${n}の非自明な約数を、f(x)=x²+1 mod nによる疑似乱数列とフロイドの循環検出法(遅い/速いポインタ)で見つける`,
+    ),
+  );
+
+  for (let c = 0; c < cols; c++) {
+    table[0][c] = rows[c].x;
+    table[1][c] = rows[c].y;
+    table[2][c] = rows[c].d;
+    state[0][c] = "pivot";
+    state[1][c] = "pivot";
+    state[2][c] = "pivot";
+    frames.push(
+      snapshot(
+        `反復${c + 1}: x(遅い)=f(x)=${rows[c].x}、y(速い)=f(f(y))=${rows[c].y}、gcd(|x-y|, n)=${rows[c].d}` +
+          (rows[c].d > 1 ? " → 1より大きいので約数を発見" : ""),
+      ),
+    );
+    state[0][c] = "settled";
+    state[1][c] = "settled";
+    state[2][c] = "settled";
+  }
+
+  const factor = rows[cols - 1].d;
+  frames.push(snapshot(`計算完了。n=${n}=${factor}×${n / factor}(発見した約数: ${factor})`));
+  return frames;
+}
+
+export const KARATSUBA_X = 1234;
+export const KARATSUBA_Y = 5678;
+
+/**
+ * カラツバ法のステップ列を生成する。2つの数をそれぞれ上位・下位の桁に分割すると、
+ * 素朴には4回の掛け算(ac, ad, bc, bd)が必要に見えるが、
+ * (a+b)(c+d) = ac + ad + bc + bd という恒等式を使えば、
+ * ad+bc = (a+b)(c+d) - ac - bd として3回の掛け算(ac, bd, (a+b)(c+d))だけで
+ * 済ませられる。この「掛け算1回を足し算数回で置き換える」発想の繰り返し(再帰適用)により、
+ * 素朴な筆算のO(n²)よりも高速なO(n^1.585)を達成する(このデモは分割を1段だけ行う簡略版)。
+ */
+export function karatsubaSteps(): DPFrame[] {
+  const x = KARATSUBA_X;
+  const y = KARATSUBA_Y;
+  const half = 2;
+  const base = 10 ** half;
+  const a = Math.floor(x / base);
+  const b = x % base;
+  const c = Math.floor(y / base);
+  const d = y % base;
+
+  const ac = a * c;
+  const bd = b * d;
+  const sumProduct = (a + b) * (c + d);
+  const adbc = sumProduct - ac - bd;
+  const result = ac * base * base + adbc * base + bd;
+
+  const cols = 9;
+  const table: (number | null)[][] = [new Array(cols).fill(null)];
+  const state: DPCellState[][] = [new Array(cols).fill("idle")];
+  const values = [a, b, c, d, ac, bd, sumProduct, adbc, result];
+  const descriptions = [
+    `${x}を上位${half}桁と下位${half}桁に分割: a=${a}`,
+    `${x}を上位${half}桁と下位${half}桁に分割: b=${b}`,
+    `${y}を上位${half}桁と下位${half}桁に分割: c=${c}`,
+    `${y}を上位${half}桁と下位${half}桁に分割: d=${d}`,
+    `1回目の掛け算: a×c = ${a}×${c} = ${ac}`,
+    `2回目の掛け算: b×d = ${b}×${d} = ${bd}`,
+    `3回目の掛け算: (a+b)×(c+d) = ${a + b}×${c + d} = ${sumProduct}`,
+    `ad+bc = (a+b)(c+d) - ac - bd = ${sumProduct} - ${ac} - ${bd} = ${adbc}(4回目の掛け算を避けられるのがカラツバ法の要点)`,
+    `結果 = ac×10^${2 * half} + (ad+bc)×10^${half} + bd = ${result}`,
+  ];
+
+  const frames: DPFrame[] = [];
+  const snapshot = (description: string): DPFrame => ({
+    table: table.map((row, r) => row.map((value, c2) => ({ value, state: state[r][c2] }))),
+    description,
+  });
+
+  frames.push(
+    snapshot(`カラツバ法を開始。${x} × ${y} を、桁を半分に割って3回の掛け算(愚直な方法の4回より少ない)で計算する`),
+  );
+
+  for (let c2 = 0; c2 < cols; c2++) {
+    table[0][c2] = values[c2];
+    state[0][c2] = "pivot";
+    frames.push(snapshot(descriptions[c2]));
+    state[0][c2] = "settled";
+  }
+
+  frames.push(snapshot(`計算完了。${x} × ${y} = ${result}`));
+  return frames;
+}
+
+export const RSA_P = 61;
+export const RSA_Q = 53;
+export const RSA_E = 17;
+export const RSA_MESSAGE = 65;
+
+function rsaModPow(base: number, exp: number, mod: number): number {
+  let result = 1;
+  let b = base % mod;
+  let e = exp;
+  while (e > 0) {
+    if (e & 1) result = (result * b) % mod;
+    b = (b * b) % mod;
+    e = Math.floor(e / 2);
+  }
+  return result;
+}
+
+function rsaModInverse(e: number, phi: number): number {
+  for (let d = 1; d < phi; d++) {
+    if ((e * d) % phi === 1) return d;
+  }
+  return 1;
+}
+
+/**
+ * RSA暗号の鍵生成・暗号化・復号のステップ列を生成する(Wikipedia等でよく引用される
+ * 教科書的な小さい数値例)。2つの素数p,qの積n=pqは公開されるが、pとq自体は秘密にされる。
+ * n(数百桁の大きさが実用)を素因数分解してpとqを求めるのが計算量的に極めて困難という
+ * 事実こそが、公開鍵(n,e)を知っていても秘密鍵dを算出できない安全性の根拠になっている。
+ */
+export function rsaSteps(): DPFrame[] {
+  const p = RSA_P;
+  const q = RSA_Q;
+  const e = RSA_E;
+  const m = RSA_MESSAGE;
+  const n = p * q;
+  const phi = (p - 1) * (q - 1);
+  const d = rsaModInverse(e, phi);
+  const c = rsaModPow(m, e, n);
+  const decrypted = rsaModPow(c, d, n);
+
+  const cols = 9;
+  const table: (number | null)[][] = [new Array(cols).fill(null)];
+  const state: DPCellState[][] = [new Array(cols).fill("idle")];
+  const values = [p, q, n, phi, e, d, m, c, decrypted];
+  const descriptions = [
+    `2つの素数を選ぶ: p=${p}`,
+    `2つの素数を選ぶ: q=${q}`,
+    `n = p×q = ${p}×${q} = ${n}(公開鍵の一部。素因数分解の困難さが安全性の根拠)`,
+    `φ(n) = (p-1)×(q-1) = ${p - 1}×${q - 1} = ${phi}(オイラーのトーシェント関数)`,
+    `公開鍵の指数e=${e}を選ぶ(gcd(e,φ(n))=1を満たす)`,
+    `秘密鍵d = eのφ(n)を法とする逆元 = ${d}(e×d mod φ(n) = 1)`,
+    `平文m=${m}を用意`,
+    `暗号化: c = m^e mod n = ${m}^${e} mod ${n} = ${c}(公開鍵(n,e)だけで計算可能)`,
+    `復号: m' = c^d mod n = ${c}^${d} mod ${n} = ${decrypted}(秘密鍵dを知る者だけが計算可能)`,
+  ];
+
+  const frames: DPFrame[] = [];
+  const snapshot = (description: string): DPFrame => ({
+    table: table.map((row, r) => row.map((value, c2) => ({ value, state: state[r][c2] }))),
+    description,
+  });
+
+  frames.push(snapshot("RSA暗号を開始。2つの素数の積の素因数分解が困難であることを安全性の根拠とする"));
+
+  for (let c2 = 0; c2 < cols; c2++) {
+    table[0][c2] = values[c2];
+    state[0][c2] = "pivot";
+    frames.push(snapshot(descriptions[c2]));
+    state[0][c2] = "settled";
+  }
+
+  frames.push(snapshot(`計算完了。復号結果m'=${decrypted}は元の平文m=${m}と一致(暗号化→復号で元に戻ることを確認)`));
+  return frames;
+}
+
+export const LUCAS_LEHMER_P = 7;
+
+/**
+ * ルーカス・レーマー・テストのステップ列を生成する。メルセンヌ数M=2^p-1が素数かどうかを、
+ * s_0=4から始まる数列 s_{i+1}=(s_i²-2) mod M をp-2回繰り返し、最終的にs_{p-2}が0になるか
+ * どうかだけで判定する。一般の素数判定より遥かに少ない計算量で判定できるため、
+ * 発見されている最大級の素数の多くはメルセンヌ素数(このテストで発見)が占めている。
+ */
+export function lucasLehmerSteps(): DPFrame[] {
+  const p = LUCAS_LEHMER_P;
+  const M = 2 ** p - 1;
+  const iterations = p - 2;
+
+  const sValues: number[] = [4];
+  let s = 4;
+  for (let i = 0; i < iterations; i++) {
+    s = (s * s - 2) % M;
+    sValues.push(s);
+  }
+
+  const cols = sValues.length;
+  const table: (number | null)[][] = [new Array(cols).fill(null)];
+  const state: DPCellState[][] = [new Array(cols).fill("idle")];
+
+  const frames: DPFrame[] = [];
+  const snapshot = (description: string): DPFrame => ({
+    table: table.map((row, r) => row.map((value, c) => ({ value, state: state[r][c] }))),
+    description,
+  });
+
+  frames.push(
+    snapshot(
+      `ルーカス・レーマー・テストを開始。M=2^${p}-1=${M}がメルセンヌ素数かどうかを、s_0=4から始めるs_{i+1}=(s_i²-2) mod Mの数列で判定する(s_${iterations}=0ならMは素数)`,
+    ),
+  );
+
+  for (let c = 0; c < cols; c++) {
+    table[0][c] = sValues[c];
+    state[0][c] = "pivot";
+    frames.push(snapshot(c === 0 ? "s_0 = 4" : `s_${c} = (s_${c - 1}² - 2) mod ${M} = ${sValues[c]}`));
+    state[0][c] = "settled";
+  }
+
+  const finalS = sValues[sValues.length - 1];
+  frames.push(
+    snapshot(
+      `計算完了。s_${iterations} = ${finalS}。${finalS === 0 ? `0になったのでM=${M}はメルセンヌ素数` : `0にならなかったのでM=${M}はメルセンヌ素数ではない`}`,
+    ),
+  );
+  return frames;
+}
+
+export const BSGS_P = 23;
+export const BSGS_G = 5;
+export const BSGS_H = 8;
+
+function bsgsModPow(base: number, exp: number, mod: number): number {
+  let result = 1;
+  let b = base % mod;
+  let e = exp;
+  while (e > 0) {
+    if (e & 1) result = (result * b) % mod;
+    b = (b * b) % mod;
+    e = Math.floor(e / 2);
+  }
+  return result;
+}
+
+function bsgsModInverse(a: number, m: number): number {
+  const aMod = ((a % m) + m) % m;
+  for (let x = 1; x < m; x++) {
+    if ((aMod * x) % m === 1) return x;
+  }
+  return 1;
+}
+
+/**
+ * Baby-step Giant-step法のステップ列を生成する。g^x≡h (mod p) を満たす離散対数xを、
+ * 素朴な総当たりのO(p)ではなくO(√p)で求める。m=⌈√(p-1)⌉として、
+ * まずg^j(j=0..m-1)を全て表に記録しておき(ベビーステップ)、
+ * 次にh×(g^-m)^i(i=0..m-1)を順に計算してベビーステップの表と一致するものを探す
+ * (ジャイアントステップ)。x=i×m+jという形で表せることを利用した、時間と空間を
+ * トレードオフする中間一致法(meet-in-the-middle)の代表例。
+ */
+export function babyStepGiantStepSteps(): DPFrame[] {
+  const p = BSGS_P;
+  const g = BSGS_G;
+  const h = BSGS_H;
+  const m = Math.ceil(Math.sqrt(p - 1));
+
+  const babySteps: number[] = [];
+  for (let j = 0; j < m; j++) babySteps.push(bsgsModPow(g, j, p));
+
+  const factor = bsgsModInverse(bsgsModPow(g, m, p), p);
+  let y = h;
+  const giantSteps: number[] = [y];
+  let foundX: number | null = null;
+  let foundI = -1;
+  let foundJ = -1;
+  for (let i = 0; i < m; i++) {
+    const j = babySteps.indexOf(giantSteps[i]);
+    if (j !== -1) {
+      foundX = i * m + j;
+      foundI = i;
+      foundJ = j;
+      break;
+    }
+    y = (y * factor) % p;
+    giantSteps.push(y);
+  }
+
+  const cols = m;
+  const table: (number | null)[][] = [
+    new Array(cols).fill(null),
+    new Array(cols).fill(null),
+    new Array(cols).fill(null),
+    new Array(cols).fill(null),
+  ];
+  const state: DPCellState[][] = [
+    new Array(cols).fill("idle"),
+    new Array(cols).fill("idle"),
+    new Array(cols).fill("idle"),
+    new Array(cols).fill("idle"),
+  ];
+
+  const frames: DPFrame[] = [];
+  const snapshot = (description: string): DPFrame => ({
+    table: table.map((row, r) => row.map((value, c) => ({ value, state: state[r][c] }))),
+    description,
+  });
+
+  frames.push(
+    snapshot(
+      `Baby-step Giant-step法を開始。g^x ≡ h (mod p) を満たすxを、g=${g}, h=${h}, p=${p}について求める(m=⌈√(p-1)⌉=${m})`,
+    ),
+  );
+
+  for (let j = 0; j < m; j++) {
+    table[0][j] = j;
+    table[1][j] = babySteps[j];
+    state[0][j] = "pivot";
+    state[1][j] = "pivot";
+    frames.push(snapshot(`ベビーステップ: g^${j} mod ${p} = ${babySteps[j]} をテーブルに記録`));
+    state[0][j] = "settled";
+    state[1][j] = "settled";
+  }
+
+  for (let i = 0; i < giantSteps.length; i++) {
+    table[2][i] = i;
+    table[3][i] = giantSteps[i];
+    state[2][i] = "pivot";
+    state[3][i] = "pivot";
+    const j = babySteps.indexOf(giantSteps[i]);
+    frames.push(
+      snapshot(
+        `ジャイアントステップ: y_${i} = h×factor^${i} mod ${p} = ${giantSteps[i]}` +
+          (j !== -1 ? ` → ベビーステップ表のj=${j}と一致!` : " → ベビーステップ表に見つからず、次へ"),
+      ),
+    );
+    state[2][i] = "settled";
+    state[3][i] = "settled";
+  }
+
+  frames.push(
+    snapshot(
+      `計算完了。x = i×m + j = ${foundI}×${m} + ${foundJ} = ${foundX}(検算: ${g}^${foundX} mod ${p} = ${bsgsModPow(g, foundX ?? 0, p)})`,
+    ),
+  );
+  return frames;
+}
+
 export type DPTableMeta = {
   /** テーブル上の情報チップ(品物一覧や対象文字列など)。 */
   chips: string[];
@@ -1488,6 +1979,54 @@ export const DP_TABLE_META: Record<string, DPTableMeta> = {
     rowHeaders: ["Alice", "Bob"],
     colHeaders: ["秘密鍵", "公開鍵(g^秘密 mod p)", "共有鍵"],
   },
+  "miller-rabin": {
+    chips: [`n=${MILLER_RABIN_N}(=3×11×17、カーマイケル数)`, `証人: ${MILLER_RABIN_WITNESSES.join(", ")}`],
+    cornerLabel: "値 \\ 証人",
+    rowHeaders: ["証人a", "判定(1=素数の可能性/0=合成数の証拠)"],
+    colHeaders: MILLER_RABIN_WITNESSES.map((a) => `a=${a}`),
+  },
+  "pollards-rho": {
+    chips: [`n=${POLLARDS_RHO_N}`, "f(x)=x²+1 mod n"],
+    cornerLabel: "値 \\ 反復",
+    rowHeaders: ["x(遅い)", "y(速い)", "gcd(|x-y|, n)"],
+    colHeaders: (() => {
+      let x = 2;
+      let y = 2;
+      let d = 1;
+      let count = 0;
+      while (d === 1) {
+        x = pollardsRhoF(x, POLLARDS_RHO_N);
+        y = pollardsRhoF(pollardsRhoF(y, POLLARDS_RHO_N), POLLARDS_RHO_N);
+        d = pollardsRhoGcd(Math.abs(x - y), POLLARDS_RHO_N);
+        count++;
+      }
+      return Array.from({ length: count }, (_, i) => `反復${i + 1}`);
+    })(),
+  },
+  karatsuba: {
+    chips: [`x=${KARATSUBA_X}`, `y=${KARATSUBA_Y}`, "4桁×4桁を2桁ずつに分割する1段のみの簡略デモ"],
+    cornerLabel: "変数",
+    rowHeaders: ["値"],
+    colHeaders: ["a", "b", "c", "d", "a×c", "b×d", "(a+b)×(c+d)", "ad+bc", "結果"],
+  },
+  rsa: {
+    chips: [`p=${RSA_P}`, `q=${RSA_Q}`, `e=${RSA_E}`, `平文m=${RSA_MESSAGE}`],
+    cornerLabel: "変数",
+    rowHeaders: ["値"],
+    colHeaders: ["p", "q", "n=pq", "φ(n)", "e", "d", "m", "c=m^e mod n", "復号=c^d mod n"],
+  },
+  "lucas-lehmer": {
+    chips: [`p=${LUCAS_LEHMER_P}`, `M=2^${LUCAS_LEHMER_P}-1=${2 ** LUCAS_LEHMER_P - 1}`],
+    cornerLabel: "数列 \\ 反復",
+    rowHeaders: ["s"],
+    colHeaders: Array.from({ length: LUCAS_LEHMER_P - 1 }, (_, i) => `s_${i}`),
+  },
+  "baby-step-giant-step": {
+    chips: [`p=${BSGS_P}`, `g=${BSGS_G}`, `h=${BSGS_H}`, "g^x ≡ h (mod p) を満たすxを求める"],
+    cornerLabel: "値 \\ ステップ番号",
+    rowHeaders: ["j(ベビー)", "g^j mod p", "i(ジャイアント)", "y_i mod p"],
+    colHeaders: Array.from({ length: Math.ceil(Math.sqrt(BSGS_P - 1)) }, (_, i) => String(i)),
+  },
 };
 
 export const DP_VISUALIZERS: Record<string, () => DPFrame[]> = {
@@ -1511,4 +2050,10 @@ export const DP_VISUALIZERS: Record<string, () => DPFrame[]> = {
   "russian-peasant-multiplication": russianPeasantMultiplicationSteps,
   "chinese-remainder-theorem": chineseRemainderTheoremSteps,
   "diffie-hellman": diffieHellmanSteps,
+  "miller-rabin": millerRabinSteps,
+  "pollards-rho": pollardsRhoSteps,
+  karatsuba: karatsubaSteps,
+  rsa: rsaSteps,
+  "lucas-lehmer": lucasLehmerSteps,
+  "baby-step-giant-step": babyStepGiantStepSteps,
 };
