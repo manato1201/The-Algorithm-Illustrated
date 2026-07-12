@@ -1,6 +1,6 @@
 # 実装状況ノート
 
-最終更新: 2026-07-12(可視化対応アルゴリズムを58件→59件に拡張。GraphVisualizerを拡張しFord-Fulkerson法(最大流)に対応、グラフカテゴリが10件に。Edmonds-Karp法・Dinic法と同じ残余グラフ・同じCLRS最大流ネットワーク例(既知の最大流=23)を再利用し、増加パスの探索をBFSではなくDFSで行う実装にした(最短パスとは限らないため、この例ではEdmonds-Karp法の3ラウンドに対しFord-Fulkerson法は5ラウンドかかることをnode --experimental-strip-typesで確認)。可視化拡張の経緯: 16件→42件→46件→49件→53件→54件→55件→56件→57件→58件→59件。更新情報(RSS)画面+Vercel Edge Functions BFF、比較画面(可視化グリッド付き)、Aboutページ、Worker使い回し最適化、pixi.jsパーティクル演出も追加済み)
+最終更新: 2026-07-12(可視化対応アルゴリズムを59件→60件に拡張。TrieVisualizerを拡張しAho-Corasick法(複数パターン同時マッチ)に対応、文字列カテゴリが5件に。既存のトライ木基盤を再利用しつつ`TrieNode`/`TrieFrame`型を後方互換に拡張(word/fail/failEdges)し、失敗リンクのBFS構築とテキスト走査での複数パターン同時検出を可視化した。独立実装(brute-force全件検索)との突き合わせで検出結果が完全一致することを確認済み。可視化拡張の経緯: 16件→42件→46件→49件→53件→54件→55件→56件→57件→58件→59件→60件。更新情報(RSS)画面+Vercel Edge Functions BFF、比較画面(可視化グリッド付き)、Aboutページ、Worker使い回し最適化、pixi.jsパーティクル演出も追加済み)
 
 このドキュメントは、後日どのセッションからでも作業を再開できるように、実装済みの内容・意思決定の理由・既知の制約をまとめたものです。デザインの意思決定そのものは [docs/design/ui-design.md](design/ui-design.md) を参照してください。
 
@@ -174,11 +174,13 @@
 
 ### トライ木の可視化(`src/components/visualizer/TrieVisualizer.tsx` + `src/lib/trie-visualizer.ts`、2026-07-12新規追加)
 
-- **対応アルゴリズム: トライ木(接頭辞木)の1つ**。データ構造カテゴリ(16件)で5件目の可視化対応
+- **対応アルゴリズム: トライ木(接頭辞木)/Aho-Corasick法の2つ**。データ構造カテゴリ(16件)で5件目の可視化対応(トライ木)+文字列カテゴリ(11件)で5件目の可視化対応(Aho-Corasick法)
 - `TreeVisualizer`(二分木前提)とは別コンポーネントとして新設した。トライ木は1頂点が持てる子の数が可変(二分木のような`left`/`right`ではなく`children: Record<文字, 子ID>`)なため、既存のin-order走査ベースのレイアウトが使えず、**children-first(帰りがけ)の集約**で座標を決める一般化tidy tree layoutを実装した: 葉は左から順に1スロットずつ、内部頂点のx座標は自分の子たちのx座標の平均
 - `["CAT","CAR","CARD","CARE","DOG"]`の順に1文字ずつ挿入する。既存の子があればそのままたどり、なければ新規頂点を作成する。"CAT"→"CAR"の挿入で"CA"までの経路が共有され、新規に必要なのは"T"→なし"R"の1頂点だけになる様子が可視化できる
 - 単語の終端頂点は二重丸(circle+ストローク)で区別して描画する
 - `node --experimental-strip-types`で、挿入した全5単語がトライ木から正しく復元できること、共有接頭辞("CA")が実際に1つの頂点にまとまっていること(頂点数10、内訳: root+C+A+T+R+D+E+D+O+G)、未挿入の接頭辞("CA"単体)が単語として誤検出されないことを検証済み
+- **Aho-Corasick法(`ahoCorasickSteps`)**は同じトライ木基盤(`children-first`レイアウト)を再利用し、`TrieNode`/`TrieFrame`型を後方互換に拡張(`word`/`fail`/`failEdges`は全てoptional)して実装した。複数パターン`["HE","SHE","HIS","HERS"]`を1本のトライ木にまとめて挿入した後、各頂点の失敗リンク(マッチ失敗時に飛ぶ先)をBFSで構築し、Canvas上に点線の辺として重ね描画する。続けてテキスト`"USHERS"`を1回だけ走査し、失敗リンクを辿りながら登録した全パターンの出現を同時に検出する(各パターンごとに個別のKMP法を走らせる必要がないのが利点)。頂点の新状態`"matched"`(pivot色)で検出済みパターンの終端頂点をハイライトする
+- 独立実装(`String.prototype.indexOf`によるbrute-force全件検索)との突き合わせで、検出結果("SHE"終端インデックス3、"HE"終端インデックス3、"HERS"終端インデックス5)が完全一致することを`node --experimental-strip-types`で確認済み
 
 ### three.js/pixi.jsによるショーケース演出(`src/components/visualizer/ParticleBurstLayer.tsx`)
 
@@ -221,7 +223,7 @@
 実装時点でスコープ外にしたもの、または仮実装のままのものを列挙する。
 
 - **content/algorithms/の全163件(15カテゴリ全て)がコンテンツ充実化済み**。デザインパターン(GoF23種)を含む全カテゴリが`## 概要`・`## 仕組み`・`## 特性・トレードオフ`の3見出し構成になった(2026-07-12完了)。デザインパターンの`## 特性・トレードオフ`は他カテゴリのBig-O計算量ではなく、パターン固有のトレードオフ(拡張性とクラス数増加の綱引き、カプセル化との緊張関係など)を軸に記述している
-- **可視化はソート17種+配列探索7種+グリッド経路探索4種+グラフ10種+DP12種+木構造4種+トライ木1種+文字列パターンマッチング4種の計59件**(2026-07-12、16件から大幅拡張)。残り104件は詳細ページを開いても「準備中」の破線パネルが表示されるだけ(コンテンツの充実化と可視化対応は別軸)
+- **可視化はソート17種+配列探索7種+グリッド経路探索4種+グラフ10種+DP12種+木構造4種+トライ木2種(トライ木/Aho-Corasick法)+文字列パターンマッチング4種の計60件**(2026-07-12、16件から大幅拡張)。残り103件は詳細ページを開いても「準備中」の破線パネルが表示されるだけ(コンテンツの充実化と可視化対応は別軸)
 - **データ構造カテゴリ(16件)は5件(BST/AVL木/Treap/赤黒木/トライ木)が可視化対応。残り11件(b-tree/bloom-filter/fenwick-tree/interval-tree/kd-tree/lru-cache/quad-tree/segment-tree/skip-list等)は未対応**。kd-tree/quad-tree(2次元空間分割)・skip-list(多段リンクリスト)・lru-cache(双方向リスト+ハッシュマップ)は既存のいずれのビジュアライザとも構造が異なり、それぞれ専用の可視化コンポーネントが必要になる
 - **文字列カテゴリ(11件)は4件(KMP法/ラビン-カープ法/Z algorithm/ボイヤー・ムーア法)が可視化対応。残り7件(aho-corasick/burrows-wheeler-transform/longest-common-substring/manacher/run-length-encoding/suffix-array/suffix-automaton)は未対応**。aho-corasickは今回作ったトライ木の`children: Record<文字,ID>`構造+失敗リンクの追加で`TrieVisualizer`を拡張すれば対応できる見込み。suffix-array/suffix-automatonは構造が大きく異なるため専用実装が必要になる
 - **配列探索(SearchVisualizer)・DPの1次元/区間/全頂点対バリエーション・グラフのUnion-Find/Tarjanのアルゴリズムはいずれも既存コンポーネント(SortVisualizer型のバーチャート、DPTableVisualizer、GraphVisualizer)を流用**。新規に増えたUIコンポーネントはSearchVisualizer・TreeVisualizer・StringMatchVisualizer・TrieVisualizerの4つのみ
@@ -276,15 +278,17 @@ Web Worker化の確認は、`.next/static(または/dev)/chunks/turbopack-worker
 
 続くFord-Fulkerson法の可視化(58件→59件、同じく2026-07-12)では、Edmonds-Karp法・Dinic法と同じ検証項目(最大流23・容量制約・流量保存則・S/T端点の流量一致)を`node --experimental-strip-types`で確認した。加えて、増加パスをBFSではなくDFSで探すため一般に最短パスとは限らないことを示す指標として、同じネットワーク上でEdmonds-Karp法が3ラウンドで収束するのに対しFord-Fulkerson法は5ラウンドかかることを直接比較・確認した。`npm run build`成功、dev server起動+curlでford-fulkersonページが200・canvas要素を含むこと、既存の9グラフアルゴリズムに回帰がないことを確認した。
 
+続くAho-Corasick法の可視化(59件→60件、同じく2026-07-12)では、`node --experimental-strip-types`で、`String.prototype.indexOf`によるbrute-force全件検索(独立実装)との突き合わせにより、パターン`["HE","SHE","HIS","HERS"]`をテキスト`"USHERS"`に対して検出した一致結果("SHE"終端インデックス3、"HE"終端インデックス3、"HERS"終端インデックス5)が完全一致することを確認した。加えて全10頂点に失敗リンクが漏れなく設定されていることも確認した。`npm run build`成功、dev server起動+curlでaho-corasickページが200・canvas要素を含むこと、既存のトライ木・グラフアルゴリズムに回帰がないことを確認した。
+
 ## 次にやること候補
 
 優先度順ではなく、思いついた順のメモ。着手時にあらためて相談・計画すること。
 
-**ユーザーとの合意事項(2026-07-12)**: 3課題(a. アルゴリズム数を文字通り10倍の約1630件にする、b. 未可視化アルゴリズムの可視化実装、c. 比較画面での可視化表示)のうち**bを最優先**として着手し、可視化対応を16件→42件→46件→49件→53件→54件→55件→56件→57件→58件→59件と段階的に拡張。**cも完了**(比較画面に可視化グリッドを追加)。残るはaと、bのさらなる継続。
+**ユーザーとの合意事項(2026-07-12)**: 3課題(a. アルゴリズム数を文字通り10倍の約1630件にする、b. 未可視化アルゴリズムの可視化実装、c. 比較画面での可視化表示)のうち**bを最優先**として着手し、可視化対応を16件→42件→46件→49件→53件→54件→55件→56件→57件→58件→59件→60件と段階的に拡張。**cも完了**(比較画面に可視化グリッドを追加)。残るはaと、bのさらなる継続。
 
-1. **可視化対応アルゴリズムのさらなる拡張(現在59件/163件、bの継続)**。
+1. **可視化対応アルゴリズムのさらなる拡張(現在60件/163件、bの継続)**。
    - データ構造カテゴリは16件中5件(BST/AVL木/Treap/赤黒木/トライ木)が対応済み、残り11件が未対応。専用の新規ビジュアライザが必要: kd-tree/quad-tree(2次元空間分割)、skip-list(多段リンクリスト)、lru-cache(双方向リスト+ハッシュマップ)、b-tree(多分木)、bloom-filter(ビット配列+複数ハッシュ関数)、interval-tree(区間集合)
-   - 文字列カテゴリは11件中4件(KMP法/ラビン-カープ法/Z algorithm/ボイヤー・ムーア法)が対応済み、残り7件が未対応。`TrieVisualizer`を拡張すれば対応できる見込み: aho-corasick(トライ木+失敗リンク)。専用実装が必要: suffix-array/suffix-automaton(接尾辞構造)、manacher(回文専用)、burrows-wheeler-transform/run-length-encoding(圧縮系、テキスト変換のビフォーアフター表示が必要)
+   - 文字列カテゴリは11件中5件(KMP法/ラビン-カープ法/Z algorithm/ボイヤー・ムーア法/Aho-Corasick法)が対応済み、残り6件が未対応。専用実装が必要: suffix-array/suffix-automaton(接尾辞構造)、manacher(回文専用)、burrows-wheeler-transform/run-length-encoding(圧縮系、テキスト変換のビフォーアフター表示が必要)
    - グラフの残り: 二部マッチング(hopcroft-karp、二部グラフレイアウトが必要)、johnson法(全頂点対最短路、floyd-warshallと結果が同じになるため可視化としての差別化を要検討)。DP残り(tsp-bitdp、ビットマスクDPで既存のDPTableVisualizerには収まりにくいため専用検討が必要)
    - 比較画面の可視化グリッドで実際にブラウザから4件同時選択して見比べる操作フローの手動確認(次回ブラウザ確認できる環境で最優先)
 2. **アルゴリズム数を10倍(約1630件)に拡大する**(課題a、未着手)。163件時点でも既にカテゴリを相当網羅しているため、実現には新カテゴリの新設(既存15カテゴリの深掘りだけでは限界がある)や、より粒度の細かいバリエーション(同じアルゴリズムの派生・変種)を含めるかの方針検討が必要。着手前に改めて相談すること
