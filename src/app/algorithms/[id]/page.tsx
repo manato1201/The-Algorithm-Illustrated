@@ -2,24 +2,11 @@ import { notFound } from "next/navigation";
 import Link from "next/link";
 import styles from "./page.module.css";
 import { ComplexityBadge } from "@/components/hud/ComplexityBadge";
-import { SortVisualizer } from "@/components/visualizer/SortVisualizer";
-import { PathfindingVisualizer } from "@/components/visualizer/PathfindingVisualizer";
-import { DPTableVisualizer } from "@/components/visualizer/DPTableVisualizer";
-import { GraphVisualizer } from "@/components/visualizer/GraphVisualizer";
-import { SearchVisualizer } from "@/components/visualizer/SearchVisualizer";
-import { TreeVisualizer } from "@/components/visualizer/TreeVisualizer";
-import { StringMatchVisualizer } from "@/components/visualizer/StringMatchVisualizer";
+import { AlgorithmVisualizer, hasVisualizer } from "@/components/visualizer/AlgorithmVisualizer";
 import {
   getAllAlgorithmIds,
   getAlgorithmDetail,
 } from "@/lib/content/algorithms";
-import { SORT_VISUALIZERS } from "@/lib/sort-visualizers";
-import { PATHFINDING_VISUALIZERS } from "@/lib/pathfinding-visualizers";
-import { DP_VISUALIZERS } from "@/lib/dp-visualizers";
-import { GRAPH_VISUALIZERS } from "@/lib/graph-visualizers";
-import { SEARCH_VISUALIZERS } from "@/lib/search-visualizers";
-import { TREE_VISUALIZERS } from "@/lib/tree-visualizers";
-import { STRING_VISUALIZERS } from "@/lib/string-visualizers";
 
 type AlgorithmDetailPageProps = {
   params: Promise<{ id: string }>;
@@ -39,14 +26,6 @@ export default async function AlgorithmDetailPage({
     notFound();
   }
 
-  const isSortVisualized = id in SORT_VISUALIZERS;
-  const isPathfindingVisualized = id in PATHFINDING_VISUALIZERS;
-  const isDPVisualized = id in DP_VISUALIZERS;
-  const isGraphVisualized = id in GRAPH_VISUALIZERS;
-  const isSearchVisualized = id in SEARCH_VISUALIZERS;
-  const isTreeVisualized = id in TREE_VISUALIZERS;
-  const isStringVisualized = id in STRING_VISUALIZERS;
-
   return (
     <div className={styles.page}>
       <Link href="/" className={styles.backLink}>
@@ -64,23 +43,11 @@ export default async function AlgorithmDetailPage({
           <h2 id="visual-heading" className={styles.sectionLabel}>
             ■ VISUALIZE 実行の可視化
           </h2>
-          {isSortVisualized ? (
-            <SortVisualizer algorithmId={id} />
-          ) : isPathfindingVisualized ? (
-            <PathfindingVisualizer algorithmId={id} />
-          ) : isDPVisualized ? (
-            <DPTableVisualizer algorithmId={id} />
-          ) : isGraphVisualized ? (
-            <GraphVisualizer algorithmId={id} />
-          ) : isSearchVisualized ? (
-            <SearchVisualizer algorithmId={id} />
-          ) : isTreeVisualized ? (
-            <TreeVisualizer algorithmId={id} />
-          ) : isStringVisualized ? (
-            <StringMatchVisualizer algorithmId={id} />
+          {hasVisualizer(id) ? (
+            <AlgorithmVisualizer algorithmId={id} />
           ) : (
             <div className={styles.placeholder}>
-              可視化は準備中です。現在はソート系17種・探索系(線形/二分/三分/ジャンプ/補間/指数/フィボナッチ探索)・グリッド経路探索(BFS/DFS/ダイクストラ法/A*探索)・グラフ(ベルマン・フォード法/プリム法/クラスカル法/ボルーフカ法/トポロジカルソート)・動的計画法10種・木構造(二分探索木/AVL木/Treap)・文字列パターンマッチング(KMP法/ラビン-カープ法/Z algorithm)のみ対応しています。
+              可視化は準備中です。現在はソート系17種・探索系(線形/二分/三分/ジャンプ/補間/指数/フィボナッチ探索)・グリッド経路探索(BFS/DFS/ダイクストラ法/A*探索)・グラフ(ベルマン・フォード法/プリム法/クラスカル法/ボルーフカ法/トポロジカルソート/Union-Find)・動的計画法12種・木構造(二分探索木/AVL木/Treap)・文字列パターンマッチング(KMP法/ラビン-カープ法/Z algorithm/ボイヤー・ムーア法)のみ対応しています。
             </div>
           )}
         </section>

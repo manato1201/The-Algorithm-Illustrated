@@ -4,6 +4,10 @@ import { useMemo, useState } from "react";
 import Link from "next/link";
 import styles from "./CompareView.module.css";
 import { ComplexityBadge } from "@/components/hud/ComplexityBadge";
+import {
+  AlgorithmVisualizer,
+  hasVisualizer,
+} from "@/components/visualizer/AlgorithmVisualizer";
 import type { AlgorithmMeta } from "@/lib/content/algorithms";
 
 const MAX_SELECTED = 4;
@@ -142,6 +146,39 @@ export function CompareView({ algorithms }: CompareViewProps) {
           </table>
         </div>
       )}
+
+      {selected.length > 0 ? (
+        <div className={styles.visualSection}>
+          <h2 className={styles.visualSectionLabel}>■ VISUALIZE 実行の可視化を見比べる</h2>
+          {selected.some((a) => hasVisualizer(a.id)) ? (
+            <div className={styles.visualGrid}>
+              {selected
+                .filter((a) => hasVisualizer(a.id))
+                .map((a) => (
+                  <div key={a.id} className={styles.visualPanel}>
+                    <Link href={`/algorithms/${a.id}`} className={styles.visualPanelTitle}>
+                      {a.name}
+                    </Link>
+                    <AlgorithmVisualizer algorithmId={a.id} />
+                  </div>
+                ))}
+            </div>
+          ) : (
+            <div className={styles.emptyState}>
+              選択したアルゴリズムはまだ可視化に対応していません。
+            </div>
+          )}
+          {selected.some((a) => !hasVisualizer(a.id)) ? (
+            <p className={styles.visualNote}>
+              可視化未対応:{" "}
+              {selected
+                .filter((a) => !hasVisualizer(a.id))
+                .map((a) => a.name)
+                .join("、")}
+            </p>
+          ) : null}
+        </div>
+      ) : null}
     </div>
   );
 }
