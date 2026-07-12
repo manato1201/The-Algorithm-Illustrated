@@ -5,6 +5,10 @@ export type TreeNode = {
   value: number;
   left: string | null;
   right: string | null;
+  /** 赤黒木のみ使用。回転処理で親をたどる必要があるため親IDを保持する。 */
+  parent?: string | null;
+  /** 赤黒木のみ使用。それ以外のアルゴリズムでは未設定のまま(描画側は既存の状態パレットにフォールバックする)。 */
+  color?: "red" | "black";
 };
 
 export type TreeFrame = {
@@ -344,8 +348,196 @@ export function treapSteps(): TreeFrame[] {
   return frames;
 }
 
+export const RED_BLACK_INSERT_SEQUENCE = [10, 20, 30, 15, 25, 5, 1];
+
+/**
+ * 赤黒木への挿入シーケンス(CLRS方式)のステップ列を生成する。
+ * 新しい頂点は必ず赤として挿入し、赤黒木の性質(根は黒/赤の子は必ず黒/根から葉までの黒頂点数が均一)
+ * が崩れた場合に、叔父の色に応じて2パターンで修正する:
+ * - 叔父も赤 → 親・叔父を黒、祖父を赤に再彩色して問題を祖父の位置へ伝播させる(回転なし)
+ * - 叔父が黒(またはnull) → ジグザグなら回転で直線に整形してから、親を黒・祖父を赤に再彩色し祖父を回転
+ * 回転にはノードの親をたどる必要があるため、他の木構造とは異なりTreeNode.parentを使用する。
+ */
+export function redBlackTreeSteps(): TreeFrame[] {
+  const nodes: Record<string, TreeNode> = {};
+  let rootId: string | null = null;
+  const frames: TreeFrame[] = [];
+
+  const snapshot = (nodeStates: Record<string, TreeNodeState>, description: string): TreeFrame => ({
+    nodes: cloneNodes(nodes),
+    rootId,
+    nodeStates: { ...nodeStates },
+    description,
+  });
+
+  const isRed = (id: string | null) => id !== null && nodes[id].color === "red";
+  const parentOf = (id: string | null): string | null => (id === null ? null : (nodes[id].parent ?? null));
+  const grandparentOf = (id: string | null): string | null => parentOf(parentOf(id));
+  const siblingOf = (id: string): string | null => {
+    const p = parentOf(id);
+    if (p === null) return null;
+    return nodes[p].left === id ? nodes[p].right : nodes[p].left;
+  };
+  const uncleOf = (id: string): string | null => {
+    const p = parentOf(id);
+    return p === null ? null : siblingOf(p);
+  };
+
+  const rotateLeft = (id: string) => {
+    const node = nodes[id];
+    const rightId = node.right!;
+    const right = nodes[rightId];
+    node.right = right.left;
+    if (right.left !== null) nodes[right.left].parent = id;
+    right.parent = node.parent ?? null;
+    if (node.parent == null) {
+      rootId = rightId;
+    } else if (nodes[node.parent].left === id) {
+      nodes[node.parent].left = rightId;
+    } else {
+      nodes[node.parent].right = rightId;
+    }
+    right.left = id;
+    node.parent = rightId;
+  };
+
+  const rotateRight = (id: string) => {
+    const node = nodes[id];
+    const leftId = node.left!;
+    const left = nodes[leftId];
+    node.left = left.right;
+    if (left.right !== null) nodes[left.right].parent = id;
+    left.parent = node.parent ?? null;
+    if (node.parent == null) {
+      rootId = leftId;
+    } else if (nodes[node.parent].right === id) {
+      nodes[node.parent].right = leftId;
+    } else {
+      nodes[node.parent].left = leftId;
+    }
+    left.right = id;
+    node.parent = leftId;
+  };
+
+  const fixInsert = (startId: string) => {
+    let id = startId;
+    while (isRed(parentOf(id))) {
+      const p = parentOf(id)!;
+      const gp = grandparentOf(id)!;
+      const u = uncleOf(id);
+
+      if (p === nodes[gp].left) {
+        if (u !== null && isRed(u)) {
+          nodes[p].color = "black";
+          nodes[u].color = "black";
+          nodes[gp].color = "red";
+          frames.push(
+            snapshot(
+              { [p]: "rotating", [u]: "rotating", [gp]: "rotating" },
+              `叔父${nodes[u].value}も赤 → 親と叔父を黒、祖父${nodes[gp].value}を赤に再彩色して問題を上へ伝播`,
+            ),
+          );
+          id = gp;
+        } else {
+          if (id === nodes[p].right) {
+            id = p;
+            rotateLeft(id);
+            frames.push(snapshot({ [id]: "rotating" }, "叔父が黒でジグザグ形 → 左回転して直線形に整形"));
+          }
+          const newP = parentOf(id)!;
+          const newGp = grandparentOf(id)!;
+          nodes[newP].color = "black";
+          nodes[newGp].color = "red";
+          rotateRight(newGp);
+          frames.push(
+            snapshot(
+              { [newP]: "rotating", [newGp]: "rotating" },
+              "叔父が黒で直線形 → 親を黒・祖父を赤に再彩色し、祖父を右回転",
+            ),
+          );
+        }
+      } else {
+        if (u !== null && isRed(u)) {
+          nodes[p].color = "black";
+          nodes[u].color = "black";
+          nodes[gp].color = "red";
+          frames.push(
+            snapshot(
+              { [p]: "rotating", [u]: "rotating", [gp]: "rotating" },
+              `叔父${nodes[u].value}も赤 → 親と叔父を黒、祖父${nodes[gp].value}を赤に再彩色して問題を上へ伝播`,
+            ),
+          );
+          id = gp;
+        } else {
+          if (id === nodes[p].left) {
+            id = p;
+            rotateRight(id);
+            frames.push(snapshot({ [id]: "rotating" }, "叔父が黒でジグザグ形 → 右回転して直線形に整形"));
+          }
+          const newP = parentOf(id)!;
+          const newGp = grandparentOf(id)!;
+          nodes[newP].color = "black";
+          nodes[newGp].color = "red";
+          rotateLeft(newGp);
+          frames.push(
+            snapshot(
+              { [newP]: "rotating", [newGp]: "rotating" },
+              "叔父が黒で直線形 → 親を黒・祖父を赤に再彩色し、祖父を左回転",
+            ),
+          );
+        }
+      }
+      if (id === rootId) break;
+    }
+    nodes[rootId!].color = "black";
+  };
+
+  frames.push(snapshot({}, "初期状態(空の木)"));
+
+  for (const value of RED_BLACK_INSERT_SEQUENCE) {
+    const id = String(value);
+    nodes[id] = { id, value, left: null, right: null, parent: null, color: "red" };
+
+    if (rootId === null) {
+      rootId = id;
+    } else {
+      let curId = rootId;
+      for (;;) {
+        const cur = nodes[curId];
+        if (value < cur.value) {
+          if (cur.left === null) {
+            cur.left = id;
+            nodes[id].parent = curId;
+            break;
+          }
+          curId = cur.left;
+        } else {
+          if (cur.right === null) {
+            cur.right = id;
+            nodes[id].parent = curId;
+            break;
+          }
+          curId = cur.right;
+        }
+      }
+    }
+    frames.push(snapshot({ [id]: "visiting" }, `値${value}を赤色の葉として挿入`));
+    fixInsert(id);
+    frames.push(snapshot({}, `値${value}の挿入完了(赤黒木の性質を維持するよう再彩色・回転を適用済み)`));
+  }
+
+  frames.push(
+    snapshot(
+      {},
+      `挿入完了。${RED_BLACK_INSERT_SEQUENCE.length}個の値から赤黒木が完成(根は黒、赤の子は必ず黒、根から葉までの黒頂点数が均一)`,
+    ),
+  );
+  return frames;
+}
+
 export const TREE_VISUALIZERS: Record<string, () => TreeFrame[]> = {
   "binary-search-tree": bstSteps,
   "avl-tree": avlTreeSteps,
   treap: treapSteps,
+  "red-black-tree": redBlackTreeSteps,
 };
