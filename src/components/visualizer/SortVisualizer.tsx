@@ -5,6 +5,7 @@ import styles from "./SortVisualizer.module.css";
 import { PlaybackControls } from "./PlaybackControls";
 import { useStepPlayer } from "./useStepPlayer";
 import { useWorkerFrames } from "./useWorkerFrames";
+import { ParticleBurstLayer, type ParticleBurst } from "./ParticleBurstLayer";
 import { stateColors, type StateColorKey } from "@/lib/design-tokens";
 import type { SortFrame } from "@/lib/sort-visualizers";
 import type { WorkerRequest } from "@/workers/algorithm-worker";
@@ -79,6 +80,35 @@ export function SortVisualizer({ algorithmId }: SortVisualizerProps) {
     });
   }, [frames, stepIndex]);
 
+  const bursts = useMemo<ParticleBurst[]>(() => {
+    const currentFrame = frames[stepIndex];
+    if (!currentFrame) return [];
+    const previousFrame = frames[stepIndex - 1];
+    const n = currentFrame.array.length;
+    const result: ParticleBurst[] = [];
+
+    for (let index = 0; index < n; index++) {
+      const state = currentFrame.highlight[index];
+      const previousState = previousFrame?.highlight[index];
+      if (state === "swapping") {
+        result.push({
+          id: `${stepIndex}-${index}-swap`,
+          xRatio: (index + 0.5) / n,
+          yRatio: 0.55,
+          color: stateColors.swapping,
+        });
+      } else if (state === "settled" && previousState !== "settled") {
+        result.push({
+          id: `${stepIndex}-${index}-settled`,
+          xRatio: (index + 0.5) / n,
+          yRatio: 0.3,
+          color: stateColors.settled,
+        });
+      }
+    }
+    return result;
+  }, [frames, stepIndex]);
+
   const handleShuffle = useCallback(() => {
     reset();
     setSeedArray((current) => {
@@ -95,7 +125,10 @@ export function SortVisualizer({ algorithmId }: SortVisualizerProps) {
 
   return (
     <div className={styles.visualizer}>
-      <canvas ref={canvasRef} className={styles.canvas} aria-hidden="true" />
+      <div className={styles.canvasWrap}>
+        <canvas ref={canvasRef} className={styles.canvas} aria-hidden="true" />
+        <ParticleBurstLayer bursts={bursts} />
+      </div>
       <p className={styles.description} role="status">
         {isComputing ? "Web Workerで計算中…" : currentFrame?.description}
       </p>

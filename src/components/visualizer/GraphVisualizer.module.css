@@ -5,13 +5,9 @@
 }
 
 /* フルブリード可視化キャンバス(ui-design.md 2.4節: 唯一の破調区画) */
-.canvasWrap {
-  position: relative;
-}
-
 .canvas {
   width: 100%;
-  height: 320px;
+  aspect-ratio: 16 / 10;
   display: block;
   background: var(--color-bg-void);
   border: 1px solid var(--color-line);

@@ -5,6 +5,7 @@ import { ComplexityBadge } from "@/components/hud/ComplexityBadge";
 import { SortVisualizer } from "@/components/visualizer/SortVisualizer";
 import { PathfindingVisualizer } from "@/components/visualizer/PathfindingVisualizer";
 import { DPTableVisualizer } from "@/components/visualizer/DPTableVisualizer";
+import { GraphVisualizer } from "@/components/visualizer/GraphVisualizer";
 import {
   getAllAlgorithmIds,
   getAlgorithmDetail,
@@ -12,6 +13,7 @@ import {
 import { SORT_VISUALIZERS } from "@/lib/sort-visualizers";
 import { PATHFINDING_VISUALIZERS } from "@/lib/pathfinding-visualizers";
 import { DP_VISUALIZERS } from "@/lib/dp-visualizers";
+import { GRAPH_VISUALIZERS } from "@/lib/graph-visualizers";
 
 type AlgorithmDetailPageProps = {
   params: Promise<{ id: string }>;
@@ -34,6 +36,7 @@ export default async function AlgorithmDetailPage({
   const isSortVisualized = id in SORT_VISUALIZERS;
   const isPathfindingVisualized = id in PATHFINDING_VISUALIZERS;
   const isDPVisualized = id in DP_VISUALIZERS;
+  const isGraphVisualized = id in GRAPH_VISUALIZERS;
 
   return (
     <div className={styles.page}>
@@ -58,9 +61,11 @@ export default async function AlgorithmDetailPage({
             <PathfindingVisualizer algorithmId={id} />
           ) : isDPVisualized ? (
             <DPTableVisualizer algorithmId={id} />
+          ) : isGraphVisualized ? (
+            <GraphVisualizer algorithmId={id} />
           ) : (
             <div className={styles.placeholder}>
-              可視化は準備中です。現在はソート系(バブル/選択/挿入/マージ/ヒープ/クイックソート)・経路探索(BFS/DFS/ダイクストラ法/A*探索)・動的計画法(0-1ナップサック問題)のみ対応しています。
+              可視化は準備中です。現在はソート系(バブル/選択/挿入/マージ/ヒープ/クイックソート)・経路探索(BFS/DFS/ダイクストラ法/A*探索)・グラフ(ベルマン・フォード法/プリム法/クラスカル法)・動的計画法(0-1ナップサック問題/LCS/編集距離)のみ対応しています。
             </div>
           )}
         </section>
