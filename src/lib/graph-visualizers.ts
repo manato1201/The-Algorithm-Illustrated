@@ -484,6 +484,108 @@ export type GraphDataset = {
   directed: boolean;
 };
 
+export const UNION_FIND_NODES: GraphNode[] = circleLayout(["0", "1", "2", "3", "4", "5", "6", "7"]);
+/** 8要素を1つの集合に統合する7回のunion操作(全て実際に集合を統合する、no-opは含まない)。 */
+export const UNION_FIND_OPERATIONS: [string, string][] = [
+  ["0", "1"],
+  ["2", "3"],
+  ["4", "5"],
+  ["6", "7"],
+  ["0", "2"],
+  ["4", "6"],
+  ["0", "4"],
+];
+export const UNION_FIND_EDGES: GraphEdge[] = UNION_FIND_OPERATIONS.map(([a, b], i) => ({
+  id: `uf${i}`,
+  from: a,
+  to: b,
+  weight: 1,
+}));
+
+/**
+ * Union-Find(素集合データ構造)のステップ列を生成する。
+ * 各要素は最初は自分自身だけの集合。union(a,b)のたびに、それぞれの根をfind()でたどり、
+ * ランクの低い方の根を高い方につなぐ(union by rank)ことで、木の高さを低く保ちながら集合を統合する。
+ * このデモでは経路圧縮は行わない(union by rankのみでも十分に高さを抑えられることを示す簡略版)。
+ */
+export function unionFindSteps(): GraphFrame[] {
+  const nodes = UNION_FIND_NODES;
+  const operations = UNION_FIND_OPERATIONS;
+  const parent = new Map<string, string>();
+  const rank = new Map<string, number>();
+  nodes.forEach((n) => {
+    parent.set(n.id, n.id);
+    rank.set(n.id, 0);
+  });
+
+  const nodeStates = initNodeStates(nodes, "idle");
+  const edgeStates = initEdgeStates(UNION_FIND_EDGES, "idle");
+
+  const frames: GraphFrame[] = [
+    {
+      nodeStates: { ...nodeStates },
+      edgeStates: { ...edgeStates },
+      distances: {},
+      description: "各要素が自分自身だけの集合として8個の独立した集合から開始",
+    },
+  ];
+
+  const find = (id: string, path: string[]): string => {
+    path.push(id);
+    const p = parent.get(id)!;
+    if (p === id) return id;
+    return find(p, path);
+  };
+
+  operations.forEach(([a, b], i) => {
+    const pathA: string[] = [];
+    const pathB: string[] = [];
+    const rootA = find(a, pathA);
+    const rootB = find(b, pathB);
+
+    const visitingStates = { ...nodeStates };
+    [...pathA, ...pathB].forEach((id) => {
+      visitingStates[id] = "visited";
+    });
+    frames.push({
+      nodeStates: visitingStates,
+      edgeStates: { ...edgeStates },
+      distances: {},
+      description: `union(${a}, ${b}): find(${a})の経路[${pathA.join("→")}]、find(${b})の経路[${pathB.join("→")}]でそれぞれの根を特定`,
+    });
+
+    const rankA = rank.get(rootA)!;
+    const rankB = rank.get(rootB)!;
+    if (rankA < rankB) {
+      parent.set(rootA, rootB);
+    } else if (rankA > rankB) {
+      parent.set(rootB, rootA);
+    } else {
+      parent.set(rootB, rootA);
+      rank.set(rootA, rankA + 1);
+    }
+
+    edgeStates[UNION_FIND_EDGES[i].id] = "tree";
+    nodeStates[a] = "settled";
+    nodeStates[b] = "settled";
+    frames.push({
+      nodeStates: { ...nodeStates },
+      edgeStates: { ...edgeStates },
+      distances: {},
+      description: `union(${a}, ${b}): ランクの低い方の根を高い方につなぎ、2つの集合を統合(union by rank)`,
+    });
+  });
+
+  frames.push({
+    nodeStates: { ...nodeStates },
+    edgeStates: { ...edgeStates },
+    distances: {},
+    description: "全ての操作が完了。経路圧縮なしのunion by rankだけでも木の高さを低く保てる",
+  });
+
+  return frames;
+}
+
 export const GRAPH_DATASETS: Record<string, GraphDataset> = {
   "bellman-ford": {
     nodes: SHORTEST_PATH_NODES,
@@ -498,6 +600,7 @@ export const GRAPH_DATASETS: Record<string, GraphDataset> = {
     directed: true,
   },
   boruvka: { nodes: MST_NODES, edges: MST_EDGES, directed: false },
+  "union-find": { nodes: UNION_FIND_NODES, edges: UNION_FIND_EDGES, directed: false },
 };
 
 export const GRAPH_VISUALIZERS: Record<string, () => GraphFrame[]> = {
@@ -506,4 +609,5 @@ export const GRAPH_VISUALIZERS: Record<string, () => GraphFrame[]> = {
   kruskal: kruskalSteps,
   "topological-sort": topologicalSortSteps,
   boruvka: boruvkaSteps,
+  "union-find": unionFindSteps,
 };
