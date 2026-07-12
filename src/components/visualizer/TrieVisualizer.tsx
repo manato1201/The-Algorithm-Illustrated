@@ -13,12 +13,18 @@ const NODE_COLORS: Record<TrieNodeState, string> = {
   idle: stateColors.idle,
   visiting: stateColors.comparing,
   inserted: stateColors.settled,
+  matched: stateColors.pivot,
 };
 
 const LEGEND_ITEMS: { key: TrieNodeState; label: string }[] = [
   { key: "visiting", label: "経路をたどる/作成" },
   { key: "inserted", label: "単語の終端" },
 ];
+
+const MATCHED_LEGEND_ITEM: { key: TrieNodeState; label: string } = {
+  key: "matched",
+  label: "テキスト走査でパターンが一致",
+};
 
 type LayoutPosition = { x: number; y: number };
 
@@ -112,12 +118,31 @@ export function TrieVisualizer({ algorithmId }: TrieVisualizerProps) {
         const to = point(childId);
         ctx.strokeStyle = stateColors.idle;
         ctx.lineWidth = 1.5;
+        ctx.setLineDash([]);
         ctx.beginPath();
         ctx.moveTo(from.x, from.y);
         ctx.lineTo(to.x, to.y);
         ctx.stroke();
       });
     });
+
+    if (currentFrame.failEdges) {
+      ctx.strokeStyle = stateColors.pivot;
+      ctx.lineWidth = 1;
+      ctx.setLineDash([4, 4]);
+      ctx.globalAlpha = 0.5;
+      currentFrame.failEdges.forEach(([fromId, toId]) => {
+        if (fromId === toId) return;
+        const from = point(fromId);
+        const to = point(toId);
+        ctx.beginPath();
+        ctx.moveTo(from.x, from.y);
+        ctx.lineTo(to.x, to.y);
+        ctx.stroke();
+      });
+      ctx.globalAlpha = 1;
+      ctx.setLineDash([]);
+    }
 
     Object.values(currentFrame.nodes).forEach((node) => {
       const state = currentFrame.nodeStates[node.id] ?? "idle";
@@ -176,7 +201,20 @@ export function TrieVisualizer({ algorithmId }: TrieVisualizerProps) {
             {item.label}
           </li>
         ))}
+        {algorithmId === "aho-corasick" ? (
+          <li className={styles.legendItem}>
+            <span
+              className={styles.legendSwatch}
+              style={{ backgroundColor: NODE_COLORS[MATCHED_LEGEND_ITEM.key] }}
+              aria-hidden="true"
+            />
+            {MATCHED_LEGEND_ITEM.label}
+          </li>
+        ) : null}
         <li className={styles.legendItem}>(二重丸 = 単語の終端)</li>
+        {algorithmId === "aho-corasick" ? (
+          <li className={styles.legendItem}>(点線 = 失敗リンク)</li>
+        ) : null}
       </ul>
     </div>
   );
