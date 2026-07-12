@@ -4,6 +4,7 @@ import { DP_VISUALIZERS } from "../lib/dp-visualizers";
 import { GRAPH_VISUALIZERS } from "../lib/graph-visualizers";
 import { SEARCH_VISUALIZERS } from "../lib/search-visualizers";
 import { TREE_VISUALIZERS } from "../lib/tree-visualizers";
+import { STRING_VISUALIZERS } from "../lib/string-visualizers";
 
 export type WorkerRequest =
   | { kind: "sort"; algorithmId: string; input: number[] }
@@ -11,7 +12,8 @@ export type WorkerRequest =
   | { kind: "dp"; algorithmId: string }
   | { kind: "graph"; algorithmId: string }
   | { kind: "search"; algorithmId: string }
-  | { kind: "tree"; algorithmId: string };
+  | { kind: "tree"; algorithmId: string }
+  | { kind: "string"; algorithmId: string };
 
 export type WorkerResponse = {
   /** どのrequestに対する結果かをpostMessageの往復越しに相関させるためエコーバックする。 */
@@ -51,6 +53,9 @@ ctx.onmessage = (event) => {
     frames = generate ? generate() : [];
   } else if (request.kind === "tree") {
     const generate = TREE_VISUALIZERS[request.algorithmId];
+    frames = generate ? generate() : [];
+  } else if (request.kind === "string") {
+    const generate = STRING_VISUALIZERS[request.algorithmId];
     frames = generate ? generate() : [];
   }
 
