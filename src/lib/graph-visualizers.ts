@@ -328,6 +328,156 @@ export function kruskalSteps(): GraphFrame[] {
   return frames;
 }
 
+/**
+ * DFSベースのトポロジカルソートのステップ列を生成する。
+ * bellman-ford.mdと同じ有向非巡回グラフ(DAG)を使い回す。
+ * 各頂点の子を全て訪問し終えた時点で順序リストの先頭に追加する(帰りがけ順の逆順)。
+ */
+export function topologicalSortSteps(): GraphFrame[] {
+  const nodes = SHORTEST_PATH_NODES;
+  const edges = SHORTEST_PATH_EDGES;
+  const nodeStates = initNodeStates(nodes, "idle");
+  const edgeStates = initEdgeStates(edges, "idle");
+  const visited = new Set<string>();
+  const order: string[] = [];
+
+  const frames: GraphFrame[] = [
+    {
+      nodeStates: { ...nodeStates },
+      edgeStates: { ...edgeStates },
+      distances: {},
+      description: "DFSベースのトポロジカルソートを開始",
+    },
+  ];
+
+  const outgoing = (nodeId: string) => edges.filter((e) => e.from === nodeId);
+
+  const visit = (nodeId: string) => {
+    visited.add(nodeId);
+    nodeStates[nodeId] = "visited";
+    frames.push({
+      nodeStates: { ...nodeStates },
+      edgeStates: { ...edgeStates },
+      distances: {},
+      description: `頂点${nodeId}を訪問`,
+    });
+
+    for (const edge of outgoing(nodeId)) {
+      if (visited.has(edge.to)) continue;
+      edgeStates[edge.id] = "tree";
+      frames.push({
+        nodeStates: { ...nodeStates },
+        edgeStates: { ...edgeStates },
+        distances: {},
+        description: `辺${edge.from}→${edge.to}をたどる`,
+      });
+      visit(edge.to);
+    }
+
+    order.unshift(nodeId);
+    nodeStates[nodeId] = "settled";
+    frames.push({
+      nodeStates: { ...nodeStates },
+      edgeStates: { ...edgeStates },
+      distances: {},
+      description: `頂点${nodeId}の子を全て訪問し終えたので順序リストの先頭に追加(現在の順序: ${order.join(" → ")})`,
+    });
+  };
+
+  for (const node of nodes) {
+    if (!visited.has(node.id)) visit(node.id);
+  }
+
+  frames.push({
+    nodeStates: { ...nodeStates },
+    edgeStates: { ...edgeStates },
+    distances: {},
+    description: `トポロジカルソート完了: ${order.join(" → ")}`,
+  });
+
+  return frames;
+}
+
+/**
+ * ボルーフカ法のステップ列を生成する。
+ * 全ての木(最初は各頂点1つずつ)が、他の木へ出る最小コストの辺を同時に選んで統合する、
+ * というラウンド制の進め方がプリム法・クラスカル法との違い。
+ */
+export function boruvkaSteps(): GraphFrame[] {
+  const nodes = MST_NODES;
+  const edges = MST_EDGES;
+  const nodeStates = initNodeStates(nodes, "idle");
+  const edgeStates = initEdgeStates(edges, "idle");
+
+  const parent = new Map<string, string>();
+  nodes.forEach((n) => parent.set(n.id, n.id));
+  const find = (id: string): string => {
+    let root = id;
+    while (parent.get(root) !== root) root = parent.get(root)!;
+    return root;
+  };
+  const union = (a: string, b: string) => parent.set(find(a), find(b));
+
+  const frames: GraphFrame[] = [
+    {
+      nodeStates: { ...nodeStates },
+      edgeStates: { ...edgeStates },
+      distances: {},
+      description: "各頂点を1つの木として開始",
+    },
+  ];
+
+  let numComponents = nodes.length;
+  let round = 0;
+  while (numComponents > 1) {
+    round++;
+    const cheapest = new Map<string, GraphEdge>();
+    for (const edge of edges) {
+      const compFrom = find(edge.from);
+      const compTo = find(edge.to);
+      if (compFrom === compTo) continue;
+      const currentFrom = cheapest.get(compFrom);
+      if (!currentFrom || edge.weight < currentFrom.weight) cheapest.set(compFrom, edge);
+      const currentTo = cheapest.get(compTo);
+      if (!currentTo || edge.weight < currentTo.weight) cheapest.set(compTo, edge);
+    }
+
+    frames.push({
+      nodeStates: { ...nodeStates },
+      edgeStates: { ...edgeStates },
+      distances: {},
+      description: `[ラウンド${round}] 各木ごとに他の木へ出る最小コストの辺を探す`,
+    });
+
+    let merged = false;
+    for (const edge of cheapest.values()) {
+      if (find(edge.from) === find(edge.to)) continue;
+      union(edge.from, edge.to);
+      edgeStates[edge.id] = "tree";
+      nodeStates[edge.from] = "settled";
+      nodeStates[edge.to] = "settled";
+      numComponents--;
+      merged = true;
+      frames.push({
+        nodeStates: { ...nodeStates },
+        edgeStates: { ...edgeStates },
+        distances: {},
+        description: `辺${edge.from}-${edge.to}(重み${edge.weight})を採用して2つの木を統合`,
+      });
+    }
+    if (!merged) break;
+  }
+
+  frames.push({
+    nodeStates: { ...nodeStates },
+    edgeStates: { ...edgeStates },
+    distances: {},
+    description: "最小全域木が完成",
+  });
+
+  return frames;
+}
+
 export type GraphDataset = {
   nodes: GraphNode[];
   edges: GraphEdge[];
@@ -342,10 +492,18 @@ export const GRAPH_DATASETS: Record<string, GraphDataset> = {
   },
   prim: { nodes: MST_NODES, edges: MST_EDGES, directed: false },
   kruskal: { nodes: MST_NODES, edges: MST_EDGES, directed: false },
+  "topological-sort": {
+    nodes: SHORTEST_PATH_NODES,
+    edges: SHORTEST_PATH_EDGES,
+    directed: true,
+  },
+  boruvka: { nodes: MST_NODES, edges: MST_EDGES, directed: false },
 };
 
 export const GRAPH_VISUALIZERS: Record<string, () => GraphFrame[]> = {
   "bellman-ford": bellmanFordSteps,
   prim: primSteps,
   kruskal: kruskalSteps,
+  "topological-sort": topologicalSortSteps,
+  boruvka: boruvkaSteps,
 };
