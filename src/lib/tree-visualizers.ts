@@ -9,6 +9,10 @@ export type TreeNode = {
   parent?: string | null;
   /** 赤黒木のみ使用。それ以外のアルゴリズムでは未設定のまま(描画側は既存の状態パレットにフォールバックする)。 */
   color?: "red" | "black";
+  /** 区間木のみ使用。区間の上端(valueを下端として扱う)。 */
+  hi?: number;
+  /** 区間木のみ使用。部分木内の上端(hi)の最大値。左右の子の挿入・更新のたびに再計算する。 */
+  maxHigh?: number;
 };
 
 export type TreeFrame = {
@@ -535,9 +539,334 @@ export function redBlackTreeSteps(): TreeFrame[] {
   return frames;
 }
 
+export const SPLAY_TREE_INSERT_SEQUENCE = [40, 20, 60, 10, 30, 50, 70];
+export const SPLAY_TREE_ACCESS_VALUE = 10;
+
+/**
+ * スプレー木への挿入・アクセスのステップ列を生成する。AVL木・赤黒木のような
+ * 平衡条件(高さや色)を維持する代わりに、挿入または探索でアクセスした頂点を
+ * 毎回「スプレー操作」(zig/zig-zig/zig-zagという3種類の回転パターン)でルートまで
+ * 押し上げる。頻繁にアクセスされる要素ほどルート付近に留まりやすくなるため、
+ * アクセスパターンに偏りがある実データに対して償却計算量O(log n)を達成できる
+ * (最悪計算量の保証はAVL木・赤黒木に劣るが、局所性を活かせる場面で有利)。
+ */
+export function splayTreeSteps(): TreeFrame[] {
+  const nodes: Record<string, TreeNode> = {};
+  let rootId: string | null = null;
+  const frames: TreeFrame[] = [];
+
+  const snapshot = (nodeStates: Record<string, TreeNodeState>, description: string): TreeFrame => ({
+    nodes: cloneNodes(nodes),
+    rootId,
+    nodeStates: { ...nodeStates },
+    description,
+  });
+
+  const rotateLeft = (id: string) => {
+    const node = nodes[id];
+    const rightId = node.right!;
+    const right = nodes[rightId];
+    node.right = right.left;
+    if (right.left !== null) nodes[right.left].parent = id;
+    right.parent = node.parent ?? null;
+    if (node.parent == null) rootId = rightId;
+    else if (nodes[node.parent].left === id) nodes[node.parent].left = rightId;
+    else nodes[node.parent].right = rightId;
+    right.left = id;
+    node.parent = rightId;
+  };
+
+  const rotateRight = (id: string) => {
+    const node = nodes[id];
+    const leftId = node.left!;
+    const left = nodes[leftId];
+    node.left = left.right;
+    if (left.right !== null) nodes[left.right].parent = id;
+    left.parent = node.parent ?? null;
+    if (node.parent == null) rootId = leftId;
+    else if (nodes[node.parent].right === id) nodes[node.parent].right = leftId;
+    else nodes[node.parent].left = leftId;
+    left.right = id;
+    node.parent = leftId;
+  };
+
+  const splay = (id: string, descPrefix: string) => {
+    while (nodes[id].parent != null) {
+      const p = nodes[id].parent!;
+      const g = nodes[p].parent ?? null;
+      if (g === null) {
+        if (nodes[p].left === id) rotateRight(p);
+        else rotateLeft(p);
+        frames.push(
+          snapshot({ [id]: "rotating" }, `${descPrefix}: zig回転(親を1回転して頂点${nodes[id].value}を1段上げる)`),
+        );
+      } else {
+        const idIsLeftOfP = nodes[p].left === id;
+        const pIsLeftOfG = nodes[g].left === p;
+        if (idIsLeftOfP === pIsLeftOfG) {
+          if (idIsLeftOfP) {
+            rotateRight(g);
+            rotateRight(p);
+          } else {
+            rotateLeft(g);
+            rotateLeft(p);
+          }
+          frames.push(
+            snapshot(
+              { [id]: "rotating" },
+              `${descPrefix}: zig-zig回転(親と祖父を同じ向きに2回転し、頂点${nodes[id].value}を2段上げる)`,
+            ),
+          );
+        } else {
+          if (idIsLeftOfP) {
+            rotateRight(p);
+            rotateLeft(g);
+          } else {
+            rotateLeft(p);
+            rotateRight(g);
+          }
+          frames.push(
+            snapshot(
+              { [id]: "rotating" },
+              `${descPrefix}: zig-zag回転(親と祖父を逆向きに2回転し、頂点${nodes[id].value}を2段上げる)`,
+            ),
+          );
+        }
+      }
+    }
+  };
+
+  frames.push(snapshot({}, "初期状態(空の木)。スプレー木は挿入・探索のたびにアクセスした頂点をルートまで押し上げる"));
+
+  for (const value of SPLAY_TREE_INSERT_SEQUENCE) {
+    const id = String(value);
+    nodes[id] = { id, value, left: null, right: null, parent: null };
+
+    if (rootId === null) {
+      rootId = id;
+      frames.push(snapshot({ [id]: "inserted" }, `値${value}をルートとして挿入`));
+      continue;
+    }
+
+    let curId = rootId;
+    const visited: string[] = [];
+    for (;;) {
+      visited.push(curId);
+      const highlight: Record<string, TreeNodeState> = {};
+      visited.forEach((v) => {
+        highlight[v] = "visiting";
+      });
+      frames.push(snapshot(highlight, `値${value}を挿入する位置を探索中(現在: ${nodes[curId].value})`));
+
+      const cur = nodes[curId];
+      if (value < cur.value) {
+        if (cur.left === null) {
+          cur.left = id;
+          nodes[id].parent = curId;
+          break;
+        }
+        curId = cur.left;
+      } else {
+        if (cur.right === null) {
+          cur.right = id;
+          nodes[id].parent = curId;
+          break;
+        }
+        curId = cur.right;
+      }
+    }
+    frames.push(snapshot({ [id]: "inserted" }, `値${value}を葉として挿入。ここからスプレー操作でルートまで押し上げる`));
+    splay(id, `値${value}のスプレー`);
+    frames.push(snapshot({ [id]: "inserted" }, `値${value}がルートに到達`));
+  }
+
+  frames.push(
+    snapshot({}, `挿入完了。${SPLAY_TREE_INSERT_SEQUENCE.length}個の値を挿入(挿入のたびにルートまでスプレーした)`),
+  );
+
+  const accessValue = SPLAY_TREE_ACCESS_VALUE;
+  let curId = rootId!;
+  const visited: string[] = [];
+  for (;;) {
+    visited.push(curId);
+    const highlight: Record<string, TreeNodeState> = {};
+    visited.forEach((v) => {
+      highlight[v] = "visiting";
+    });
+    frames.push(snapshot(highlight, `値${accessValue}へのアクセス(探索)を開始。現在: ${nodes[curId].value}`));
+    const cur = nodes[curId];
+    if (cur.value === accessValue) break;
+    curId = accessValue < cur.value ? cur.left! : cur.right!;
+  }
+  frames.push(
+    snapshot(
+      { [curId]: "visiting" },
+      `値${accessValue}を発見。スプレー操作でルートまで押し上げる(頻繁にアクセスされる要素をルート付近に留める、スプレー木の核心)`,
+    ),
+  );
+  splay(curId, `値${accessValue}へのアクセスによるスプレー`);
+  frames.push(snapshot({ [curId]: "inserted" }, `計算完了。値${accessValue}が新しいルートになった`));
+
+  return frames;
+}
+
+export type IntervalTreeInterval = { lo: number; hi: number };
+/** CLRS(Cormen等)の教科書に登場する古典的な区間集合の例。 */
+export const INTERVAL_TREE_INTERVALS: IntervalTreeInterval[] = [
+  { lo: 15, hi: 20 },
+  { lo: 10, hi: 30 },
+  { lo: 17, hi: 19 },
+  { lo: 5, hi: 20 },
+  { lo: 12, hi: 15 },
+  { lo: 30, hi: 40 },
+];
+export const INTERVAL_TREE_QUERY: IntervalTreeInterval = { lo: 14, hi: 16 };
+
+/**
+ * 区間木のステップ列を生成する。区間の下端(lo)をキーとするBSTに、
+ * 各頂点が「自分を根とする部分木に含まれる区間の上端(hi)の最大値」(maxHigh)を
+ * 併せて持たせる(挿入のたびに祖先へ再計算を伝播させる)。この補助情報のおかげで、
+ * クエリ区間と重ならない部分木を「左の子のmaxHighがクエリの下端より小さければ、
+ * 左の子孫はどれもクエリと重なりえない」という条件だけで枝刈りでき、
+ * 全区間を1つずつ調べるO(n)ではなくO(log n)で(1つの)重なる区間を発見できる。
+ */
+export function intervalTreeSteps(): TreeFrame[] {
+  const nodes: Record<string, TreeNode> = {};
+  let rootId: string | null = null;
+  const frames: TreeFrame[] = [];
+
+  const snapshot = (nodeStates: Record<string, TreeNodeState>, description: string): TreeFrame => ({
+    nodes: cloneNodes(nodes),
+    rootId,
+    nodeStates: { ...nodeStates },
+    description,
+  });
+
+  const updateMaxUpward = (id: string | null) => {
+    let cur = id;
+    while (cur !== null) {
+      const node = nodes[cur];
+      let m = node.hi!;
+      if (node.left !== null) m = Math.max(m, nodes[node.left].maxHigh!);
+      if (node.right !== null) m = Math.max(m, nodes[node.right].maxHigh!);
+      node.maxHigh = m;
+      cur = node.parent ?? null;
+    }
+  };
+
+  frames.push(
+    snapshot({}, "初期状態(空の区間木)。各区間の下端(lo)をキーとするBSTに、部分木内の上端(hi)の最大値maxHighを併せて管理する"),
+  );
+
+  for (const interval of INTERVAL_TREE_INTERVALS) {
+    const id = `${interval.lo}-${interval.hi}`;
+    nodes[id] = {
+      id,
+      value: interval.lo,
+      hi: interval.hi,
+      maxHigh: interval.hi,
+      left: null,
+      right: null,
+      parent: null,
+    };
+
+    if (rootId === null) {
+      rootId = id;
+      frames.push(snapshot({ [id]: "inserted" }, `区間[${interval.lo},${interval.hi}]をルートとして挿入`));
+      continue;
+    }
+
+    let curId = rootId;
+    const visited: string[] = [];
+    for (;;) {
+      visited.push(curId);
+      const highlight: Record<string, TreeNodeState> = {};
+      visited.forEach((v) => {
+        highlight[v] = "visiting";
+      });
+      frames.push(
+        snapshot(
+          highlight,
+          `区間[${interval.lo},${interval.hi}]を挿入する位置を探索中(現在: [${nodes[curId].value},${nodes[curId].hi}])`,
+        ),
+      );
+
+      const cur = nodes[curId];
+      if (interval.lo < cur.value) {
+        if (cur.left === null) {
+          cur.left = id;
+          nodes[id].parent = curId;
+          break;
+        }
+        curId = cur.left;
+      } else {
+        if (cur.right === null) {
+          cur.right = id;
+          nodes[id].parent = curId;
+          break;
+        }
+        curId = cur.right;
+      }
+    }
+    updateMaxUpward(id);
+    frames.push(snapshot({ [id]: "inserted" }, `区間[${interval.lo},${interval.hi}]を挿入。祖先のmaxHighを再計算して伝播`));
+  }
+
+  frames.push(snapshot({}, `構築完了。${INTERVAL_TREE_INTERVALS.length}個の区間からなる区間木が完成`));
+
+  const query = INTERVAL_TREE_QUERY;
+  const overlaps = (a: IntervalTreeInterval, b: IntervalTreeInterval) => a.lo <= b.hi && b.lo <= a.hi;
+  let curId: string | null = rootId;
+  const found: string[] = [];
+  const visitedSearch: string[] = [];
+  while (curId !== null) {
+    visitedSearch.push(curId);
+    const node = nodes[curId];
+    const nodeInterval = { lo: node.value, hi: node.hi! };
+    const highlight: Record<string, TreeNodeState> = {};
+    visitedSearch.forEach((v) => {
+      highlight[v] = "visiting";
+    });
+    const isOverlap = overlaps(nodeInterval, query);
+    if (isOverlap) {
+      found.push(curId);
+      highlight[curId] = "inserted";
+    }
+    frames.push(
+      snapshot(
+        highlight,
+        `クエリ区間[${query.lo},${query.hi}]と頂点の区間[${nodeInterval.lo},${nodeInterval.hi}]を比較: ${isOverlap ? "重なりあり" : "重なりなし"}`,
+      ),
+    );
+
+    if (node.left !== null && nodes[node.left].maxHigh! >= query.lo) {
+      frames.push(
+        snapshot(highlight, `左の子の部分木のmaxHigh(${nodes[node.left].maxHigh})がクエリの下端${query.lo}以上 → 左へ`),
+      );
+      curId = node.left;
+    } else if (node.right !== null) {
+      frames.push(snapshot(highlight, "左の子孫には重なる可能性がない(またはそもそも左の子がない) → 右へ"));
+      curId = node.right;
+    } else {
+      curId = null;
+    }
+  }
+
+  frames.push(
+    snapshot(
+      {},
+      `検索完了。たどった経路上で重なりが見つかった区間: ${found.map((id) => `[${nodes[id].value},${nodes[id].hi}]`).join(", ") || "なし"}(このアルゴリズムは経路上の重なりを見つけるものであり、木全体から全ての重なる区間を網羅的に探すわけではない)`,
+    ),
+  );
+
+  return frames;
+}
+
 export const TREE_VISUALIZERS: Record<string, () => TreeFrame[]> = {
   "binary-search-tree": bstSteps,
   "avl-tree": avlTreeSteps,
   treap: treapSteps,
   "red-black-tree": redBlackTreeSteps,
+  "splay-tree": splayTreeSteps,
+  "interval-tree": intervalTreeSteps,
 };
