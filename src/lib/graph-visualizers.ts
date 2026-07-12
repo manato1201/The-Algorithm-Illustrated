@@ -886,6 +886,156 @@ export function edmondsKarpSteps(): GraphFrame[] {
   return frames;
 }
 
+/**
+ * Dinic法のステップ列を生成する。Edmonds-Karp法が「1回のBFSにつき増加パス1本」なのに対し、
+ * Dinic法は「BFSでレベルグラフ(各頂点のソースからの距離)を1回構築したら、
+ * そのレベルグラフ上でDFSを使い、レベルが1ずつ増える辺だけを辿って複数の増加パスを
+ * 一気に(ブロッキングフローとして)流す」という2段階を繰り返す。
+ * 1フェーズで複数の増加パスをまとめて処理できるため、一般にEdmonds-Karp法より高速。
+ * 同じ最大流ネットワーク(既知の最大流=23)を使い、既存のGraphFrame.edgeLabels基盤を再利用する。
+ */
+export function dinicSteps(): GraphFrame[] {
+  const nodes = FLOW_NODES;
+  const edges = FLOW_EDGES;
+
+  const realCapacity = new Map<string, number>();
+  const flow = new Map<string, number>();
+  for (const e of edges) {
+    realCapacity.set(`${e.from}->${e.to}`, e.weight);
+    flow.set(`${e.from}->${e.to}`, 0);
+  }
+
+  const adjacency = new Map<string, string[]>();
+  const addAdjacency = (a: string, b: string) => {
+    if (!adjacency.has(a)) adjacency.set(a, []);
+    adjacency.get(a)!.push(b);
+  };
+  for (const e of edges) {
+    addAdjacency(e.from, e.to);
+    addAdjacency(e.to, e.from);
+  }
+
+  const residualCap = (a: string, b: string): number => {
+    if (realCapacity.has(`${a}->${b}`)) {
+      return realCapacity.get(`${a}->${b}`)! - flow.get(`${a}->${b}`)!;
+    }
+    if (realCapacity.has(`${b}->${a}`)) {
+      return flow.get(`${b}->${a}`)!;
+    }
+    return 0;
+  };
+  const pushFlow = (a: string, b: string, amount: number) => {
+    if (realCapacity.has(`${a}->${b}`)) {
+      flow.set(`${a}->${b}`, flow.get(`${a}->${b}`)! + amount);
+    } else {
+      flow.set(`${b}->${a}`, flow.get(`${b}->${a}`)! - amount);
+    }
+  };
+
+  const nodeStates = initNodeStates(nodes, "idle");
+  const edgeStates = initEdgeStates(edges, "idle");
+  const currentLabels = (): Record<string, string> =>
+    Object.fromEntries(edges.map((e) => [e.id, `${flow.get(`${e.from}->${e.to}`)}/${e.weight}`]));
+
+  const frames: GraphFrame[] = [
+    {
+      nodeStates: { ...nodeStates },
+      edgeStates: { ...edgeStates },
+      distances: {},
+      edgeLabels: currentLabels(),
+      description:
+        "Dinic法を開始。BFSでレベルグラフを構築してからDFSでブロッキングフローを一気に流す、という2段階を繰り返す",
+    },
+  ];
+
+  const bfsLevels = (): Map<string, number> | null => {
+    const level = new Map<string, number>();
+    level.set(FLOW_SOURCE, 0);
+    const queue: string[] = [FLOW_SOURCE];
+    while (queue.length > 0) {
+      const u = queue.shift()!;
+      for (const v of adjacency.get(u) ?? []) {
+        if (level.has(v) || residualCap(u, v) <= 0) continue;
+        level.set(v, level.get(u)! + 1);
+        queue.push(v);
+      }
+    }
+    return level.has(FLOW_SINK) ? level : null;
+  };
+
+  let totalFlow = 0;
+  let phase = 0;
+  for (;;) {
+    const level = bfsLevels();
+    if (!level) break;
+    phase++;
+
+    const levelDesc = [...level.entries()].map(([k, v]) => `${k}=${v}`).join(", ");
+    frames.push({
+      nodeStates: { ...nodeStates },
+      edgeStates: { ...edgeStates },
+      distances: {},
+      edgeLabels: currentLabels(),
+      description: `[フェーズ${phase}] BFSでレベルグラフを計算: ${levelDesc}`,
+    });
+
+    const iter = new Map<string, number>();
+    const dfs = (u: string, pushed: number): number => {
+      if (u === FLOW_SINK) return pushed;
+      const neighbors = adjacency.get(u) ?? [];
+      let idx = iter.get(u) ?? 0;
+      for (; idx < neighbors.length; idx++) {
+        const v = neighbors[idx];
+        if ((level.get(v) ?? -1) !== (level.get(u) ?? -1) + 1 || residualCap(u, v) <= 0) continue;
+        const result = dfs(v, Math.min(pushed, residualCap(u, v)));
+        if (result > 0) {
+          iter.set(u, idx);
+          pushFlow(u, v, result);
+          return result;
+        }
+      }
+      iter.set(u, neighbors.length);
+      return 0;
+    };
+
+    let phaseFlow = 0;
+    for (;;) {
+      const pushed = dfs(FLOW_SOURCE, Infinity);
+      if (pushed === 0) break;
+      phaseFlow += pushed;
+      totalFlow += pushed;
+      frames.push({
+        nodeStates: { ...nodeStates },
+        edgeStates: { ...edgeStates },
+        distances: {},
+        edgeLabels: currentLabels(),
+        description: `[フェーズ${phase}] ブロッキングフローに${pushed}を追加(累計流量: ${totalFlow})`,
+      });
+    }
+
+    frames.push({
+      nodeStates: { ...nodeStates },
+      edgeStates: { ...edgeStates },
+      distances: {},
+      edgeLabels: currentLabels(),
+      description: `[フェーズ${phase}] ブロッキングフロー完了(このフェーズで${phaseFlow}増加)。次のフェーズへ`,
+    });
+  }
+
+  nodes.forEach((n) => {
+    nodeStates[n.id] = "settled";
+  });
+  frames.push({
+    nodeStates: { ...nodeStates },
+    edgeStates: { ...edgeStates },
+    distances: {},
+    edgeLabels: currentLabels(),
+    description: `計算完了。最大流は${totalFlow}`,
+  });
+
+  return frames;
+}
+
 export const GRAPH_DATASETS: Record<string, GraphDataset> = {
   "bellman-ford": {
     nodes: SHORTEST_PATH_NODES,
@@ -903,6 +1053,7 @@ export const GRAPH_DATASETS: Record<string, GraphDataset> = {
   "union-find": { nodes: UNION_FIND_NODES, edges: UNION_FIND_EDGES, directed: false },
   "tarjan-scc": { nodes: SCC_NODES, edges: SCC_EDGES, directed: true },
   "edmonds-karp": { nodes: FLOW_NODES, edges: FLOW_EDGES, directed: true },
+  dinic: { nodes: FLOW_NODES, edges: FLOW_EDGES, directed: true },
 };
 
 export const GRAPH_VISUALIZERS: Record<string, () => GraphFrame[]> = {
@@ -913,5 +1064,6 @@ export const GRAPH_VISUALIZERS: Record<string, () => GraphFrame[]> = {
   boruvka: boruvkaSteps,
   "union-find": unionFindSteps,
   "tarjan-scc": tarjanSccSteps,
+  dinic: dinicSteps,
   "edmonds-karp": edmondsKarpSteps,
 };
