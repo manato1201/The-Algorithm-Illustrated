@@ -5,6 +5,7 @@ import { GraphVisualizer } from "./GraphVisualizer";
 import { SearchVisualizer } from "./SearchVisualizer";
 import { TreeVisualizer } from "./TreeVisualizer";
 import { StringMatchVisualizer } from "./StringMatchVisualizer";
+import { TrieVisualizer } from "./TrieVisualizer";
 import { SORT_VISUALIZERS } from "@/lib/sort-visualizers";
 import { PATHFINDING_VISUALIZERS } from "@/lib/pathfinding-visualizers";
 import { DP_VISUALIZERS } from "@/lib/dp-visualizers";
@@ -12,6 +13,7 @@ import { GRAPH_VISUALIZERS } from "@/lib/graph-visualizers";
 import { SEARCH_VISUALIZERS } from "@/lib/search-visualizers";
 import { TREE_VISUALIZERS } from "@/lib/tree-visualizers";
 import { STRING_VISUALIZERS } from "@/lib/string-visualizers";
+import { TRIE_VISUALIZERS } from "@/lib/trie-visualizer";
 
 /** このidに対応する可視化コンポーネントが存在するかどうか。詳細ページ・比較画面の両方から使う。 */
 export function hasVisualizer(algorithmId: string): boolean {
@@ -22,7 +24,8 @@ export function hasVisualizer(algorithmId: string): boolean {
     algorithmId in GRAPH_VISUALIZERS ||
     algorithmId in SEARCH_VISUALIZERS ||
     algorithmId in TREE_VISUALIZERS ||
-    algorithmId in STRING_VISUALIZERS
+    algorithmId in STRING_VISUALIZERS ||
+    algorithmId in TRIE_VISUALIZERS
   );
 }
 
@@ -52,5 +55,7 @@ export function AlgorithmVisualizer({ algorithmId }: AlgorithmVisualizerProps) {
     return <TreeVisualizer algorithmId={algorithmId} />;
   if (algorithmId in STRING_VISUALIZERS)
     return <StringMatchVisualizer algorithmId={algorithmId} />;
+  if (algorithmId in TRIE_VISUALIZERS)
+    return <TrieVisualizer algorithmId={algorithmId} />;
   return null;
 }
