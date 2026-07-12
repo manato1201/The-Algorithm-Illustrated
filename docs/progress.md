@@ -1,6 +1,6 @@
 # 実装状況ノート
 
-最終更新: 2026-07-12(可視化対応アルゴリズムの拡張(グラフ3種+DP2種)、更新情報(RSS)画面+Vercel Edge Functions BFF、比較画面、Aboutページ、Worker使い回し最適化、pixi.jsパーティクル演出を追加)
+最終更新: 2026-07-12(可視化対応アルゴリズムを16件→42件に大幅拡張(ソート17種・配列探索7種(新規SearchVisualizer)・グリッド経路探索4種・グラフ5種・DP9種)。更新情報(RSS)画面+Vercel Edge Functions BFF、比較画面、Aboutページ、Worker使い回し最適化、pixi.jsパーティクル演出も追加済み)
 
 このドキュメントは、後日どのセッションからでも作業を再開できるように、実装済みの内容・意思決定の理由・既知の制約をまとめたものです。デザインの意思決定そのものは [docs/design/ui-design.md](design/ui-design.md) を参照してください。
 
@@ -84,7 +84,7 @@
 
 ### Web Worker化(`src/workers/algorithm-worker.ts` + `src/components/visualizer/useWorkerFrames.ts`)
 
-- ステップ(フレーム)列の生成をWeb Workerに委譲するようにした。`{ kind: "sort" | "pathfinding" | "dp" | "graph", algorithmId, input? }` をpostMessageすると、workerが対応する生成関数(`sort-visualizers.ts`/`pathfinding-visualizers.ts`/`dp-visualizers.ts`/`graph-visualizers.ts`)を実行し `{ request, frames }` を返す
+- ステップ(フレーム)列の生成をWeb Workerに委譲するようにした。`{ kind: "sort" | "pathfinding" | "dp" | "graph" | "search", algorithmId, input? }` をpostMessageすると、workerが対応する生成関数(`sort-visualizers.ts`/`pathfinding-visualizers.ts`/`dp-visualizers.ts`/`graph-visualizers.ts`/`search-visualizers.ts`)を実行し `{ request, frames }` を返す
 - `new Worker(new URL("../../workers/algorithm-worker.ts", import.meta.url))` というTurbopack/Webpack互換の書き方を使用。Turbopackが実際に専用のworkerチャンクを生成することを `.next/static/chunks/turbopack-worker-*.js` の存在とその中身(`onmessage`・`bubbleSortSteps`等を含む)で確認済み
 - **Worker使い回し最適化(2026-07-12)**: 以前は`request`が変わるたびに新規`Worker`を生成・破棄していたが、`useWorkerFrames`をコンポーネントのマウント中1つのWorkerだけを生成・使い回す設計に変更した。Worker生成用のeffect(依存配列`[]`)とpostMessage送信用のeffect(依存配列`[request]`)を分離している
   - postMessageは構造化クローンを経由するため、返ってきた`request`は元のオブジェクトと参照が一致しない。そのため結果の相関は参照比較(`===`)ではなく`sameRequest()`による値比較で行う(`WorkerResponse`に`request`をエコーバックさせている)
@@ -93,11 +93,25 @@
 
 ### ソート可視化(`src/components/visualizer/SortVisualizer.tsx` + `src/lib/sort-visualizers.ts`)
 
-- **対応アルゴリズム: バブル・選択・挿入・マージ・ヒープ・クイックソートの6つ**
+- **対応アルゴリズム: 17種類**(バブル/選択/挿入/マージ/ヒープ/クイック/シェル/コム/カクテルシェイカー/カウンティング/基数/バケット/サイクル/パンケーキ/イントロ/ボゴ/TimSort)。2026-07-12に基本6種から残り11種を追加し、ソートカテゴリの可視化対応を完了させた
 - `sort-visualizers.ts` が配列と操作からステップ(フレーム)列を事前に全て生成する(`{ array, highlight, description }[]`)。生成自体はWeb Worker内で実行される
 - 描画はCanvas 2D。バーの色は `design-tokens.ts` の `stateColors`(idle/comparing/swapping/pivot/settled)をそのまま使用し、ui-design.md 2.2節のトークンをコードで初めて実利用した
 - 操作: 再生/一時停止、1ステップ戻る/進む、シャッフル(配列を再生成)
 - **パーティクル演出(2026-07-12追加)**: `ParticleBurstLayer`(pixi.js製、WebGLレンダリング)をCanvas 2Dの上に絶対配置で重ね、要素の交換(swapping)・確定(settled)への遷移時に発光パーティクルのバーストを再生する。詳細は後述の「three.js/pixi.js」節を参照
+- **新規11種の実装メモ(2026-07-12)**:
+  - カウンティングソート・基数ソート・バケットソートは比較を使わないため、出力配列を0(未配置)で初期化してから要素が確定するごとにバーが「現れる」形で表現している
+  - ボゴソートは要素数20の配列を偶然整列させるのは期待計算量O((n+1)!)的に非現実的なため、試行回数の上限(100回)を設けて打ち切り、最後にデモ用の直接整列を挟む実装にしている(「なぜこのアルゴリズムを使ってはいけないか」を可視化そのもので示す)
+  - イントロソート(簡略版)はクイックソートを基本に、再帰深さが`2×⌊log2(n)⌋`を超えたらヒープソート、区間サイズが8以下になったら挿入ソートに切り替える3方式ハイブリッドとして実装
+  - TimSort(簡略版)は実際のギャロップモード等の高度な最適化を省略し、「小さな区間(ラン、サイズ4)を挿入ソート→マージソートで統合する」という核となる発想のみを可視化している
+  - サイクルソート・イントロソート・ボゴソート・パンケーキソート等の正しさは`node --experimental-strip-types`で直接実行し、全11種とも最終フレームが正しくソート済みであることを確認済み
+
+### 配列探索の可視化(`src/components/visualizer/SearchVisualizer.tsx` + `src/lib/search-visualizers.ts`、2026-07-12新規追加)
+
+- **対応アルゴリズム: 線形/二分/三分/ジャンプ/補間/指数/フィボナッチ探索の7つ**
+- BFS/DFS等が固定迷路のグリッドを使うのに対し、こちらは`SortVisualizer`と同じバーチャート描画(Canvas 2D)を流用し、ソート済み固定配列(`SEARCH_ARRAY`、20要素)から固定値`SEARCH_TARGET`(=62、14番目)を探す様子を可視化する
+- 線形探索以外は「ソート済みであること」を前提とするため、同じ配列を全アルゴリズムで共有している
+- 発見(settled)時に`ParticleBurstLayer`でパーティクルバーストを再生する(SortVisualizerと同じ演出コンポーネントを再利用)
+- フィボナッチ探索・補間探索・指数探索を含む全7種は`node --experimental-strip-types`で直接実行し、いずれも正しく14番目(値62)を発見することを確認済み
 
 ### 経路探索の可視化(`src/components/visualizer/PathfindingVisualizer.tsx` + `src/lib/pathfinding-visualizers.ts`)
 
@@ -112,19 +126,22 @@
 
 ### DP(動的計画法)可視化(`src/components/visualizer/DPTableVisualizer.tsx` + `src/lib/dp-visualizers.ts`)
 
-- **対応アルゴリズム: 0-1ナップサック問題・最長共通部分列(LCS)・編集距離の3つ**(2026-07-12にLCS・編集距離を追加)
-- 他の可視化と異なり**Canvasではなく素のHTML `<table>` + CSSトランジション**で実装。`data-state`属性(idle/comparing/pivot/settled)に応じて`background-color`/`box-shadow`を`transition`で滑らかに切り替える。CSSアニメーションによる可視化改善というユーザー要望に、Canvasとは別の技術で応えた
+- **対応アルゴリズム: 9種類**(0-1ナップサック問題/LCS/編集距離/硬貨両替/棒の切り出し/部分和問題/最長増加部分列(LIS)/最長回文部分列/フロイド・ワーシャル法)。2026-07-12に6種を追加
+- 他の可視化と異なり**Canvasではなく素のHTML `<table>` + CSSトランジション**で実装。`data-state`属性(idle/comparing/pivot/settled)に応じて`background-color`/`box-shadow`を`transition`で滑らかに切り替える
 - 状態色は`color-mix(in srgb, ...)`でトークンの色を背景に混ぜ込む形で表現(モダンCSS関数。主要ブラウザ2024年以降のバージョンで対応)
-- dp[i][w]テーブルを埋めていく過程で、参照する前段のセル(comparing)・計算中のセル(pivot)・確定済みのセル(settled)を色分け
-- **`DPTableVisualizer`は`DP_TABLE_META`(問題ごとのchips/cornerLabel/rowHeaders/colHeaders)経由で汎用化した**。以前は0-1ナップサック専用に`KNAPSACK_ITEMS`/`KNAPSACK_CAPACITY`をハードコードしていたが、LCS(文字列2本を行・列ヘッダーに展開)・編集距離(同様)にも対応できるよう抽象化した
-- LCSは`content/algorithms/lcs.md`の例文と同じ文字列("ABCBDAB"/"BDCABA")、編集距離は教科書的な例("KITTEN"→"SITTING"、距離3)を固定データとして使用
+- **`DPTableVisualizer`は`DP_TABLE_META`(問題ごとのchips/cornerLabel/rowHeaders/colHeaders)経由で汎用化されている**ため、1次元DP(硬貨両替・棒の切り出し・LIS、1行のテーブルとして表示)・2次元DP(0-1ナップサック・LCS・編集距離・部分和問題)・区間DP(最長回文部分列、同一文字列の区間dp[i][j])・全頂点対DP(フロイド・ワーシャル法、N×Nの距離行列)のいずれも同じコンポーネントで表示できる
+- **硬貨両替**はcoins=[1,3,4]・amount=6という「貪欲法(4+1+1=3枚)では最適解(3+3=2枚)に届かない」古典的な反例を採用し、DPが必要な理由を示している
+- **フロイド・ワーシャル法**は`graph-visualizers.ts`の`SHORTEST_PATH_NODES`/`SHORTEST_PATH_EDGES`(ベルマン・フォード法と同じ負の辺1本を含む有向グラフ)を再利用し、経由地kごとの全頂点対距離更新をDPテーブルとして可視化する(dpのnullは「未到達=∞」を意味し、テーブル上は空欄として表示)
+- 新規6種は全て`node --experimental-strip-types`で直接実行し、既知の正解値(硬貨両替=2枚、棒の切り出し=22、部分和=達成可能、LIS長=4、最長回文部分列=7、フロイド・ワーシャル法のdist[A][F]=5)と一致することを確認済み
 
 ### グラフ可視化(`src/components/visualizer/GraphVisualizer.tsx` + `src/lib/graph-visualizers.ts`)
 
-- **対応アルゴリズム: ベルマン・フォード法・プリム法・クラスカル法の3つ**(2026-07-12新規追加)
+- **対応アルゴリズム: 5種類**(ベルマン・フォード法/プリム法/クラスカル法/トポロジカルソート/ボルーフカ法)。2026-07-12にトポロジカルソート・ボルーフカ法を追加
 - BFS/DFS/ダイクストラ法/A*探索が固定迷路(グリッドグラフ)を使うのに対し、こちらは一般的な頂点+重み付き辺のグラフを円形レイアウトでCanvas 2D描画する(ノードリンク図)
 - ベルマン・フォード法は負の辺(D→E: 重み-3)を1本含む有向グラフを使い、ダイクストラ法では正しく解けない例を可視化する。全辺を頂点数-1回緩和し、各頂点の現在の距離をノード下に表示する
-- プリム法・クラスカル法は正の重みのみの無向グラフ(最小全域木用)を共有し、採用された辺(tree)・棄却された辺(rejected、クラスカル法のみ)・検討中の辺(checking)を色分けする
+- プリム法・クラスカル法・ボルーフカ法は正の重みのみの無向グラフ(最小全域木用)を共有し、採用された辺(tree)・棄却された辺(rejected、クラスカル法のみ)・検討中の辺(checking)を色分けする。3アルゴリズムとも同じMST(総重量14: DE+BC+AC+EF+BD)に収束することを検証済み
+- **ボルーフカ法**はプリム法(頂点を1つずつ広げる)・クラスカル法(辺をコスト順に見る)と異なり、「全ての木が同時に、他の木へ出る最小コストの辺を選んで一斉に統合する」というラウンド制の進め方を可視化する
+- **トポロジカルソート**はベルマン・フォード法と同じ有向グラフ(DAG)を再利用し、DFSベース(帰りがけ順の逆順)で実装。生成された順序が全ての辺の向きを尊重していることを検証済み
 - 辺の状態パレット(idle/checking/relaxed/rejected/tree)・頂点の状態パレット(idle/visited/settled)は`stateColors`を再利用しつつグラフ用に意味を再定義している
 
 ### three.js/pixi.jsによるショーケース演出(`src/components/visualizer/ParticleBurstLayer.tsx`)
@@ -161,7 +178,8 @@
 実装時点でスコープ外にしたもの、または仮実装のままのものを列挙する。
 
 - **content/algorithms/の全163件(15カテゴリ全て)がコンテンツ充実化済み**。デザインパターン(GoF23種)を含む全カテゴリが`## 概要`・`## 仕組み`・`## 特性・トレードオフ`の3見出し構成になった(2026-07-12完了)。デザインパターンの`## 特性・トレードオフ`は他カテゴリのBig-O計算量ではなく、パターン固有のトレードオフ(拡張性とクラス数増加の綱引き、カプセル化との緊張関係など)を軸に記述している
-- **可視化はソート6種+経路探索4種(BFS/DFS/ダイクストラ法/A*探索)+グラフ3種(ベルマン・フォード法/プリム法/クラスカル法)+DP3種(0-1ナップサック問題/LCS/編集距離)の計16件のみ**。残り147件は詳細ページを開いても「準備中」の破線パネルが表示されるだけ(コンテンツの充実化と可視化対応は別軸)
+- **可視化はソート17種+配列探索7種(線形/二分/三分/ジャンプ/補間/指数/フィボナッチ探索)+グリッド経路探索4種(BFS/DFS/ダイクストラ法/A*探索)+グラフ5種(ベルマン・フォード法/プリム法/クラスカル法/トポロジカルソート/ボルーフカ法)+DP9種の計42件**(2026-07-12、16件から大幅拡張)。残り121件は詳細ページを開いても「準備中」の破線パネルが表示されるだけ(コンテンツの充実化と可視化対応は別軸)
+- **配列探索(SearchVisualizer)・DPの1次元/区間/全頂点対バリエーションはいずれも既存コンポーネント(SortVisualizer型のバーチャート、DPTableVisualizer)を流用しており、新規に増えたUIコンポーネントはSearchVisualizerの1つのみ**。GraphVisualizerもトポロジカルソート・ボルーフカ法追加時に変更なし(既存の円形レイアウト+ノードリンク描画をそのまま再利用)
 - **Web Worker化は「計算をworkerに移す」ところまで**。状態スナップショットのdiffベース記録・IndexedDBキャッシュは未実装。現状のworkerは`postMessage`1往復で全フレームを返すだけで、Event Sourcing的な差分記録・再生の仕組みにはなっていない(Workerインスタンス自体の使い回しは2026-07-12に対応済み、後述)
 - **モーション停止ポリシー未実装**: ui-design.md 2.5節は「デフォルト全員フル演出、reduced-motion環境の閲覧者にのみ明示的な停止ボタンを表示する」という独自ポリシーを定めているが、現状はヒーロー見出しのアニメーションとpixi.jsパーティクル演出に標準の `prefers-reduced-motion` メディアクエリでの無効化のみを適用している(暫定対応。「停止ボタン」というUIそのものは未実装)。ソート可視化本体のアニメーション(再生ループ)には停止ポリシーが未適用
 - **比較画面はfrontmatterのみを比較対象とする**。Markdown本文の`## 特性・トレードオフ`セクションを構造化して比較表に含める、という深い比較機能は未実装
@@ -191,14 +209,20 @@ Web Worker化の確認は、`.next/static(または/dev)/chunks/turbopack-worker
 
 2026-07-12の可視化拡張・RSS・比較/Aboutページ・Worker最適化・pixi.js演出の追加では、上記に加えて以下を確認した: `npm run build`成功(170ルート、`/api/updates`がEdge Runtimeとして認識されることを確認)、`npm run dev`+curlで`/api/updates`が実際にQiitaのAtomフィードを整形したJSONを返すこと、`/compare`・`/about`・`/updates`の各ページが期待する`<h1>`を含むこと、`bellman-ford`/`prim`/`kruskal`/`lcs`/`edit-distance`の詳細ページがそれぞれcanvas/tableを含むこと、ホームのナビゲーションリンク(`/compare`・`/updates`・`/about`)が存在すること。
 
+続く可視化対応アルゴリズムの大幅拡張(16件→42件、同じく2026-07-12)では、新規26アルゴリズム全ての詳細ページがHTTP 200を返しcanvas/tableを含むことをcurlで確認した上で、`node --experimental-strip-types`によるロジックの直接実行検証を重点的に行った: 新規ソート11種は全て最終フレームが`Array.prototype.sort`の結果と一致(サイクルソート・イントロソート・ボゴソート等の複雑なものを含む)、新規探索7種は全て固定配列内の値62(14番目)を正しく発見、新規DP6種は既知の正解値(硬貨両替=2枚・棒の切り出し=22・部分和=達成可能・LIS長=4・最長回文部分列=7・フロイド-ワーシャル法のdist[A][F]=5)と一致、新規グラフ2種はトポロジカルソートの順序が全辺の向きを尊重すること・ボルーフカ法が採用した5辺の総重量14がクラスカル法の結果と一致することを確認した。node実行時、`dp-visualizers.ts`が`graph-visualizers.ts`を拡張子なしでimportしている箇所はNode ESMローダーが素では解決できない(Next.js/TypeScriptの`moduleResolution: bundler`前提のコードのため)ため、検証用に一時的に拡張子付きimportへ書き換えたコピーを作って実行し、検証後に削除している(本体のソースコードは変更していない)。
+
 ## 次にやること候補
 
 優先度順ではなく、思いついた順のメモ。着手時にあらためて相談・計画すること。
 
-1. 状態スナップショットのdiffベース記録・IndexedDBキャッシュの設計・実装(Worker使い回し最適化・複数種の可視化拡張は完了、Event Sourcing的な差分記録が残作業)
-2. 可視化対応アルゴリズムのさらなる拡張(現在16件。DFS系の他探索、他のDP問題、他のグラフアルゴリズムなど)
-3. モーション停止ポリシー(ui-design.md 2.5節)の「停止ボタン」UI自体の実装。現状は`prefers-reduced-motion`メディアクエリでの自動無効化のみ
-4. 比較画面をMarkdown本文の`## 特性・トレードオフ`セクションまで踏み込んだ比較に拡張する
-5. 更新情報画面のデータソースを複数フィードに拡張する、フィード選択UIを追加する
-6. パーティクル演出(pixi.js)をソート可視化以外(グラフ・経路探索)にも展開するか検討する
-7. `web-production-skill` の `scripts/qa_check.py` / `scripts/visual_qa.py` を、実際に見せられる画面が増えた段階で回す
+**ユーザーとの合意事項(2026-07-12)**: 次の3課題(a. アルゴリズム数を文字通り10倍の約1630件にする、b. 未可視化アルゴリズムの可視化実装、c. 比較画面での可視化表示)のうち、**bを最優先**とすることで合意済み。可視化拡張(16件→42件)はbの第1弾。
+
+1. **可視化対応アルゴリズムのさらなる拡張(現在42件/163件)**。データ構造カテゴリ(BST/AVL木/赤黒木/トライ木等、16件)が可視化0件のまま残っており、新規のツリー(木構造)ビジュアライザが必要になる。他にも文字列カテゴリ(KMP法・ラビン-カープ法等のパターンマッチング可視化)、グラフの残り(union-find/tarjan-scc/最大流系(dinic/ford-fulkerson/edmonds-karp)/二部マッチング(hopcroft-karp)/johnson法)、DP残り(matrix-chain-multiplication/egg-drop/tsp-bitdp)など
+2. **比較画面(/compare)への可視化表示の統合**(課題c)。選択した2〜4件が両方とも可視化対応済みの場合、比較表の下に各アルゴリズムの可視化(あるいはその簡易版)を並べて表示し、動きの違いを直接見比べられるようにする。bの進捗次第で「比較しても意味のある組み合わせ」が増えていく
+3. **アルゴリズム数を10倍(約1630件)に拡大する**(課題a)。163件時点でも既にカテゴリを相当網羅しているため、実現には新カテゴリの新設(既存15カテゴリの深掘りだけでは限界がある)や、より粒度の細かいバリエーション(同じアルゴリズムの派生・変種)を含めるかの方針検討が必要。着手前に改めて相談すること
+4. 状態スナップショットのdiffベース記録・IndexedDBキャッシュの設計・実装(Worker使い回し最適化は完了、Event Sourcing的な差分記録が残作業)
+5. モーション停止ポリシー(ui-design.md 2.5節)の「停止ボタン」UI自体の実装。現状は`prefers-reduced-motion`メディアクエリでの自動無効化のみ
+6. 比較画面をMarkdown本文の`## 特性・トレードオフ`セクションまで踏み込んだ比較に拡張する
+7. 更新情報画面のデータソースを複数フィードに拡張する、フィード選択UIを追加する
+8. パーティクル演出(pixi.js)をソート可視化以外(グラフ・経路探索・探索)にも展開するか検討する
+9. `web-production-skill` の `scripts/qa_check.py` / `scripts/visual_qa.py` を、実際に見せられる画面が増えた段階で回す
