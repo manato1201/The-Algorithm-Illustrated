@@ -5,7 +5,7 @@ import styles from "./DPTableVisualizer.module.css";
 import { PlaybackControls } from "./PlaybackControls";
 import { useStepPlayer } from "./useStepPlayer";
 import { useWorkerFrames } from "./useWorkerFrames";
-import { KNAPSACK_CAPACITY, KNAPSACK_ITEMS, type DPCellState, type DPFrame } from "@/lib/dp-visualizers";
+import { DP_TABLE_META, type DPCellState, type DPFrame } from "@/lib/dp-visualizers";
 import type { WorkerRequest } from "@/workers/algorithm-worker";
 
 const LEGEND_ITEMS: { key: DPCellState; label: string }[] = [
@@ -20,7 +20,8 @@ type DPTableVisualizerProps = {
 };
 
 /**
- * DPテーブルの可視化(0-1ナップサック問題)。ui-design.md 2.6節の状態語彙をCanvasではなくHTML/CSSで表現する。
+ * DPテーブルの可視化(0-1ナップサック問題/LCS/編集距離)。ui-design.md 2.6節の状態語彙をCanvasではなくHTML/CSSで表現する。
+ * 行・列ヘッダーやチップ表示はDP_TABLE_METAから問題ごとに切り替える(汎用化)。
  * SortVisualizer/PathfindingVisualizerと同じuseStepPlayer/PlaybackControlsを共用。
  */
 export function DPTableVisualizer({ algorithmId }: DPTableVisualizerProps) {
@@ -29,27 +30,29 @@ export function DPTableVisualizer({ algorithmId }: DPTableVisualizerProps) {
   const { stepIndex, isFinished, showPause, handlePlayPause, handleStep, reset } =
     useStepPlayer(frames.length);
 
+  const meta = DP_TABLE_META[algorithmId];
   const currentFrame = frames[stepIndex];
+
+  if (!meta) return null;
 
   return (
     <div className={styles.visualizer}>
       <div className={styles.itemsRow}>
-        {KNAPSACK_ITEMS.map((item) => (
-          <span key={item.name} className={styles.itemChip}>
-            {item.name}: 重さ{item.weight} / 価値{item.value}
+        {meta.chips.map((chip) => (
+          <span key={chip} className={styles.itemChip}>
+            {chip}
           </span>
         ))}
-        <span className={styles.itemChip}>容量: {KNAPSACK_CAPACITY}</span>
       </div>
 
       <div className={styles.tableWrap}>
         <table className={styles.table}>
           <thead>
             <tr>
-              <th className={styles.cornerHeader}>品物 \ 容量</th>
-              {Array.from({ length: KNAPSACK_CAPACITY + 1 }, (_, w) => (
+              <th className={styles.cornerHeader}>{meta.cornerLabel}</th>
+              {meta.colHeaders.map((label, w) => (
                 <th key={w} className={styles.colHeader}>
-                  {w}
+                  {label}
                 </th>
               ))}
             </tr>
@@ -57,7 +60,7 @@ export function DPTableVisualizer({ algorithmId }: DPTableVisualizerProps) {
           <tbody>
             {currentFrame?.table.map((row, i) => (
               <tr key={i}>
-                <th className={styles.rowHeader}>{i === 0 ? "∅" : KNAPSACK_ITEMS[i - 1].name}</th>
+                <th className={styles.rowHeader}>{meta.rowHeaders[i]}</th>
                 {row.map((cell, w) => (
                   <td key={w} className={styles.cell} data-state={cell.state}>
                     {cell.value ?? ""}

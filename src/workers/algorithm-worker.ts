@@ -1,13 +1,17 @@
 import { SORT_VISUALIZERS } from "../lib/sort-visualizers";
 import { PATHFINDING_VISUALIZERS } from "../lib/pathfinding-visualizers";
 import { DP_VISUALIZERS } from "../lib/dp-visualizers";
+import { GRAPH_VISUALIZERS } from "../lib/graph-visualizers";
 
 export type WorkerRequest =
   | { kind: "sort"; algorithmId: string; input: number[] }
   | { kind: "pathfinding"; algorithmId: string }
-  | { kind: "dp"; algorithmId: string };
+  | { kind: "dp"; algorithmId: string }
+  | { kind: "graph"; algorithmId: string };
 
 export type WorkerResponse = {
+  /** どのrequestに対する結果かをpostMessageの往復越しに相関させるためエコーバックする。 */
+  request: WorkerRequest;
   frames: unknown[];
 };
 
@@ -35,7 +39,10 @@ ctx.onmessage = (event) => {
   } else if (request.kind === "dp") {
     const generate = DP_VISUALIZERS[request.algorithmId];
     frames = generate ? generate() : [];
+  } else if (request.kind === "graph") {
+    const generate = GRAPH_VISUALIZERS[request.algorithmId];
+    frames = generate ? generate() : [];
   }
 
-  ctx.postMessage({ frames });
+  ctx.postMessage({ request, frames });
 };

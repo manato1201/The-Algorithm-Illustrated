@@ -1,0 +1,43 @@
+.page {
+  padding: var(--space-6);
+  max-width: 72rem;
+  margin: 0 auto;
+}
+
+.backLink {
+  display: inline-block;
+  font-family: var(--font-mono);
+  font-size: 0.8125rem;
+  color: var(--color-text-muted);
+  margin-bottom: var(--space-6);
+}
+
+.backLink:hover {
+  color: var(--color-accent-amber);
+}
+
+.header {
+  margin-bottom: var(--space-8);
+  max-width: 42rem;
+}
+
+.eyebrow {
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  letter-spacing: 0.12em;
+  color: var(--color-accent-amber);
+  margin-bottom: var(--space-4);
+}
+
+.title {
+  font-family: var(--font-display);
+  font-weight: 900;
+  font-size: clamp(1.5rem, 3vw, 2.25rem);
+  margin-bottom: var(--space-3);
+}
+
+.lead {
+  font-family: var(--font-body);
+  color: var(--color-text-muted);
+  line-height: 1.7;
+}

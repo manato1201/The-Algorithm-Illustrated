@@ -1,0 +1,149 @@
+.view {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-6);
+}
+
+.searchArea {
+  position: relative;
+  max-width: 32rem;
+}
+
+.searchInput {
+  width: 100%;
+  background: transparent;
+  border: 1px solid var(--color-line);
+  border-radius: 4px;
+  padding: var(--space-3) var(--space-4);
+  color: var(--color-text);
+  font-family: var(--font-body);
+  font-size: 0.9375rem;
+  transition:
+    border-color 0.15s ease,
+    box-shadow 0.15s ease;
+}
+
+.searchInput:focus {
+  outline: none;
+  border-color: var(--color-accent-amber);
+  box-shadow: var(--glow-amber);
+}
+
+.searchInput:disabled {
+  opacity: 0.5;
+}
+
+.candidateList {
+  list-style: none;
+  position: absolute;
+  z-index: 2;
+  top: calc(100% + var(--space-2));
+  left: 0;
+  right: 0;
+  border: 1px solid var(--color-line);
+  border-radius: 4px;
+  background: var(--color-bg-surface);
+  max-height: 16rem;
+  overflow-y: auto;
+}
+
+.candidateButton {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding: var(--space-2) var(--space-3);
+  text-align: left;
+  color: var(--color-text);
+  border-bottom: 1px solid var(--color-line);
+}
+
+.candidateButton:hover,
+.candidateButton:focus-visible {
+  background: var(--color-bg-surface-2);
+}
+
+.candidateName {
+  font-family: var(--font-body);
+  font-size: 0.875rem;
+}
+
+.candidateCategory {
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+  color: var(--color-text-muted);
+  white-space: nowrap;
+}
+
+.emptyState {
+  border: 1px dashed var(--color-line);
+  border-radius: 8px;
+  padding: var(--space-8);
+  text-align: center;
+  font-family: var(--font-body);
+  color: var(--color-text-muted);
+}
+
+.tableWrap {
+  overflow-x: auto;
+  border: 1px solid var(--color-line);
+  border-radius: 8px;
+}
+
+.table {
+  border-collapse: collapse;
+  width: 100%;
+  min-width: 40rem;
+}
+
+.table th,
+.table td {
+  padding: var(--space-3) var(--space-4);
+  border-bottom: 1px solid var(--color-line);
+  text-align: left;
+  vertical-align: top;
+}
+
+.rowLabel {
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  color: var(--color-text-muted);
+  white-space: nowrap;
+  background: var(--color-bg-surface);
+}
+
+.colHeader {
+  min-width: 12rem;
+  background: var(--color-bg-surface);
+}
+
+.algoLink {
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: 1rem;
+  color: var(--color-text);
+}
+
+.algoLink:hover {
+  color: var(--color-accent-amber);
+}
+
+.removeButton {
+  margin-left: var(--space-3);
+  color: var(--color-text-muted);
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+}
+
+.removeButton:hover {
+  color: var(--color-accent-amber);
+}
+
+.summaryCell {
+  font-family: var(--font-body);
+  font-size: 0.875rem;
+  line-height: 1.6;
+  color: var(--color-text-muted);
+  max-width: 20rem;
+}
