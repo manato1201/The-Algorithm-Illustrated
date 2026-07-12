@@ -1,0 +1,130 @@
+.visualizer {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+/* フルブリード可視化領域(ui-design.md 2.4節: 唯一の破調区画)。Canvasではなくテキスト行+CSSトランジションで表現 */
+.grid {
+  overflow-x: auto;
+  border: 1px solid var(--color-line);
+  border-radius: 4px;
+  background: var(--color-bg-void);
+  padding: var(--space-4);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.rowLabel {
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+  color: var(--color-text-muted);
+  width: 3.5rem;
+  flex-shrink: 0;
+}
+
+.chars {
+  display: flex;
+  gap: 2px;
+  transition: margin-left 0.25s ease;
+}
+
+.char {
+  width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: var(--font-mono);
+  font-size: 0.875rem;
+  border: 1px solid var(--color-line);
+  border-radius: 3px;
+  background: var(--color-bg-surface);
+  color: var(--color-text-muted);
+  flex-shrink: 0;
+  transition:
+    background-color 0.2s ease,
+    box-shadow 0.2s ease,
+    color 0.2s ease;
+}
+
+.char[data-state="matching"] {
+  background: color-mix(
+    in srgb,
+    var(--state-pivot) 28%,
+    var(--color-bg-surface)
+  );
+  box-shadow: 0 0 8px var(--state-pivot);
+  color: var(--color-text);
+}
+
+.char[data-state="mismatch"] {
+  background: color-mix(
+    in srgb,
+    var(--state-swapping) 28%,
+    var(--color-bg-surface)
+  );
+  box-shadow: 0 0 8px var(--state-swapping);
+  color: var(--color-text);
+}
+
+.char[data-state="matched"] {
+  background: color-mix(
+    in srgb,
+    var(--state-settled) 20%,
+    var(--color-bg-surface)
+  );
+  color: var(--color-text);
+}
+
+.description {
+  font-family: var(--font-mono);
+  font-size: 0.875rem;
+  color: var(--color-accent-amber);
+  min-height: 1.5em;
+}
+
+.legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-4);
+  list-style: none;
+  padding-top: var(--space-2);
+  border-top: 1px solid var(--color-line);
+}
+
+.legendItem {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  color: var(--color-text-muted);
+}
+
+.legendSwatch {
+  width: 10px;
+  height: 10px;
+  border-radius: 2px;
+  flex-shrink: 0;
+  background: var(--state-idle);
+}
+
+.legendItem[data-legend-state="matching"] .legendSwatch {
+  background: var(--state-pivot);
+}
+
+.legendItem[data-legend-state="mismatch"] .legendSwatch {
+  background: var(--state-swapping);
+}
+
+.legendItem[data-legend-state="matched"] .legendSwatch {
+  background: var(--state-settled);
+}
