@@ -47,7 +47,7 @@ export default async function AlgorithmDetailPage({
             <AlgorithmVisualizer algorithmId={id} />
           ) : (
             <div className={styles.placeholder}>
-              可視化は準備中です。現在はソート系17種・探索系(線形/二分/三分/ジャンプ/補間/指数/フィボナッチ探索)・グリッド経路探索(BFS/DFS/ダイクストラ法/A*探索)・グラフ(ベルマン・フォード法/プリム法/クラスカル法/ボルーフカ法/トポロジカルソート/Union-Find/Tarjanの強連結成分分解/Edmonds-Karp法/Dinic法)・動的計画法12種・木構造(二分探索木/AVL木/Treap/赤黒木/トライ木)・文字列パターンマッチング(KMP法/ラビン-カープ法/Z algorithm/ボイヤー・ムーア法)のみ対応しています。
+              可視化は準備中です。現在はソート系17種・探索系(線形/二分/三分/ジャンプ/補間/指数/フィボナッチ探索)・グリッド経路探索(BFS/DFS/ダイクストラ法/A*探索)・グラフ(ベルマン・フォード法/プリム法/クラスカル法/ボルーフカ法/トポロジカルソート/Union-Find/Tarjanの強連結成分分解/Edmonds-Karp法/Dinic法/Ford-Fulkerson法)・動的計画法12種・木構造(二分探索木/AVL木/Treap/赤黒木/トライ木)・文字列パターンマッチング(KMP法/ラビン-カープ法/Z algorithm/ボイヤー・ムーア法)のみ対応しています。
             </div>
           )}
         </section>
