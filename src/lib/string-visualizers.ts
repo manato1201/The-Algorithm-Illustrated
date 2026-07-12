@@ -265,8 +265,88 @@ export function zAlgorithmSteps(): StringMatchFrame[] {
   return frames;
 }
 
+function buildBadCharTable(pattern: string): Map<string, number> {
+  const table = new Map<string, number>();
+  for (let i = 0; i < pattern.length; i++) {
+    table.set(pattern[i], i);
+  }
+  return table;
+}
+
+/**
+ * ボイヤー・ムーア法(不良文字則のみの簡略版)のステップ列を生成する。
+ * パターンを右から左へ比較していき、不一致が起きた文字がパターン内のどこに最後に現れるかを見て、
+ * 一気に複数文字分パターンをスキップする(他のアルゴリズムが左から1文字ずつ進むのと対照的)。
+ * 実際のボイヤー・ムーア法はさらに「good suffix則」も併用するが、このデモでは不良文字則のみに絞っている。
+ */
+export function boyerMooreSteps(): StringMatchFrame[] {
+  const text = TEXT;
+  const pattern = PATTERN;
+  const m = pattern.length;
+  const n = text.length;
+  const badChar = buildBadCharTable(pattern);
+  const frames: StringMatchFrame[] = [];
+
+  frames.push({
+    text,
+    pattern,
+    textHighlight: {},
+    patternOffset: 0,
+    patternHighlight: {},
+    description: "不良文字則(各文字がパターン内で最後に現れる位置)の表を事前計算",
+  });
+
+  let s = 0;
+  while (s <= n - m) {
+    let j = m - 1;
+    const matchedSoFar: Partial<Record<number, CharState>> = {};
+    while (j >= 0 && pattern[j] === text[s + j]) {
+      matchedSoFar[s + j] = "matching";
+      j--;
+    }
+
+    if (j < 0) {
+      const matchHighlight: Partial<Record<number, CharState>> = {};
+      for (let k = s; k < s + m; k++) matchHighlight[k] = "matched";
+      frames.push({
+        text,
+        pattern,
+        textHighlight: matchHighlight,
+        patternOffset: s,
+        patternHighlight: {},
+        description: `位置${s}で完全一致を発見(パターンを右端から左へ辿って全て一致)`,
+      });
+      s += 1;
+    } else {
+      frames.push({
+        text,
+        pattern,
+        textHighlight: { ...matchedSoFar, [s + j]: "mismatch" },
+        patternOffset: s,
+        patternHighlight: { [j]: "mismatch" },
+        description: `右からpattern[${j}]="${pattern[j]}"とtext[${s + j}]="${text[s + j]}"が不一致`,
+      });
+      const lastOcc = badChar.get(text[s + j]) ?? -1;
+      const shift = Math.max(1, j - lastOcc);
+      s += shift;
+      frames.push({
+        text,
+        pattern,
+        textHighlight: {},
+        patternOffset: s,
+        patternHighlight: {},
+        description: `不良文字則により${shift}文字分パターンをスキップ`,
+      });
+    }
+  }
+
+  frames.push({ text, pattern, textHighlight: {}, patternOffset: 0, patternHighlight: {}, description: "探索完了" });
+  return frames;
+}
+
 export const STRING_VISUALIZERS: Record<string, () => StringMatchFrame[]> = {
   kmp: kmpSteps,
   "rabin-karp": rabinKarpSteps,
   "z-algorithm": zAlgorithmSteps,
+  "boyer-moore": boyerMooreSteps,
 };
