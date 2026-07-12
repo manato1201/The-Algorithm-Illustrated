@@ -2112,6 +2112,327 @@ export function rrfSteps(): DPFrame[] {
   return frames;
 }
 
+export type PerceptronSample = { x1: number; x2: number; label: number };
+/** ANDゲート(線形分離可能な最も基本的な例)。パーセプトロンは必ずこれを学習できる。 */
+export const PERCEPTRON_DATA: PerceptronSample[] = [
+  { x1: 0, x2: 0, label: 0 },
+  { x1: 0, x2: 1, label: 0 },
+  { x1: 1, x2: 0, label: 0 },
+  { x1: 1, x2: 1, label: 1 },
+];
+export const PERCEPTRON_LEARNING_RATE = 1;
+export const PERCEPTRON_EPOCHS = 6;
+
+/**
+ * パーセプトロンのステップ列を生成する。入力の重み付き和(+バイアス)が0を超えるかどうかで
+ * 2値分類し、予測が間違っていた場合だけ「正解ラベルと予測の差×学習率」を重みに加える、
+ * という単純な更新規則を繰り返す。線形分離可能なデータ(ANDゲートのように、1本の直線で
+ * 2クラスを分けられるデータ)に対しては、この更新を繰り返せば必ず有限回で完全分類できる
+ * (パーセプトロン収束定理)ことが理論的に保証されている。
+ */
+export function perceptronSteps(): DPFrame[] {
+  const data = PERCEPTRON_DATA;
+  const lr = PERCEPTRON_LEARNING_RATE;
+
+  let w1 = 0;
+  let w2 = 0;
+  let bias = 0;
+
+  type Row = { w1: number; w2: number; bias: number; pred: number; updated: number };
+  const rows: Row[] = [];
+  for (let epoch = 0; epoch < PERCEPTRON_EPOCHS; epoch++) {
+    for (const sample of data) {
+      const z = w1 * sample.x1 + w2 * sample.x2 + bias;
+      const pred = z > 0 ? 1 : 0;
+      const error = sample.label - pred;
+      if (error !== 0) {
+        w1 += lr * error * sample.x1;
+        w2 += lr * error * sample.x2;
+        bias += lr * error;
+      }
+      rows.push({ w1, w2, bias, pred, updated: error !== 0 ? 1 : 0 });
+    }
+  }
+
+  const cols = rows.length;
+  const table: (number | null)[][] = [
+    new Array(cols).fill(null),
+    new Array(cols).fill(null),
+    new Array(cols).fill(null),
+    new Array(cols).fill(null),
+  ];
+  const state: DPCellState[][] = [
+    new Array(cols).fill("idle"),
+    new Array(cols).fill("idle"),
+    new Array(cols).fill("idle"),
+    new Array(cols).fill("idle"),
+  ];
+
+  const frames: DPFrame[] = [];
+  const snapshot = (description: string): DPFrame => ({
+    table: table.map((row, r) => row.map((value, c) => ({ value, state: state[r][c] }))),
+    description,
+  });
+
+  frames.push(
+    snapshot(`パーセプトロンを開始。ANDゲート(線形分離可能)を学習する。学習率=${lr}、初期重み(w1,w2,bias)=(0,0,0)`),
+  );
+
+  let step = 0;
+  for (let epoch = 0; epoch < PERCEPTRON_EPOCHS; epoch++) {
+    for (const sample of data) {
+      const row = rows[step];
+      table[0][step] = row.w1;
+      table[1][step] = row.w2;
+      table[2][step] = row.bias;
+      table[3][step] = row.pred;
+      state[0][step] = "pivot";
+      state[1][step] = "pivot";
+      state[2][step] = "pivot";
+      state[3][step] = "pivot";
+      frames.push(
+        snapshot(
+          `[エポック${epoch + 1}] 入力(${sample.x1},${sample.x2})、正解=${sample.label}、予測=${row.pred} → ${row.updated ? "誤り、重みを更新" : "正解、更新なし"}(更新後 w1=${row.w1}, w2=${row.w2}, bias=${row.bias})`,
+        ),
+      );
+      state[0][step] = "settled";
+      state[1][step] = "settled";
+      state[2][step] = "settled";
+      state[3][step] = "settled";
+      step++;
+    }
+  }
+
+  const finalRow = rows[rows.length - 1];
+  const allCorrect = data.every((sample) => {
+    const z = finalRow.w1 * sample.x1 + finalRow.w2 * sample.x2 + finalRow.bias;
+    return (z > 0 ? 1 : 0) === sample.label;
+  });
+  frames.push(
+    snapshot(
+      `計算完了(${PERCEPTRON_EPOCHS}エポック)。最終的な重み(w1,w2,bias)=(${finalRow.w1},${finalRow.w2},${finalRow.bias})は、全4サンプルを${allCorrect ? "正しく分類できる" : "まだ正しく分類できていない"}`,
+    ),
+  );
+
+  return frames;
+}
+
+export const BACKPROP_X = 1;
+export const BACKPROP_TARGET = 1;
+export const BACKPROP_LEARNING_RATE = 0.5;
+export const BACKPROP_EPOCHS = 10;
+export const BACKPROP_INITIAL_W1 = 0.5;
+export const BACKPROP_INITIAL_B1 = 0;
+export const BACKPROP_INITIAL_W2 = 0.5;
+export const BACKPROP_INITIAL_B2 = 0;
+
+function backpropSigmoid(z: number): number {
+  return 1 / (1 + Math.exp(-z));
+}
+
+/**
+ * 誤差逆伝播法(バックプロパゲーション)のステップ列を生成する。x→隠れ層(シグモイド)→出力、
+ * という最小のネットワーク(重み2つ・バイアス2つ)を例に、連鎖律を使って
+ * 「出力の誤差 → 出力層の重みの勾配」「出力の誤差 → 隠れ層の出力への影響 → 活性化関数の微分
+ * → 隠れ層の重みの勾配」という順に、出力から入力へ向かって勾配を伝播させていく様子を
+ * 可視化する。この「連鎖律を逆向きにたどる」という発想により、ネットワークがどれだけ深くても
+ * 全ての重みの勾配を1回の順伝播+1回の逆伝播だけで計算できる。
+ */
+export function backpropagationSteps(): DPFrame[] {
+  const x = BACKPROP_X;
+  const target = BACKPROP_TARGET;
+  const lr = BACKPROP_LEARNING_RATE;
+
+  let w1 = BACKPROP_INITIAL_W1;
+  let b1 = BACKPROP_INITIAL_B1;
+  let w2 = BACKPROP_INITIAL_W2;
+  let b2 = BACKPROP_INITIAL_B2;
+
+  type Row = { w1: number; b1: number; w2: number; b2: number; yhat: number; loss: number };
+  const rows: Row[] = [];
+
+  for (let epoch = 0; epoch < BACKPROP_EPOCHS; epoch++) {
+    const z1 = w1 * x + b1;
+    const h = backpropSigmoid(z1);
+    const yhat = w2 * h + b2;
+    const loss = 0.5 * (target - yhat) ** 2;
+
+    const dLdyhat = yhat - target;
+    const dLdw2 = dLdyhat * h;
+    const dLdb2 = dLdyhat;
+    const dLdh = dLdyhat * w2;
+    const dLdz1 = dLdh * h * (1 - h);
+    const dLdw1 = dLdz1 * x;
+    const dLdb1 = dLdz1;
+
+    w1 -= lr * dLdw1;
+    b1 -= lr * dLdb1;
+    w2 -= lr * dLdw2;
+    b2 -= lr * dLdb2;
+
+    rows.push({
+      w1: Number(w1.toFixed(4)),
+      b1: Number(b1.toFixed(4)),
+      w2: Number(w2.toFixed(4)),
+      b2: Number(b2.toFixed(4)),
+      yhat: Number(yhat.toFixed(4)),
+      loss: Number(loss.toFixed(4)),
+    });
+  }
+
+  const cols = rows.length;
+  const rowLabels = ["w1", "b1", "w2", "b2", "y_hat(順伝播の出力)", "損失"];
+  const table: (number | null)[][] = rowLabels.map(() => new Array(cols).fill(null));
+  const state: DPCellState[][] = rowLabels.map(() => new Array(cols).fill("idle"));
+
+  const frames: DPFrame[] = [];
+  const snapshot = (description: string): DPFrame => ({
+    table: table.map((row, r) => row.map((value, c) => ({ value, state: state[r][c] }))),
+    description,
+  });
+
+  frames.push(
+    snapshot(
+      `誤差逆伝播法を開始。x=${x}→隠れ層h=sigmoid(w1×x+b1)→出力y_hat=w2×h+b2という最小ネットワークを、目標値y=${target}に近づける`,
+    ),
+  );
+
+  for (let epoch = 0; epoch < BACKPROP_EPOCHS; epoch++) {
+    const row = rows[epoch];
+    const values = [row.w1, row.b1, row.w2, row.b2, row.yhat, row.loss];
+    for (let r = 0; r < rowLabels.length; r++) {
+      table[r][epoch] = values[r];
+      state[r][epoch] = "pivot";
+    }
+    frames.push(
+      snapshot(
+        `[エポック${epoch + 1}] 順伝播でy_hat=${row.yhat}を計算、損失=${row.loss}。連鎖律で逆伝播した勾配を使って重みを更新: w1=${row.w1}, b1=${row.b1}, w2=${row.w2}, b2=${row.b2}`,
+      ),
+    );
+    for (let r = 0; r < rowLabels.length; r++) state[r][epoch] = "settled";
+  }
+
+  const finalRow = rows[rows.length - 1];
+  frames.push(
+    snapshot(
+      `計算完了(${BACKPROP_EPOCHS}エポック)。y_hat=${finalRow.yhat}は目標値${target}に近づき、損失は${rows[0].loss}から${finalRow.loss}まで減少した`,
+    ),
+  );
+
+  return frames;
+}
+
+export type NaiveBayesSample = { f1: number; f2: number; label: number };
+export const NAIVE_BAYES_DATA: NaiveBayesSample[] = [
+  { f1: 1, f2: 1, label: 1 },
+  { f1: 1, f2: 0, label: 1 },
+  { f1: 0, f2: 1, label: 0 },
+  { f1: 0, f2: 0, label: 0 },
+  { f1: 1, f2: 1, label: 1 },
+  { f1: 0, f2: 0, label: 0 },
+];
+export const NAIVE_BAYES_QUERY = { f1: 1, f2: 0 };
+
+/**
+ * ナイーブベイズのステップ列を生成する。「特徴同士は互いに独立」という(現実には成り立たない
+ * ことが多い)強い仮定を置くことで、ベイズの定理 P(class|特徴群) ∝ P(class)×Π P(特徴i|class)
+ * の右辺を、特徴ごとの条件付き確率の掛け算だけで計算できるようにする。学習データに一度も
+ * 出現しない組み合わせで確率が0になり他の特徴の情報も台無しにしてしまう問題を防ぐため、
+ * ラプラススムージング(全てのカウントに1を足す)を使う。
+ */
+export function naiveBayesSteps(): DPFrame[] {
+  const data = NAIVE_BAYES_DATA;
+  const query = NAIVE_BAYES_QUERY;
+  const classes = [0, 1];
+  const n = data.length;
+
+  const countClass = (c: number) => data.filter((d) => d.label === c).length;
+  const countFeature = (feature: "f1" | "f2", value: number, c: number) =>
+    data.filter((d) => d[feature] === value && d.label === c).length;
+
+  const cols = classes.length;
+  const rowLabels = ["P(class)", "P(f1=query値|class)", "P(f2=query値|class)", "事後確率(比例値)"];
+  const table: (number | null)[][] = rowLabels.map(() => new Array(cols).fill(null));
+  const state: DPCellState[][] = rowLabels.map(() => new Array(cols).fill("idle"));
+
+  const frames: DPFrame[] = [];
+  const snapshot = (description: string): DPFrame => ({
+    table: table.map((row, r) => row.map((value, c) => ({ value, state: state[r][c] }))),
+    description,
+  });
+
+  frames.push(
+    snapshot(
+      `ナイーブベイズを開始。クエリ(f1=${query.f1}, f2=${query.f2})のクラスを予測する(訓練データ${n}件、ラプラススムージングを使用)`,
+    ),
+  );
+
+  const pClass: number[] = [];
+  classes.forEach((c, ci) => {
+    const p = Number((countClass(c) / n).toFixed(4));
+    pClass.push(p);
+    table[0][ci] = p;
+    state[0][ci] = "pivot";
+  });
+  frames.push(snapshot(`P(class) = クラスの訓練データ中の割合: ${classes.map((c, i) => `class=${c}: ${pClass[i]}`).join(", ")}`));
+  classes.forEach((_, ci) => {
+    state[0][ci] = "settled";
+  });
+
+  const pF1: number[] = [];
+  classes.forEach((c, ci) => {
+    const p = Number(((countFeature("f1", query.f1, c) + 1) / (countClass(c) + 2)).toFixed(4));
+    pF1.push(p);
+    table[1][ci] = p;
+    state[1][ci] = "pivot";
+  });
+  frames.push(
+    snapshot(
+      `P(f1=${query.f1}|class) = (該当件数+1)/(クラス件数+2)(ラプラススムージング): ${classes.map((c, i) => `class=${c}: ${pF1[i]}`).join(", ")}`,
+    ),
+  );
+  classes.forEach((_, ci) => {
+    state[1][ci] = "settled";
+  });
+
+  const pF2: number[] = [];
+  classes.forEach((c, ci) => {
+    const p = Number(((countFeature("f2", query.f2, c) + 1) / (countClass(c) + 2)).toFixed(4));
+    pF2.push(p);
+    table[2][ci] = p;
+    state[2][ci] = "pivot";
+  });
+  frames.push(
+    snapshot(
+      `P(f2=${query.f2}|class) = (該当件数+1)/(クラス件数+2)(ラプラススムージング): ${classes.map((c, i) => `class=${c}: ${pF2[i]}`).join(", ")}`,
+    ),
+  );
+  classes.forEach((_, ci) => {
+    state[2][ci] = "settled";
+  });
+
+  const posterior: number[] = [];
+  classes.forEach((c, ci) => {
+    const p = Number((pClass[ci] * pF1[ci] * pF2[ci]).toFixed(5));
+    posterior.push(p);
+    table[3][ci] = p;
+    state[3][ci] = "pivot";
+  });
+  frames.push(
+    snapshot(
+      `事後確率(比例値) = P(class)×P(f1|class)×P(f2|class): ${classes.map((c, i) => `class=${c}: ${posterior[i]}`).join(", ")}(独立性の仮定のおかげで単純な掛け算で済む)`,
+    ),
+  );
+  classes.forEach((_, ci) => {
+    state[3][ci] = "settled";
+  });
+
+  const predicted = classes[posterior.indexOf(Math.max(...posterior))];
+  frames.push(snapshot(`計算完了。事後確率が最大のクラス = ${predicted} と予測`));
+
+  return frames;
+}
+
 export type DPTableMeta = {
   /** テーブル上の情報チップ(品物一覧や対象文字列など)。 */
   chips: string[];
@@ -2359,6 +2680,28 @@ export const DP_TABLE_META: Record<string, DPTableMeta> = {
     rowHeaders: ["キーワード検索順位", "ベクトル検索順位", "RRFスコア"],
     colHeaders: RRF_DOCS,
   },
+  perceptron: {
+    chips: [`ANDゲート(${PERCEPTRON_DATA.length}サンプル×${PERCEPTRON_EPOCHS}エポック)`, `学習率=${PERCEPTRON_LEARNING_RATE}`],
+    cornerLabel: "値 \\ ステップ",
+    rowHeaders: ["w1", "w2", "bias", "予測"],
+    colHeaders: Array.from({ length: PERCEPTRON_DATA.length * PERCEPTRON_EPOCHS }, (_, i) => {
+      const epoch = Math.floor(i / PERCEPTRON_DATA.length) + 1;
+      const sampleIdx = i % PERCEPTRON_DATA.length;
+      return `E${epoch}-${sampleIdx + 1}`;
+    }),
+  },
+  backpropagation: {
+    chips: [`x=${BACKPROP_X}`, `目標y=${BACKPROP_TARGET}`, `学習率=${BACKPROP_LEARNING_RATE}`, "x→隠れ層(sigmoid)→出力の最小ネットワーク"],
+    cornerLabel: "値 \\ エポック",
+    rowHeaders: ["w1", "b1", "w2", "b2", "y_hat", "損失"],
+    colHeaders: Array.from({ length: BACKPROP_EPOCHS }, (_, i) => `E${i + 1}`),
+  },
+  "naive-bayes": {
+    chips: [`訓練データ${NAIVE_BAYES_DATA.length}件`, `クエリ: f1=${NAIVE_BAYES_QUERY.f1}, f2=${NAIVE_BAYES_QUERY.f2}`],
+    cornerLabel: "確率 \\ クラス",
+    rowHeaders: ["P(class)", "P(f1=query値|class)", "P(f2=query値|class)", "事後確率(比例値)"],
+    colHeaders: ["class=0", "class=1"],
+  },
 };
 
 export const DP_VISUALIZERS: Record<string, () => DPFrame[]> = {
@@ -2392,4 +2735,7 @@ export const DP_VISUALIZERS: Record<string, () => DPFrame[]> = {
   "tf-idf": tfidfSteps,
   bm25: bm25Steps,
   rrf: rrfSteps,
+  perceptron: perceptronSteps,
+  backpropagation: backpropagationSteps,
+  "naive-bayes": naiveBayesSteps,
 };

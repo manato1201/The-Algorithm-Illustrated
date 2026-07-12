@@ -2187,6 +2187,235 @@ export function vectorClocksSteps(): GraphFrame[] {
   return frames;
 }
 
+type DecisionTreeSample = { f1: number; f2: number; label: number };
+type DecisionTreeInternalNode = {
+  id: string;
+  isLeaf: boolean;
+  feature: "f1" | "f2" | null;
+  label: number | null;
+  left: string | null;
+  right: string | null;
+};
+
+/** XOR相当の分布(単一の分割では解けず、決定木の多段分割が必要になる古典的な例)。 */
+export const DECISION_TREE_DATA: DecisionTreeSample[] = [
+  { f1: 0, f2: 0, label: 0 },
+  { f1: 0, f2: 1, label: 1 },
+  { f1: 1, f2: 0, label: 1 },
+  { f1: 1, f2: 1, label: 0 },
+];
+
+function decisionTreeGini(samples: DecisionTreeSample[]): number {
+  if (samples.length === 0) return 0;
+  const counts = new Map<number, number>();
+  samples.forEach((s) => counts.set(s.label, (counts.get(s.label) ?? 0) + 1));
+  let sumSq = 0;
+  counts.forEach((c) => {
+    sumSq += (c / samples.length) ** 2;
+  });
+  return 1 - sumSq;
+}
+
+function decisionTreeMajorityLabel(samples: DecisionTreeSample[]): number {
+  const counts = new Map<number, number>();
+  samples.forEach((s) => counts.set(s.label, (counts.get(s.label) ?? 0) + 1));
+  return [...counts.entries()].sort((a, b) => b[1] - a[1])[0][0];
+}
+
+function buildDecisionTree(
+  samples: DecisionTreeSample[],
+  features: ("f1" | "f2")[],
+  nodes: Record<string, DecisionTreeInternalNode>,
+  idCounter: { value: number },
+): string {
+  const id = `n${idCounter.value++}`;
+  const labels = new Set(samples.map((s) => s.label));
+
+  if (labels.size === 1 || features.length === 0) {
+    nodes[id] = { id, isLeaf: true, feature: null, label: decisionTreeMajorityLabel(samples), left: null, right: null };
+    return id;
+  }
+
+  let bestFeature: "f1" | "f2" | null = null;
+  let bestGini = Infinity;
+  let bestLeft: DecisionTreeSample[] = [];
+  let bestRight: DecisionTreeSample[] = [];
+  for (const feature of features) {
+    const left = samples.filter((s) => s[feature] === 0);
+    const right = samples.filter((s) => s[feature] === 1);
+    if (left.length === 0 || right.length === 0) continue;
+    const weighted =
+      (left.length / samples.length) * decisionTreeGini(left) +
+      (right.length / samples.length) * decisionTreeGini(right);
+    if (weighted < bestGini) {
+      bestGini = weighted;
+      bestFeature = feature;
+      bestLeft = left;
+      bestRight = right;
+    }
+  }
+
+  if (bestFeature === null) {
+    nodes[id] = { id, isLeaf: true, feature: null, label: decisionTreeMajorityLabel(samples), left: null, right: null };
+    return id;
+  }
+
+  const remainingFeatures = features.filter((f) => f !== bestFeature);
+  const leftId = buildDecisionTree(bestLeft, remainingFeatures, nodes, idCounter);
+  const rightId = buildDecisionTree(bestRight, remainingFeatures, nodes, idCounter);
+  nodes[id] = { id, isLeaf: false, feature: bestFeature, label: null, left: leftId, right: rightId };
+  return id;
+}
+
+function computeDecisionTreeLayout(
+  nodes: Record<string, DecisionTreeInternalNode>,
+  rootId: string,
+): Record<string, { x: number; y: number }> {
+  const positions: Record<string, { x: number; y: number }> = {};
+  let counter = 0;
+  let maxDepth = 0;
+
+  const visit = (id: string, depth: number) => {
+    const node = nodes[id];
+    maxDepth = Math.max(maxDepth, depth);
+    if (node.isLeaf) {
+      positions[id] = { x: counter, y: depth };
+      counter++;
+      return;
+    }
+    visit(node.left!, depth + 1);
+    visit(node.right!, depth + 1);
+    const childXs = [positions[node.left!].x, positions[node.right!].x];
+    positions[id] = { x: (Math.min(...childXs) + Math.max(...childXs)) / 2, y: depth };
+  };
+  visit(rootId, 0);
+
+  const totalLeaves = counter;
+  Object.keys(positions).forEach((id) => {
+    positions[id] = {
+      x: totalLeaves > 1 ? positions[id].x / (totalLeaves - 1) : 0.5,
+      y: maxDepth > 0 ? positions[id].y / maxDepth : 0,
+    };
+  });
+  return positions;
+}
+
+const DECISION_TREE_NODES_MAP: Record<string, DecisionTreeInternalNode> = {};
+const DECISION_TREE_ROOT_ID = buildDecisionTree(
+  DECISION_TREE_DATA,
+  ["f1", "f2"],
+  DECISION_TREE_NODES_MAP,
+  { value: 1 },
+);
+const DECISION_TREE_LAYOUT = computeDecisionTreeLayout(DECISION_TREE_NODES_MAP, DECISION_TREE_ROOT_ID);
+
+export const DECISION_TREE_GRAPH_NODES: GraphNode[] = Object.values(DECISION_TREE_NODES_MAP).map((n) => ({
+  id: n.id,
+  label: n.isLeaf ? String(n.label) : `${n.feature}?`,
+  x: DECISION_TREE_LAYOUT[n.id].x,
+  y: DECISION_TREE_LAYOUT[n.id].y,
+}));
+export const DECISION_TREE_GRAPH_EDGES: GraphEdge[] = Object.values(DECISION_TREE_NODES_MAP).flatMap((n) => {
+  const edges: GraphEdge[] = [];
+  if (n.left !== null) edges.push({ id: `${n.id}-${n.left}`, from: n.id, to: n.left, weight: 1 });
+  if (n.right !== null) edges.push({ id: `${n.id}-${n.right}`, from: n.id, to: n.right, weight: 1 });
+  return edges;
+});
+
+/**
+ * 決定木のステップ列を生成する。ハフマン符号化・セグメント木と同じ手法(実行結果として木を
+ * 先に構築し、その最終形を固定レイアウトに使う)でGraphVisualizerに載せている。
+ * データはXOR相当の分布(f1,f2の値の組み合わせに対しラベルが0,1,1,0)を使っており、
+ * f1・f2いずれか1回の分割だけでは完全に分離できない(単純な線形分類器であるパーセプトロンが
+ * 解けない典型例と同じ)ことを、決定木が2段階の分割(まずf1で分けてから、それぞれの
+ * グループをさらにf2で分ける)によって解決できる様子を可視化する。分割の良し悪しは
+ * ジニ不純度(1-Σ確率²、値が小さいほど純粋)の重み付き平均で判定する。
+ */
+export function decisionTreeSteps(): GraphFrame[] {
+  const nodesMap: Record<string, DecisionTreeInternalNode> = {};
+  buildDecisionTree(DECISION_TREE_DATA, ["f1", "f2"], nodesMap, { value: 1 });
+  const rootId = DECISION_TREE_ROOT_ID;
+  const graphNodes = DECISION_TREE_GRAPH_NODES;
+  const graphEdges = DECISION_TREE_GRAPH_EDGES;
+
+  const nodeStates = initNodeStates(graphNodes, "idle");
+  const edgeStates = initEdgeStates(graphEdges, "idle");
+  const edgeLabels: Record<string, string> = Object.fromEntries(graphEdges.map((e) => [e.id, ""]));
+
+  const frames: GraphFrame[] = [
+    {
+      nodeStates: { ...nodeStates },
+      edgeStates: { ...edgeStates },
+      distances: {},
+      edgeLabels: { ...edgeLabels },
+      description: `決定木の構築を開始。データ: ${DECISION_TREE_DATA.map((d) => `(f1=${d.f1},f2=${d.f2})→${d.label}`).join(", ")}(XOR相当、1回の分割だけでは分離できない)`,
+    },
+  ];
+
+  const buildAndVisit = (samples: DecisionTreeSample[], features: ("f1" | "f2")[], id: string) => {
+    const node = nodesMap[id];
+    if (node.isLeaf) {
+      nodeStates[id] = "settled";
+      frames.push({
+        nodeStates: { ...nodeStates },
+        edgeStates: { ...edgeStates },
+        distances: {},
+        edgeLabels: { ...edgeLabels },
+        description: `頂点${id}: ${samples.length}件全てラベル${samples[0]?.label ?? node.label}${samples.length > 0 && new Set(samples.map((s) => s.label)).size === 1 ? "(純粋)" : "(分割材料が尽きたため多数決)"} → 葉としてラベル${node.label}を確定`,
+      });
+      return;
+    }
+
+    nodeStates[id] = "visited";
+    const giniValues = features.map((f) => {
+      const left = samples.filter((s) => s[f] === 0);
+      const right = samples.filter((s) => s[f] === 1);
+      const weighted =
+        left.length === 0 || right.length === 0
+          ? Infinity
+          : (left.length / samples.length) * decisionTreeGini(left) + (right.length / samples.length) * decisionTreeGini(right);
+      return { feature: f, weighted };
+    });
+    frames.push({
+      nodeStates: { ...nodeStates },
+      edgeStates: { ...edgeStates },
+      distances: {},
+      edgeLabels: { ...edgeLabels },
+      description: `頂点${id}(${samples.length}件)で各特徴の分割を試す: ${giniValues.map((g) => `${g.feature}(重み付きジニ=${g.weighted === Infinity ? "分割不可" : g.weighted.toFixed(3)})`).join(", ")} → 最小の${node.feature}で分割`,
+    });
+
+    const left = samples.filter((s) => s[node.feature!] === 0);
+    const right = samples.filter((s) => s[node.feature!] === 1);
+    edgeLabels[`${id}-${node.left}`] = `${node.feature}=0`;
+    edgeLabels[`${id}-${node.right}`] = `${node.feature}=1`;
+    edgeStates[`${id}-${node.left}`] = "tree";
+    edgeStates[`${id}-${node.right}`] = "tree";
+
+    buildAndVisit(left, features.filter((f) => f !== node.feature), node.left!);
+    buildAndVisit(right, features.filter((f) => f !== node.feature), node.right!);
+  };
+
+  buildAndVisit(DECISION_TREE_DATA, ["f1", "f2"], rootId);
+
+  const trainAccuracy = DECISION_TREE_DATA.filter((sample) => {
+    let curId = rootId;
+    while (!nodesMap[curId].isLeaf) {
+      curId = sample[nodesMap[curId].feature!] === 0 ? nodesMap[curId].left! : nodesMap[curId].right!;
+    }
+    return nodesMap[curId].label === sample.label;
+  }).length;
+
+  frames.push({
+    nodeStates: { ...nodeStates },
+    edgeStates: { ...edgeStates },
+    distances: {},
+    edgeLabels: { ...edgeLabels },
+    description: `構築完了。訓練データ${DECISION_TREE_DATA.length}件中${trainAccuracy}件を正しく分類(単一の分割では解けないXORパターンも、2段階の分割で完全に分離できた)`,
+  });
+
+  return frames;
+}
+
 export type GraphDataset = {
   nodes: GraphNode[];
   edges: GraphEdge[];
@@ -3109,6 +3338,7 @@ export const GRAPH_DATASETS: Record<string, GraphDataset> = {
   raft: { nodes: RAFT_NODES, edges: RAFT_EDGES, directed: true },
   paxos: { nodes: PAXOS_NODES, edges: PAXOS_EDGES, directed: true },
   "vector-clocks": { nodes: VECTOR_CLOCK_NODES, edges: VECTOR_CLOCK_EDGES, directed: true },
+  "decision-tree": { nodes: DECISION_TREE_GRAPH_NODES, edges: DECISION_TREE_GRAPH_EDGES, directed: true },
 };
 
 export const GRAPH_VISUALIZERS: Record<string, () => GraphFrame[]> = {
@@ -3137,4 +3367,5 @@ export const GRAPH_VISUALIZERS: Record<string, () => GraphFrame[]> = {
   raft: raftSteps,
   paxos: paxosSteps,
   "vector-clocks": vectorClocksSteps,
+  "decision-tree": decisionTreeSteps,
 };
