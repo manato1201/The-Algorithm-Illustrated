@@ -22,6 +22,8 @@ export type GraphFrame = {
   edgeStates: Record<string, GraphEdgeState>;
   /** 頂点ごとの現在の距離(ベルマン・フォード法のみ使用)。未対応のアルゴリズムでは空オブジェクト。 */
   distances: Record<string, number | null>;
+  /** 辺の表示ラベルを動的に上書きする(最大流アルゴリズムの「流量/容量」表示用)。未設定の辺は既定のweight表示のまま。 */
+  edgeLabels?: Record<string, string>;
   description: string;
 };
 
@@ -712,6 +714,178 @@ export function tarjanSccSteps(): GraphFrame[] {
   return frames;
 }
 
+/** CLRS(Cormen等)の教科書に登場する古典的な最大流ネットワーク例。既知の最大流=23。 */
+export const FLOW_NODES: GraphNode[] = circleLayout(["S", "V1", "V2", "V3", "V4", "T"]);
+export const FLOW_EDGES: GraphEdge[] = [
+  { id: "S-V1", from: "S", to: "V1", weight: 16 },
+  { id: "S-V2", from: "S", to: "V2", weight: 13 },
+  { id: "V1-V3", from: "V1", to: "V3", weight: 12 },
+  { id: "V2-V1", from: "V2", to: "V1", weight: 4 },
+  { id: "V3-V2", from: "V3", to: "V2", weight: 9 },
+  { id: "V2-V4", from: "V2", to: "V4", weight: 14 },
+  { id: "V4-V3", from: "V4", to: "V3", weight: 7 },
+  { id: "V3-T", from: "V3", to: "T", weight: 20 },
+  { id: "V4-T", from: "V4", to: "T", weight: 4 },
+];
+const FLOW_SOURCE = "S";
+const FLOW_SINK = "T";
+
+/**
+ * Edmonds-Karp法(BFSで最短の増加パスを毎回探すFord-Fulkerson法)のステップ列を生成する。
+ * 各辺の残余容量は「まだ流せる分(容量-現在の流量)」だけでなく、「今まで流した分を打ち消せる分」
+ * (逆向きの残余辺)も含めて計算する——この残余グラフの考え方こそがFord-Fulkerson系アルゴリズムの核心であり、
+ * 一度選んだ増加パスが必ずしも最終的な最大流の一部になるとは限らないことを可能にする実装になっている。
+ * ただしこのグラフ・このBFS順序では、たまたま全ての増加パスが順方向の辺だけで構成され、
+ * 逆向きの残余辺(既存の流れを打ち消す操作)は実際には使われずに最大流23が求まる
+ * (node --experimental-strip-typesでの直接実行で確認済み)。
+ */
+export function edmondsKarpSteps(): GraphFrame[] {
+  const nodes = FLOW_NODES;
+  const edges = FLOW_EDGES;
+
+  const realCapacity = new Map<string, number>();
+  const flow = new Map<string, number>();
+  for (const e of edges) {
+    realCapacity.set(`${e.from}->${e.to}`, e.weight);
+    flow.set(`${e.from}->${e.to}`, 0);
+  }
+
+  const adjacency = new Map<string, Set<string>>();
+  const addAdjacency = (a: string, b: string) => {
+    if (!adjacency.has(a)) adjacency.set(a, new Set());
+    adjacency.get(a)!.add(b);
+  };
+  for (const e of edges) {
+    addAdjacency(e.from, e.to);
+    addAdjacency(e.to, e.from);
+  }
+
+  const residualCap = (a: string, b: string): number => {
+    if (realCapacity.has(`${a}->${b}`)) {
+      return realCapacity.get(`${a}->${b}`)! - flow.get(`${a}->${b}`)!;
+    }
+    if (realCapacity.has(`${b}->${a}`)) {
+      return flow.get(`${b}->${a}`)!;
+    }
+    return 0;
+  };
+
+  const pushFlow = (a: string, b: string, amount: number) => {
+    if (realCapacity.has(`${a}->${b}`)) {
+      flow.set(`${a}->${b}`, flow.get(`${a}->${b}`)! + amount);
+    } else {
+      flow.set(`${b}->${a}`, flow.get(`${b}->${a}`)! - amount);
+    }
+  };
+
+  const edgeIdBetween = (a: string, b: string): string => {
+    const forward = edges.find((e) => e.from === a && e.to === b);
+    const backward = edges.find((e) => e.from === b && e.to === a);
+    return (forward ?? backward)!.id;
+  };
+
+  const bfsAugmentingPath = (): string[] | null => {
+    const parent = new Map<string, string>();
+    const visited = new Set<string>([FLOW_SOURCE]);
+    const queue: string[] = [FLOW_SOURCE];
+    while (queue.length > 0) {
+      const u = queue.shift()!;
+      if (u === FLOW_SINK) break;
+      for (const v of adjacency.get(u) ?? []) {
+        if (visited.has(v) || residualCap(u, v) <= 0) continue;
+        visited.add(v);
+        parent.set(v, u);
+        queue.push(v);
+      }
+    }
+    if (!visited.has(FLOW_SINK)) return null;
+    const path: string[] = [FLOW_SINK];
+    let cur = FLOW_SINK;
+    while (cur !== FLOW_SOURCE) {
+      cur = parent.get(cur)!;
+      path.push(cur);
+    }
+    path.reverse();
+    return path;
+  };
+
+  const nodeStates = initNodeStates(nodes, "idle");
+  const edgeStates = initEdgeStates(edges, "idle");
+  const currentLabels = (): Record<string, string> =>
+    Object.fromEntries(edges.map((e) => [e.id, `${flow.get(`${e.from}->${e.to}`)}/${e.weight}`]));
+
+  const frames: GraphFrame[] = [
+    {
+      nodeStates: { ...nodeStates },
+      edgeStates: { ...edgeStates },
+      distances: {},
+      edgeLabels: currentLabels(),
+      description: "各辺のラベルを「現在の流量/容量」で表示。Edmonds-Karp法(BFSで最短の増加パスを探す)を開始",
+    },
+  ];
+
+  let totalFlow = 0;
+  let round = 0;
+  for (;;) {
+    const path = bfsAugmentingPath();
+    if (!path) break;
+    round++;
+
+    const pathNodeStates = { ...nodeStates };
+    path.forEach((n) => {
+      pathNodeStates[n] = "visited";
+    });
+    const pathEdgeStates = { ...edgeStates };
+    const pathEdgeIds: string[] = [];
+    for (let i = 0; i < path.length - 1; i++) {
+      const id = edgeIdBetween(path[i], path[i + 1]);
+      pathEdgeIds.push(id);
+      pathEdgeStates[id] = "checking";
+    }
+    frames.push({
+      nodeStates: pathNodeStates,
+      edgeStates: pathEdgeStates,
+      distances: {},
+      edgeLabels: currentLabels(),
+      description: `[ラウンド${round}] BFSで増加パス ${path.join("→")} を発見`,
+    });
+
+    let bottleneck = Infinity;
+    for (let i = 0; i < path.length - 1; i++) {
+      bottleneck = Math.min(bottleneck, residualCap(path[i], path[i + 1]));
+    }
+    for (let i = 0; i < path.length - 1; i++) {
+      pushFlow(path[i], path[i + 1], bottleneck);
+    }
+    totalFlow += bottleneck;
+
+    const afterEdgeStates = { ...edgeStates };
+    pathEdgeIds.forEach((id) => {
+      afterEdgeStates[id] = "relaxed";
+    });
+    frames.push({
+      nodeStates: { ...nodeStates },
+      edgeStates: afterEdgeStates,
+      distances: {},
+      edgeLabels: currentLabels(),
+      description: `ボトルネック容量${bottleneck}だけ流量を増加(累計流量: ${totalFlow})`,
+    });
+  }
+
+  nodes.forEach((n) => {
+    nodeStates[n.id] = "settled";
+  });
+  frames.push({
+    nodeStates: { ...nodeStates },
+    edgeStates: { ...edgeStates },
+    distances: {},
+    edgeLabels: currentLabels(),
+    description: `計算完了。最大流は${totalFlow}(ソースからシンクへの増加パスがこれ以上見つからない)`,
+  });
+
+  return frames;
+}
+
 export const GRAPH_DATASETS: Record<string, GraphDataset> = {
   "bellman-ford": {
     nodes: SHORTEST_PATH_NODES,
@@ -728,6 +902,7 @@ export const GRAPH_DATASETS: Record<string, GraphDataset> = {
   boruvka: { nodes: MST_NODES, edges: MST_EDGES, directed: false },
   "union-find": { nodes: UNION_FIND_NODES, edges: UNION_FIND_EDGES, directed: false },
   "tarjan-scc": { nodes: SCC_NODES, edges: SCC_EDGES, directed: true },
+  "edmonds-karp": { nodes: FLOW_NODES, edges: FLOW_EDGES, directed: true },
 };
 
 export const GRAPH_VISUALIZERS: Record<string, () => GraphFrame[]> = {
@@ -738,4 +913,5 @@ export const GRAPH_VISUALIZERS: Record<string, () => GraphFrame[]> = {
   boruvka: boruvkaSteps,
   "union-find": unionFindSteps,
   "tarjan-scc": tarjanSccSteps,
+  "edmonds-karp": edmondsKarpSteps,
 };

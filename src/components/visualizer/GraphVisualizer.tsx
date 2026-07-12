@@ -46,9 +46,11 @@ type GraphVisualizerProps = {
 };
 
 /**
- * ノードリンク図によるグラフアルゴリズムの可視化(ベルマン・フォード法/プリム法/クラスカル法)。
+ * ノードリンク図によるグラフアルゴリズムの可視化。
  * BFS/DFS/ダイクストラ法/A*探索が固定迷路(グリッド)を使うのに対し、
  * こちらは一般的なグラフ(頂点+重み付き辺)を円形レイアウトでCanvas 2D描画する。
+ * 辺のラベルは既定では`weight`をそのまま表示するが、frame.edgeLabelsがあればそちらを優先する
+ * (Edmonds-Karp法の「流量/容量」のように、フレームごとに変化する値を表示したいアルゴリズム向け)。
  */
 export function GraphVisualizer({ algorithmId }: GraphVisualizerProps) {
   const dataset = GRAPH_DATASETS[algorithmId];
@@ -126,11 +128,13 @@ export function GraphVisualizer({ algorithmId }: GraphVisualizerProps) {
 
       const midX = (from.x + to.x) / 2;
       const midY = (from.y + to.y) / 2;
+      const label = currentFrame.edgeLabels?.[edge.id] ?? String(edge.weight);
+      const labelWidth = Math.max(24, label.length * 7 + 8);
       ctx.shadowBlur = 0;
       ctx.fillStyle = "#06070a";
-      ctx.fillRect(midX - 12, midY - 8, 24, 16);
+      ctx.fillRect(midX - labelWidth / 2, midY - 8, labelWidth, 16);
       ctx.fillStyle = color;
-      ctx.fillText(String(edge.weight), midX, midY);
+      ctx.fillText(label, midX, midY);
     }
 
     for (const node of dataset.nodes) {
