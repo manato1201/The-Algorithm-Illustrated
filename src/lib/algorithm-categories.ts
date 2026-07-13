@@ -51,6 +51,34 @@ export const CATEGORY_TAXONOMY = [
     category: "数値計算",
     subcategories: ["求根アルゴリズム", "数値積分・微分方程式", "線形代数計算", "信号処理"],
   },
+  {
+    category: "コンピュータビジョン",
+    subcategories: ["エッジ・特徴検出", "画像変換", "セグメンテーション・追跡", "ロバスト推定"],
+  },
+  {
+    category: "自然言語処理",
+    subcategories: ["トークン化・前処理", "系列ラベリング・構文解析", "言語モデル・分散表現", "要約・訂正"],
+  },
+  {
+    category: "コンパイラ・構文解析",
+    subcategories: ["字句解析", "構文解析", "コード生成・最適化"],
+  },
+  {
+    category: "バイオインフォマティクス",
+    subcategories: ["配列アラインメント", "系統樹・クラスタリング", "ゲノムアセンブリ", "構造予測"],
+  },
+  {
+    category: "並行処理・並列アルゴリズム",
+    subcategories: ["同期・相互排他", "並列計算パターン", "ロックフリー構造・分散協調"],
+  },
+  {
+    category: "スケジューリング",
+    subcategories: ["CPUスケジューリング", "タスク・ジョブスケジューリング", "キャッシュ置換ポリシー"],
+  },
+  {
+    category: "制御・ロボティクス",
+    subcategories: ["フィードバック制御", "状態推定", "経路計画", "姿勢・軌道生成"],
+  },
 ] as const;
 
 export const CATEGORY_ORDER = CATEGORY_TAXONOMY.map((c) => c.category);
