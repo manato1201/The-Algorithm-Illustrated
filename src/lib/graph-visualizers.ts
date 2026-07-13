@@ -4507,6 +4507,377 @@ export function hopcroftKarpSteps(): GraphFrame[] {
   return frames;
 }
 
+/**
+ * SPFA(Bellman-Ford法のキューによる高速化版)のステップ列を生成する。
+ * 全辺を頂点数-1回律儀に繰り返すベルマン・フォード法と違い、実際に距離が更新された頂点だけを
+ * キューに積んで再検討することで、多くのグラフで実際に検査する辺の数を減らす。
+ * bellman-ford.mdと同じ有向グラフ(負の辺1本含む)を使い、最終的な距離が一致することを確認できる。
+ */
+export function spfaSteps(): GraphFrame[] {
+  const nodes = SHORTEST_PATH_NODES;
+  const edges = SHORTEST_PATH_EDGES;
+  const start = SHORTEST_PATH_START;
+  const dist = initDistances(nodes, start);
+  const nodeStates = initNodeStates(nodes, "idle");
+  nodeStates[start] = "visited";
+  const edgeStates = initEdgeStates(edges, "idle");
+  const inQueue = new Set<string>([start]);
+  const queue: string[] = [start];
+
+  const frames: GraphFrame[] = [
+    {
+      nodeStates: { ...nodeStates },
+      edgeStates: { ...edgeStates },
+      distances: { ...dist },
+      description: `初期状態(開始頂点${start}をキューに投入、距離0)`,
+    },
+  ];
+
+  const outgoing = (id: string) => edges.filter((e) => e.from === id);
+
+  while (queue.length > 0) {
+    const v = queue.shift()!;
+    inQueue.delete(v);
+    frames.push({
+      nodeStates: { ...nodeStates },
+      edgeStates: { ...edgeStates },
+      distances: { ...dist },
+      description: `頂点${v}をキューから取り出す(キュー内 ${queue.length}件)`,
+    });
+
+    for (const edge of outgoing(v)) {
+      edgeStates[edge.id] = "checking";
+      frames.push({
+        nodeStates: { ...nodeStates },
+        edgeStates: { ...edgeStates },
+        distances: { ...dist },
+        description: `辺${edge.from}→${edge.to}(重み${edge.weight})を緩和できるか検査`,
+      });
+
+      const fromDist = dist[v];
+      const candidate = fromDist === null ? null : fromDist + edge.weight;
+      if (candidate !== null && (dist[edge.to] === null || candidate < dist[edge.to]!)) {
+        dist[edge.to] = candidate;
+        edgeStates[edge.id] = "relaxed";
+        nodeStates[edge.to] = "visited";
+        frames.push({
+          nodeStates: { ...nodeStates },
+          edgeStates: { ...edgeStates },
+          distances: { ...dist },
+          description: `緩和成功: dist[${edge.to}]を${candidate}に更新`,
+        });
+        if (!inQueue.has(edge.to)) {
+          inQueue.add(edge.to);
+          queue.push(edge.to);
+          frames.push({
+            nodeStates: { ...nodeStates },
+            edgeStates: { ...edgeStates },
+            distances: { ...dist },
+            description: `頂点${edge.to}をキューに追加(再検討対象、キュー内 ${queue.length}件)`,
+          });
+        }
+      } else {
+        edgeStates[edge.id] = "idle";
+      }
+    }
+  }
+
+  nodes.forEach((n) => {
+    nodeStates[n.id] = dist[n.id] !== null ? "settled" : "idle";
+  });
+  frames.push({
+    nodeStates: { ...nodeStates },
+    edgeStates: { ...edgeStates },
+    distances: { ...dist },
+    description: "計算完了(SPFA: キューが空になるまで緩和を繰り返した。ベルマン・フォード法と同じ最短距離)",
+  });
+
+  return frames;
+}
+
+/**
+ * 逆消去法(Reverse-Delete Algorithm)のステップ列を生成する。
+ * クラスカル法とは逆に、辺を重みの大きい順に見ていき、取り除いても
+ * グラフの連結性が保たれるならその辺を削除する、を繰り返して最小全域木を求める。
+ * MST_EDGES(プリム法・クラスカル法と同じ無向グラフ)を使用。
+ */
+export function reverseDeleteSteps(): GraphFrame[] {
+  const nodes = MST_NODES;
+  const sortedEdges = [...MST_EDGES].sort((a, b) => b.weight - a.weight);
+  const nodeStates = initNodeStates(nodes, "settled");
+  const edgeStates = initEdgeStates(MST_EDGES, "tree");
+  const remaining = new Set(MST_EDGES.map((e) => e.id));
+
+  const frames: GraphFrame[] = [
+    {
+      nodeStates: { ...nodeStates },
+      edgeStates: { ...edgeStates },
+      distances: {},
+      description: `辺を重みの大きい順にソート: ${sortedEdges.map((e) => `${e.from}-${e.to}(${e.weight})`).join(", ")}`,
+    },
+  ];
+
+  const isConnectedWithout = (excludeId: string): boolean => {
+    const adjacency = new Map<string, string[]>();
+    nodes.forEach((n) => adjacency.set(n.id, []));
+    for (const id of remaining) {
+      if (id === excludeId) continue;
+      const e = MST_EDGES.find((x) => x.id === id)!;
+      adjacency.get(e.from)!.push(e.to);
+      adjacency.get(e.to)!.push(e.from);
+    }
+    const visited = new Set<string>([nodes[0].id]);
+    const stack = [nodes[0].id];
+    while (stack.length > 0) {
+      const v = stack.pop()!;
+      for (const w of adjacency.get(v)!) {
+        if (!visited.has(w)) {
+          visited.add(w);
+          stack.push(w);
+        }
+      }
+    }
+    return visited.size === nodes.length;
+  };
+
+  for (const edge of sortedEdges) {
+    edgeStates[edge.id] = "checking";
+    frames.push({
+      nodeStates: { ...nodeStates },
+      edgeStates: { ...edgeStates },
+      distances: {},
+      description: `辺${edge.from}-${edge.to}(重み${edge.weight})を仮に取り除けるか検討`,
+    });
+
+    if (isConnectedWithout(edge.id)) {
+      remaining.delete(edge.id);
+      edgeStates[edge.id] = "rejected";
+      frames.push({
+        nodeStates: { ...nodeStates },
+        edgeStates: { ...edgeStates },
+        distances: {},
+        description: `取り除いても連結性を保つため削除`,
+      });
+    } else {
+      edgeStates[edge.id] = "tree";
+      frames.push({
+        nodeStates: { ...nodeStates },
+        edgeStates: { ...edgeStates },
+        distances: {},
+        description: `取り除くと非連結になるため残す(採用)`,
+      });
+    }
+  }
+
+  frames.push({
+    nodeStates: { ...nodeStates },
+    edgeStates: { ...edgeStates },
+    distances: {},
+    description: "最小全域木が完成(重い辺から削除し、連結性が壊れる直前で残す判断を繰り返した)",
+  });
+
+  return frames;
+}
+
+/**
+ * 橋(bridges-finding)・関節点(articulation-points)の両方で共有する無向グラフ。
+ * 三角形{A,B,C}と三角形{D,E,F}を、辺C-Dだけで繋いだ構造——このC-Dが唯一の橋であり、
+ * C・Dの2頂点がそれぞれ関節点(取り除くとグラフが非連結になる頂点)になる。
+ */
+export const BRIDGE_NODES: GraphNode[] = circleLayout(NODE_IDS);
+export const BRIDGE_EDGES: GraphEdge[] = [
+  { id: "AB", from: "A", to: "B", weight: 1 },
+  { id: "BC", from: "B", to: "C", weight: 1 },
+  { id: "CA", from: "C", to: "A", weight: 1 },
+  { id: "CD", from: "C", to: "D", weight: 1 },
+  { id: "DE", from: "D", to: "E", weight: 1 },
+  { id: "EF", from: "E", to: "F", weight: 1 },
+  { id: "FD", from: "F", to: "D", weight: 1 },
+];
+
+/**
+ * 関節点探索のステップ列を生成する。DFSで各頂点に発見時刻(disc)とlow-link値
+ * (自分自身か、DFS木の子孫からの後退辺で到達できる最小の発見時刻)を割り当て、
+ * 「根でDFS木の子が2つ以上」または「非根の頂点uの子vについてlow[v]≥disc[u]」
+ * のいずれかを満たす頂点uを関節点として検出する。
+ */
+export function articulationPointsSteps(): GraphFrame[] {
+  const nodes = BRIDGE_NODES;
+  const edges = BRIDGE_EDGES;
+  const nodeStates = initNodeStates(nodes, "idle");
+  const edgeStates = initEdgeStates(edges, "idle");
+  const frames: GraphFrame[] = [
+    {
+      nodeStates: { ...nodeStates },
+      edgeStates: { ...edgeStates },
+      distances: {},
+      description: "DFSで発見時刻とlow-link値を計算し、関節点(取り除くと非連結になる頂点)を探す",
+    },
+  ];
+
+  const disc = new Map<string, number>();
+  const low = new Map<string, number>();
+  let timer = 0;
+  const articulation = new Set<string>();
+  const adjacency = (id: string) => edges.filter((e) => e.from === id || e.to === id);
+
+  const dfs = (u: string, parent: string | null) => {
+    disc.set(u, timer);
+    low.set(u, timer);
+    timer++;
+    nodeStates[u] = "visited";
+    let children = 0;
+    frames.push({
+      nodeStates: { ...nodeStates },
+      edgeStates: { ...edgeStates },
+      distances: {},
+      description: `頂点${u}を訪問(発見時刻=${disc.get(u)})`,
+    });
+
+    for (const edge of adjacency(u)) {
+      const v = otherEnd(edge, u);
+      if (v === parent) continue;
+      edgeStates[edge.id] = "checking";
+      frames.push({
+        nodeStates: { ...nodeStates },
+        edgeStates: { ...edgeStates },
+        distances: {},
+        description: `辺${u}-${v}を検査`,
+      });
+
+      if (!disc.has(v)) {
+        children++;
+        edgeStates[edge.id] = "tree";
+        dfs(v, u);
+        low.set(u, Math.min(low.get(u)!, low.get(v)!));
+        frames.push({
+          nodeStates: { ...nodeStates },
+          edgeStates: { ...edgeStates },
+          distances: {},
+          description: `頂点${v}から戻る。low[${u}]を${low.get(u)}に更新`,
+        });
+        if ((parent === null && children > 1) || (parent !== null && low.get(v)! >= disc.get(u)!)) {
+          if (!articulation.has(u)) {
+            articulation.add(u);
+            frames.push({
+              nodeStates: { ...nodeStates },
+              edgeStates: { ...edgeStates },
+              distances: {},
+              description: `頂点${u}は関節点と判定(low[${v}]=${low.get(v)} ≥ disc[${u}]=${disc.get(u)}、または根で子が2つ以上)`,
+            });
+          }
+        }
+      } else {
+        low.set(u, Math.min(low.get(u)!, disc.get(v)!));
+        edgeStates[edge.id] = "idle";
+      }
+    }
+    nodeStates[u] = "settled";
+  };
+
+  dfs(nodes[0].id, null);
+
+  nodes.forEach((n) => {
+    if (articulation.has(n.id)) nodeStates[n.id] = "visited";
+  });
+  frames.push({
+    nodeStates: { ...nodeStates },
+    edgeStates: { ...edgeStates },
+    distances: {},
+    description: `計算完了。関節点: ${[...articulation].join(", ") || "なし"}`,
+  });
+
+  return frames;
+}
+
+/**
+ * 橋(ブリッジ)探索のステップ列を生成する。関節点探索と全く同じDFS+low-linkの枠組みだが、
+ * 判定条件が「low[v] > disc[u](等号を含まない)」になる点だけが異なる——
+ * これは「その辺自身を除いて他に迂回路がない」という橋の定義に対応する。
+ */
+export function bridgesFindingSteps(): GraphFrame[] {
+  const nodes = BRIDGE_NODES;
+  const edges = BRIDGE_EDGES;
+  const nodeStates = initNodeStates(nodes, "idle");
+  const edgeStates = initEdgeStates(edges, "idle");
+  const frames: GraphFrame[] = [
+    {
+      nodeStates: { ...nodeStates },
+      edgeStates: { ...edgeStates },
+      distances: {},
+      description: "DFSで発見時刻とlow-link値を計算し、橋(唯一の迂回不能な辺)を探す",
+    },
+  ];
+
+  const disc = new Map<string, number>();
+  const low = new Map<string, number>();
+  let timer = 0;
+  const bridges: string[] = [];
+  const adjacency = (id: string) => edges.filter((e) => e.from === id || e.to === id);
+
+  const dfs = (u: string, parentEdgeId: string | null) => {
+    disc.set(u, timer);
+    low.set(u, timer);
+    timer++;
+    nodeStates[u] = "visited";
+    frames.push({
+      nodeStates: { ...nodeStates },
+      edgeStates: { ...edgeStates },
+      distances: {},
+      description: `頂点${u}を訪問(発見時刻=${disc.get(u)})`,
+    });
+
+    for (const edge of adjacency(u)) {
+      if (edge.id === parentEdgeId) continue;
+      const v = otherEnd(edge, u);
+      edgeStates[edge.id] = "checking";
+      frames.push({
+        nodeStates: { ...nodeStates },
+        edgeStates: { ...edgeStates },
+        distances: {},
+        description: `辺${u}-${v}を検査`,
+      });
+
+      if (!disc.has(v)) {
+        edgeStates[edge.id] = "tree";
+        dfs(v, edge.id);
+        low.set(u, Math.min(low.get(u)!, low.get(v)!));
+        frames.push({
+          nodeStates: { ...nodeStates },
+          edgeStates: { ...edgeStates },
+          distances: {},
+          description: `頂点${v}から戻る。low[${u}]を${low.get(u)}に更新`,
+        });
+        if (low.get(v)! > disc.get(u)!) {
+          bridges.push(edge.id);
+          edgeStates[edge.id] = "tree";
+          frames.push({
+            nodeStates: { ...nodeStates },
+            edgeStates: { ...edgeStates },
+            distances: {},
+            description: `辺${u}-${v}は橋と判定(low[${v}]=${low.get(v)} > disc[${u}]=${disc.get(u)}、迂回路がない)`,
+          });
+        }
+      } else {
+        low.set(u, Math.min(low.get(u)!, disc.get(v)!));
+        edgeStates[edge.id] = "idle";
+      }
+    }
+    nodeStates[u] = "settled";
+  };
+
+  dfs(nodes[0].id, null);
+
+  frames.push({
+    nodeStates: { ...nodeStates },
+    edgeStates: { ...edgeStates },
+    distances: {},
+    description: `計算完了。橋: ${bridges.map((id) => edges.find((e) => e.id === id)!).map((e) => `${e.from}-${e.to}`).join(", ") || "なし"}`,
+  });
+
+  return frames;
+}
+
 export const GRAPH_DATASETS: Record<string, GraphDataset> = {
   "bellman-ford": {
     nodes: SHORTEST_PATH_NODES,
@@ -4550,6 +4921,10 @@ export const GRAPH_DATASETS: Record<string, GraphDataset> = {
   "thompson-construction": { nodes: THOMPSON_NFA_NODES, edges: THOMPSON_NFA_EDGES, directed: true },
   "subset-construction": { nodes: SUBSET_CONSTRUCTION_NODES, edges: SUBSET_CONSTRUCTION_EDGES, directed: true },
   "dfa-minimization": { nodes: SUBSET_CONSTRUCTION_NODES, edges: SUBSET_CONSTRUCTION_EDGES, directed: true },
+  spfa: { nodes: SHORTEST_PATH_NODES, edges: SHORTEST_PATH_EDGES, directed: true },
+  "reverse-delete-algorithm": { nodes: MST_NODES, edges: MST_EDGES, directed: false },
+  "articulation-points": { nodes: BRIDGE_NODES, edges: BRIDGE_EDGES, directed: false },
+  "bridges-finding": { nodes: BRIDGE_NODES, edges: BRIDGE_EDGES, directed: false },
 };
 
 export const GRAPH_VISUALIZERS: Record<string, () => GraphFrame[]> = {
@@ -4587,4 +4962,8 @@ export const GRAPH_VISUALIZERS: Record<string, () => GraphFrame[]> = {
   "thompson-construction": thompsonConstructionSteps,
   "subset-construction": subsetConstructionSteps,
   "dfa-minimization": dfaMinimizationSteps,
+  spfa: spfaSteps,
+  "reverse-delete-algorithm": reverseDeleteSteps,
+  "articulation-points": articulationPointsSteps,
+  "bridges-finding": bridgesFindingSteps,
 };
