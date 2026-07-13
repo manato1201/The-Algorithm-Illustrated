@@ -1,8 +1,9 @@
 ---
-name: "ヒープソート"
-category: "ソート"
-complexity: "O(n log n)"
-summary: "二分ヒープを使い、追加メモリなしで整列できる。安定性はないが最悪ケースも保証される。"
+name: ヒープソート
+category: ソート
+subcategory: 比較ベース
+complexity: O(n log n)
+summary: 二分ヒープを使い、追加メモリなしで整列できる。安定性はないが最悪ケースも保証される。
 ---
 
 ## 概要

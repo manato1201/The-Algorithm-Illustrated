@@ -1,8 +1,9 @@
 ---
-name: "区間スケジューリング問題"
-category: "貪欲法"
-complexity: "O(n log n)"
-summary: "終了時刻の早い順に選ぶ貪欲法で、両立可能な区間の最大数を求められることを証明できる好例。"
+name: 区間スケジューリング問題
+category: 貪欲法
+subcategory: 基本貪欲法
+complexity: O(n log n)
+summary: 終了時刻の早い順に選ぶ貪欲法で、両立可能な区間の最大数を求められることを証明できる好例。
 ---
 
 ## 概要

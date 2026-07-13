@@ -1,8 +1,9 @@
 ---
-name: "部分和問題(Subset Sum)"
-category: "動的計画法"
-complexity: "O(nW)"
-summary: "与えられた集合から和が目標値になる部分集合が存在するかを判定する、ナップサック問題の姉妹形。"
+name: 部分和問題(Subset Sum)
+category: 動的計画法
+subcategory: ナップサック・組合せ最適化
+complexity: O(nW)
+summary: 与えられた集合から和が目標値になる部分集合が存在するかを判定する、ナップサック問題の姉妹形。
 ---
 
 ## 概要

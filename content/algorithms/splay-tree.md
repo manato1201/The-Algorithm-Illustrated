@@ -1,8 +1,9 @@
 ---
-name: "スプレー木"
-category: "データ構造"
-complexity: "O(log n)(償却)"
-summary: "アクセスしたノードを回転で根まで持ち上げる。局所性の高いアクセスパターンで特に高速。"
+name: スプレー木
+category: データ構造
+subcategory: 木構造
+complexity: O(log n)(償却)
+summary: アクセスしたノードを回転で根まで持ち上げる。局所性の高いアクセスパターンで特に高速。
 ---
 
 ## 概要

@@ -1,8 +1,9 @@
 ---
-name: "Singleton(シングルトン)"
-category: "デザインパターン"
-complexity: "生成に関するパターン"
-summary: "インスタンスを1つに制限し、グローバルなアクセス点を提供する。テスト容易性を損ないやすく乱用注意。"
+name: Singleton(シングルトン)
+category: デザインパターン
+subcategory: 生成
+complexity: 生成に関するパターン
+summary: インスタンスを1つに制限し、グローバルなアクセス点を提供する。テスト容易性を損ないやすく乱用注意。
 ---
 ## 概要
 

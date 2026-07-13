@@ -1,8 +1,9 @@
 ---
-name: "Chain of Responsibility(責任の連鎖)"
-category: "デザインパターン"
-complexity: "振る舞いに関するパターン"
-summary: "複数のハンドラを鎖状につなぎ、処理できるものが現れるまで順に受け渡していく。"
+name: Chain of Responsibility(責任の連鎖)
+category: デザインパターン
+subcategory: 振る舞い
+complexity: 振る舞いに関するパターン
+summary: 複数のハンドラを鎖状につなぎ、処理できるものが現れるまで順に受け渡していく。
 ---
 ## 概要
 

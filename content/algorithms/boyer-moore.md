@@ -1,8 +1,9 @@
 ---
-name: "Boyer-Moore法"
-category: "文字列"
-complexity: "O(n/m) 〜 O(nm)"
-summary: "パターンの末尾から比較し、大きくスキップすることで実用上高速な文字列検索を実現する。"
+name: Boyer-Moore法
+category: 文字列
+subcategory: パターンマッチング
+complexity: O(n/m) 〜 O(nm)
+summary: パターンの末尾から比較し、大きくスキップすることで実用上高速な文字列検索を実現する。
 ---
 
 ## 概要

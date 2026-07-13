@@ -1,8 +1,9 @@
 ---
-name: "Raft"
-category: "分散システム"
-complexity: "O(ノード数)(メッセージ数)"
-summary: "リーダー選出とログ複製を分離して理解しやすく設計した合意アルゴリズム。「Paxosより分かりやすい」ことを目標に生まれた。"
+name: Raft
+category: 分散システム
+subcategory: 合意形成
+complexity: O(ノード数)(メッセージ数)
+summary: リーダー選出とログ複製を分離して理解しやすく設計した合意アルゴリズム。「Paxosより分かりやすい」ことを目標に生まれた。
 ---
 
 ## 概要

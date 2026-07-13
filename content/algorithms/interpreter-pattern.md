@@ -1,8 +1,9 @@
 ---
-name: "Interpreter(インタープリター)"
-category: "デザインパターン"
-complexity: "振る舞いに関するパターン"
-summary: "文法規則をクラス階層として表現し、構文木をたどることで独自のミニ言語を解釈・実行する。"
+name: Interpreter(インタープリター)
+category: デザインパターン
+subcategory: 振る舞い
+complexity: 振る舞いに関するパターン
+summary: 文法規則をクラス階層として表現し、構文木をたどることで独自のミニ言語を解釈・実行する。
 ---
 ## 概要
 

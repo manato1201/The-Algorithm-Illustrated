@@ -1,8 +1,9 @@
 ---
-name: "Aho-Corasick法"
-category: "文字列"
-complexity: "O(n + m + z)"
-summary: "複数パターンを1本のオートマトンにまとめ、テキストを1回走査するだけで全パターンを検出する。"
+name: Aho-Corasick法
+category: 文字列
+subcategory: パターンマッチング
+complexity: O(n + m + z)
+summary: 複数パターンを1本のオートマトンにまとめ、テキストを1回走査するだけで全パターンを検出する。
 ---
 
 ## 概要

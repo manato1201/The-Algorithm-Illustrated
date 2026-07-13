@@ -1,8 +1,9 @@
 ---
-name: "エラトステネスの篩"
-category: "数論・暗号"
-complexity: "O(n log log n)"
-summary: "合成数を篩い落としていくことで、ある範囲の素数を一括で列挙する。"
+name: エラトステネスの篩
+category: 数論・暗号
+subcategory: 素数判定・素因数分解
+complexity: O(n log log n)
+summary: 合成数を篩い落としていくことで、ある範囲の素数を一括で列挙する。
 ---
 
 ## 概要

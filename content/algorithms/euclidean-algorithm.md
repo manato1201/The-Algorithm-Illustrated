@@ -1,8 +1,9 @@
 ---
-name: "ユークリッドの互除法"
-category: "数論・暗号"
-complexity: "O(log min(a,b))"
-summary: "剰余を取り続けるだけで最大公約数を求める、現存する最古級のアルゴリズムの一つ。"
+name: ユークリッドの互除法
+category: 数論・暗号
+subcategory: 合同算術・剰余系
+complexity: 'O(log min(a,b))'
+summary: 剰余を取り続けるだけで最大公約数を求める、現存する最古級のアルゴリズムの一つ。
 ---
 
 ## 概要

@@ -1,8 +1,9 @@
 ---
-name: "スキップリスト"
-category: "データ構造"
-complexity: "O(log n)(期待値)"
-summary: "複数階層のリンクリストで、平衡木に近い性能を乱数だけで実現する。"
+name: スキップリスト
+category: データ構造
+subcategory: 確率的・キャッシュ構造
+complexity: O(log n)(期待値)
+summary: 複数階層のリンクリストで、平衡木に近い性能を乱数だけで実現する。
 ---
 
 ## 概要

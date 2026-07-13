@@ -1,8 +1,9 @@
 ---
-name: "MinHash / LSH(局所性鋭敏型ハッシュ)"
-category: "情報検索・ランキング"
-complexity: "O(1)(近似)"
-summary: "集合の類似度(Jaccard係数)をハッシュの一致率で近似し、大規模データの重複検出を高速化する。"
+name: MinHash / LSH(局所性鋭敏型ハッシュ)
+category: 情報検索・ランキング
+subcategory: 近似検索
+complexity: O(1)(近似)
+summary: 集合の類似度(Jaccard係数)をハッシュの一致率で近似し、大規模データの重複検出を高速化する。
 ---
 
 ## 概要

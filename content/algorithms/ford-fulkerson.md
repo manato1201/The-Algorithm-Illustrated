@@ -1,8 +1,9 @@
 ---
-name: "フォード・ファルカーソン法"
-category: "グラフ"
-complexity: "O(E・maxflow)"
-summary: "増加パスを探し続けて最大フローを求める。増加パスの選び方で性能が大きく変わる。"
+name: フォード・ファルカーソン法
+category: グラフ
+subcategory: 最大流・マッチング
+complexity: O(E・maxflow)
+summary: 増加パスを探し続けて最大フローを求める。増加パスの選び方で性能が大きく変わる。
 ---
 
 ## 概要

@@ -1,8 +1,9 @@
 ---
-name: "区間木(Interval Tree)"
-category: "データ構造"
-complexity: "O(log n + k)"
-summary: "多数の区間の中から指定範囲と重なるものを高速に列挙する。"
+name: 区間木(Interval Tree)
+category: データ構造
+subcategory: 木構造
+complexity: O(log n + k)
+summary: 多数の区間の中から指定範囲と重なるものを高速に列挙する。
 ---
 
 ## 概要

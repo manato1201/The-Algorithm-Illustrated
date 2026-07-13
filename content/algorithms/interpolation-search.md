@@ -1,8 +1,9 @@
 ---
-name: "補間探索"
-category: "探索"
-complexity: "O(log log n)(平均)"
-summary: "値の分布から位置を推定してジャンプする。一様分布データでは二分探索より高速に収束する。"
+name: 補間探索
+category: 探索
+subcategory: 配列探索
+complexity: O(log log n)(平均)
+summary: 値の分布から位置を推定してジャンプする。一様分布データでは二分探索より高速に収束する。
 ---
 
 ## 概要

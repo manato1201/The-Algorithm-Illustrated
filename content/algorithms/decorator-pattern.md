@@ -1,8 +1,9 @@
 ---
-name: "Decorator(デコレーター)"
-category: "デザインパターン"
-complexity: "構造に関するパターン"
-summary: "オブジェクトを別のオブジェクトで包むことで、継承を使わずに機能を動的に追加する。"
+name: Decorator(デコレーター)
+category: デザインパターン
+subcategory: 構造
+complexity: 構造に関するパターン
+summary: オブジェクトを別のオブジェクトで包むことで、継承を使わずに機能を動的に追加する。
 ---
 ## 概要
 

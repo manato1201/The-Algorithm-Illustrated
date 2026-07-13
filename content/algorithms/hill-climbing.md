@@ -1,8 +1,9 @@
 ---
-name: "山登り法(Hill Climbing)"
-category: "最適化・確率的手法"
-complexity: "O(問題依存)"
-summary: "近傍の中で改善する方向にだけ移動し続ける、最も単純な局所探索法。局所最適に陥りやすい。"
+name: 山登り法(Hill Climbing)
+category: 最適化・確率的手法
+subcategory: 局所探索
+complexity: O(問題依存)
+summary: 近傍の中で改善する方向にだけ移動し続ける、最も単純な局所探索法。局所最適に陥りやすい。
 ---
 
 ## 概要

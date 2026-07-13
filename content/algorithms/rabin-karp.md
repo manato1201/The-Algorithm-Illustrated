@@ -1,8 +1,9 @@
 ---
-name: "Rabin-Karp法"
-category: "文字列"
-complexity: "O(n + m)"
-summary: "ハッシュ値の比較で候補を絞り込む文字列検索。複数パターンの同時検索に強い。"
+name: Rabin-Karp法
+category: 文字列
+subcategory: パターンマッチング
+complexity: O(n + m)
+summary: ハッシュ値の比較で候補を絞り込む文字列検索。複数パターンの同時検索に強い。
 ---
 
 ## 概要

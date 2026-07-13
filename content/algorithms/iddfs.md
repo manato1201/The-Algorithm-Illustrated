@@ -1,8 +1,9 @@
 ---
-name: "反復深化探索(IDDFS)"
-category: "探索"
-complexity: "O(b^d)"
-summary: "深さ制限を徐々に広げるDFS。メモリ効率とBFS相当の最短性を両立する。"
+name: 反復深化探索(IDDFS)
+category: 探索
+subcategory: グラフ・経路探索
+complexity: O(b^d)
+summary: 深さ制限を徐々に広げるDFS。メモリ効率とBFS相当の最短性を両立する。
 ---
 
 ## 概要

@@ -1,8 +1,9 @@
 ---
-name: "深さ優先探索(DFS)"
-category: "探索"
-complexity: "O(V + E)"
-summary: "行き止まりまで掘り進めてから戻る。経路の全探索や連結成分の検出に使う。"
+name: 深さ優先探索(DFS)
+category: 探索
+subcategory: グラフ・経路探索
+complexity: O(V + E)
+summary: 行き止まりまで掘り進めてから戻る。経路の全探索や連結成分の検出に使う。
 ---
 
 ## 概要

@@ -1,8 +1,9 @@
 ---
-name: "ベルマン・フォード法"
-category: "グラフ"
-complexity: "O(VE)"
-summary: "負の辺を許容する最短経路法。負閉路の検出にも使える。"
+name: ベルマン・フォード法
+category: グラフ
+subcategory: 最短路
+complexity: O(VE)
+summary: 負の辺を許容する最短経路法。負閉路の検出にも使える。
 ---
 
 ## 概要

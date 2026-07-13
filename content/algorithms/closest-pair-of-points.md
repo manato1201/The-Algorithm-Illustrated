@@ -1,8 +1,9 @@
 ---
-name: "最近点対問題"
-category: "計算幾何"
-complexity: "O(n log n)"
-summary: "分割統治で候補を絞り込み、素朴なO(n²)の総当りを避けて最も近い2点を求める。"
+name: 最近点対問題
+category: 計算幾何
+subcategory: 分割統治・走査
+complexity: O(n log n)
+summary: 分割統治で候補を絞り込み、素朴なO(n²)の総当りを避けて最も近い2点を求める。
 ---
 
 ## 概要

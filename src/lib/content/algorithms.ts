@@ -8,6 +8,7 @@ const CONTENT_DIR = path.join(process.cwd(), "content", "algorithms");
 export type AlgorithmFrontmatter = {
   name: string;
   category: string;
+  subcategory: string;
   complexity: string;
   summary: string;
 };

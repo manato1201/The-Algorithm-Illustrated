@@ -1,8 +1,9 @@
 ---
-name: "フロイド・ワーシャル法"
-category: "グラフ"
-complexity: "O(V³)"
-summary: "全点対の最短経路を動的計画法で一括に求める。"
+name: フロイド・ワーシャル法
+category: グラフ
+subcategory: 最短路
+complexity: O(V³)
+summary: 全点対の最短経路を動的計画法で一括に求める。
 ---
 
 ## 概要

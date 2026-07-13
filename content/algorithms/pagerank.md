@@ -1,8 +1,9 @@
 ---
-name: "PageRank"
-category: "情報検索・ランキング"
-complexity: "O(V + E)(反復1回あたり)"
-summary: "「重要なページからリンクされているページは重要」という考えを固有ベクトル計算に落とし込む、Googleの創業技術。"
+name: PageRank
+category: 情報検索・ランキング
+subcategory: グラフベースランキング
+complexity: O(V + E)(反復1回あたり)
+summary: 「重要なページからリンクされているページは重要」という考えを固有ベクトル計算に落とし込む、Googleの創業技術。
 ---
 
 ## 概要

@@ -1,8 +1,9 @@
 ---
-name: "ホップクロフト・カープ法"
-category: "グラフ"
-complexity: "O(E√V)"
-summary: "二部グラフの最大マッチングを高速に求める。"
+name: ホップクロフト・カープ法
+category: グラフ
+subcategory: 最大流・マッチング
+complexity: O(E√V)
+summary: 二部グラフの最大マッチングを高速に求める。
 ---
 
 ## 概要

@@ -1,8 +1,9 @@
 ---
-name: "フィボナッチ探索"
-category: "探索"
-complexity: "O(log n)"
-summary: "フィボナッチ数列の比率で分割点を決める、除算を使わずに実装できる二分探索の派生形。"
+name: フィボナッチ探索
+category: 探索
+subcategory: 配列探索
+complexity: O(log n)
+summary: フィボナッチ数列の比率で分割点を決める、除算を使わずに実装できる二分探索の派生形。
 ---
 
 ## 概要

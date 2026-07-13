@@ -1,8 +1,9 @@
 ---
-name: "編集距離(レーベンシュタイン距離)"
-category: "動的計画法"
-complexity: "O(nm)"
-summary: "挿入・削除・置換の最小回数で2つの文字列の近さを測る。"
+name: 編集距離(レーベンシュタイン距離)
+category: 動的計画法
+subcategory: 数列・部分列
+complexity: O(nm)
+summary: 挿入・削除・置換の最小回数で2つの文字列の近さを測る。
 ---
 
 ## 概要

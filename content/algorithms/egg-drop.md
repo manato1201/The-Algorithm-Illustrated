@@ -1,8 +1,9 @@
 ---
-name: "卵割り問題(Egg Drop Puzzle)"
-category: "動的計画法"
-complexity: "O(n・k²)(素朴な実装)"
-summary: "割れる階数を最小の試行回数で特定する、最悪ケース最適化の古典的DP。"
+name: 卵割り問題(Egg Drop Puzzle)
+category: 動的計画法
+subcategory: ナップサック・組合せ最適化
+complexity: O(n・k²)(素朴な実装)
+summary: 割れる階数を最小の試行回数で特定する、最悪ケース最適化の古典的DP。
 ---
 
 ## 概要

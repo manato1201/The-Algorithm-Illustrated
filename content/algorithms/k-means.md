@@ -1,8 +1,9 @@
 ---
-name: "k-means法"
-category: "機械学習"
-complexity: "O(nkdi)(反復i回)"
-summary: "データ点を最も近い重心のクラスタに割り当て、重心を更新することを繰り返す、最も基本的なクラスタリング手法。"
+name: k-means法
+category: 機械学習
+subcategory: 教師なし学習
+complexity: O(nkdi)(反復i回)
+summary: データ点を最も近い重心のクラスタに割り当て、重心を更新することを繰り返す、最も基本的なクラスタリング手法。
 ---
 
 ## 概要

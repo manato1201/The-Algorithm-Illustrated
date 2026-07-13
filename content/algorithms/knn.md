@@ -1,8 +1,9 @@
 ---
-name: "k近傍法(k-NN)"
-category: "機械学習"
-complexity: "O(nd)(クエリごと)"
-summary: "学習フェーズを持たず、予測時に最も近いk個のデータの多数決/平均で判断する怠惰学習の代表格。"
+name: k近傍法(k-NN)
+category: 機械学習
+subcategory: 教師あり学習
+complexity: O(nd)(クエリごと)
+summary: 学習フェーズを持たず、予測時に最も近いk個のデータの多数決/平均で判断する怠惰学習の代表格。
 ---
 
 ## 概要

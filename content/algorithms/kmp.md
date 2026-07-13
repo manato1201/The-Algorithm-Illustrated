@@ -1,8 +1,9 @@
 ---
-name: "KMP法(Knuth-Morris-Pratt法)"
-category: "文字列"
-complexity: "O(n + m)"
-summary: "不一致時に照合済み情報を使い、パターンを後戻りさせずに文字列検索する。"
+name: KMP法(Knuth-Morris-Pratt法)
+category: 文字列
+subcategory: パターンマッチング
+complexity: O(n + m)
+summary: 不一致時に照合済み情報を使い、パターンを後戻りさせずに文字列検索する。
 ---
 
 ## 概要

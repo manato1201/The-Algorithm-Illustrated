@@ -1,8 +1,9 @@
 ---
-name: "選択ソート"
-category: "ソート"
-complexity: "O(n²)"
-summary: "未整列部分から最小値を選んで確定させていく。交換回数が少なく書き込みコストが高い場面で有利。"
+name: 選択ソート
+category: ソート
+subcategory: 比較ベース
+complexity: O(n²)
+summary: 未整列部分から最小値を選んで確定させていく。交換回数が少なく書き込みコストが高い場面で有利。
 ---
 
 ## 概要

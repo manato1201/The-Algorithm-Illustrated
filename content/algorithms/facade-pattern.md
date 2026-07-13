@@ -1,8 +1,9 @@
 ---
-name: "Facade(ファサード)"
-category: "デザインパターン"
-complexity: "構造に関するパターン"
-summary: "複雑なサブシステム群に対して単純な窓口を1つ提供し、利用側の依存を減らす。"
+name: Facade(ファサード)
+category: デザインパターン
+subcategory: 構造
+complexity: 構造に関するパターン
+summary: 複雑なサブシステム群に対して単純な窓口を1つ提供し、利用側の依存を減らす。
 ---
 ## 概要
 

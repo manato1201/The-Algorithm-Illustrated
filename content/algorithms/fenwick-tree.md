@@ -1,8 +1,9 @@
 ---
-name: "フェニック木(Binary Indexed Tree)"
-category: "データ構造"
-complexity: "O(log n)"
-summary: "累積和の更新・照会を、セグメント木よりも省メモリ・省コードで実現する。"
+name: フェニック木(Binary Indexed Tree)
+category: データ構造
+subcategory: 区間・累積クエリ構造
+complexity: O(log n)
+summary: 累積和の更新・照会を、セグメント木よりも省メモリ・省コードで実現する。
 ---
 
 ## 概要

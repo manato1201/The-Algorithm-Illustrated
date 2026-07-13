@@ -1,8 +1,9 @@
 ---
-name: "三分探索"
-category: "探索"
-complexity: "O(log n)"
-summary: "単峰関数の極値探索に使う、二分探索の派生形。"
+name: 三分探索
+category: 探索
+subcategory: 配列探索
+complexity: O(log n)
+summary: 単峰関数の極値探索に使う、二分探索の派生形。
 ---
 
 ## 概要

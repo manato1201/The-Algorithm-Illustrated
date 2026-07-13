@@ -4,7 +4,7 @@ import { useMemo, useState } from "react";
 import Link from "next/link";
 import styles from "./AlgorithmCatalog.module.css";
 import { ComplexityBadge } from "@/components/hud/ComplexityBadge";
-import { CATEGORY_ORDER } from "@/lib/algorithm-categories";
+import { CATEGORY_ORDER, SUBCATEGORIES_BY_CATEGORY } from "@/lib/algorithm-categories";
 import type { AlgorithmMeta } from "@/lib/content/algorithms";
 
 type AlgorithmCatalogProps = {
@@ -14,26 +14,75 @@ type AlgorithmCatalogProps = {
 
 /**
  * カタログ画面(docs/design/ui-design.md 3節・4節)。
- * 検索クエリの有無で「代表アルゴリズム+カテゴリ別一覧」と「検索結果の一覧」を切り替える。
+ * カテゴリチップ・サブカテゴリチップ・自由テキスト検索を組み合わせた絞り込みの有無で、
+ * 「代表アルゴリズム+カテゴリ別一覧」と「絞り込み結果の一覧」を切り替える。
+ * 1600件規模を見据え、カテゴリ単体での絞り込みだけでも一覧を発見しやすくすることを狙っている。
  */
 export function AlgorithmCatalog({
   algorithms,
   featuredId,
 }: AlgorithmCatalogProps) {
   const [query, setQuery] = useState("");
+  const [activeCategory, setActiveCategory] = useState<string | null>(null);
+  const [activeSubcategory, setActiveSubcategory] = useState<string | null>(null);
   const trimmedQuery = query.trim().toLowerCase();
   const isSearching = trimmedQuery.length > 0;
+  const isFiltering = isSearching || activeCategory !== null;
 
   const featured = algorithms.find((a) => a.id === featuredId) ?? algorithms[0];
 
-  const searchResults = useMemo(() => {
-    if (!isSearching) return [];
-    return algorithms.filter((algorithm) =>
-      [algorithm.name, algorithm.category, algorithm.summary].some((field) =>
-        field.toLowerCase().includes(trimmedQuery),
-      ),
+  const categoryCounts = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const algorithm of algorithms) {
+      counts.set(algorithm.category, (counts.get(algorithm.category) ?? 0) + 1);
+    }
+    return counts;
+  }, [algorithms]);
+
+  const subcategoryCounts = useMemo(() => {
+    const counts = new Map<string, number>();
+    if (!activeCategory) return counts;
+    for (const algorithm of algorithms) {
+      if (algorithm.category !== activeCategory) continue;
+      counts.set(algorithm.subcategory, (counts.get(algorithm.subcategory) ?? 0) + 1);
+    }
+    return counts;
+  }, [algorithms, activeCategory]);
+
+  const handleCategoryClick = (category: string) => {
+    setActiveCategory((current) => (current === category ? null : category));
+    setActiveSubcategory(null);
+  };
+
+  const handleSubcategoryClick = (subcategory: string) => {
+    setActiveSubcategory((current) => (current === subcategory ? null : subcategory));
+  };
+
+  const filteredResults = useMemo(() => {
+    if (!isFiltering) return [];
+    return algorithms.filter((algorithm) => {
+      if (activeCategory && algorithm.category !== activeCategory) return false;
+      if (activeSubcategory && algorithm.subcategory !== activeSubcategory) return false;
+      if (
+        trimmedQuery &&
+        ![algorithm.name, algorithm.category, algorithm.subcategory, algorithm.summary].some(
+          (field) => field.toLowerCase().includes(trimmedQuery),
+        )
+      ) {
+        return false;
+      }
+      return true;
+    });
+  }, [algorithms, activeCategory, activeSubcategory, trimmedQuery, isFiltering]);
+
+  const filterLabelParts: string[] = [];
+  if (activeCategory) {
+    filterLabelParts.push(
+      activeSubcategory ? `${activeCategory} ・ ${activeSubcategory}` : activeCategory,
     );
-  }, [algorithms, trimmedQuery, isSearching]);
+  }
+  if (isSearching) filterLabelParts.push(`「${query}」`);
+  const filterLabel = filterLabelParts.join(" ／ ");
 
   const groupedByCategory = useMemo(() => {
     const rest = algorithms.filter((algorithm) => algorithm.id !== featured.id);
@@ -84,20 +133,67 @@ export function AlgorithmCatalog({
             aria-label="アルゴリズムを検索"
           />
         </form>
+
+        <div className={styles.chipRow} role="group" aria-label="カテゴリで絞り込む">
+          <button
+            type="button"
+            className={`${styles.chip} ${activeCategory === null ? styles.chipActive : ""}`}
+            aria-pressed={activeCategory === null}
+            onClick={() => {
+              setActiveCategory(null);
+              setActiveSubcategory(null);
+            }}
+          >
+            すべて
+          </button>
+          {CATEGORY_ORDER.filter((category) => categoryCounts.has(category)).map(
+            (category) => (
+              <button
+                key={category}
+                type="button"
+                className={`${styles.chip} ${activeCategory === category ? styles.chipActive : ""}`}
+                aria-pressed={activeCategory === category}
+                onClick={() => handleCategoryClick(category)}
+              >
+                {category}
+                <span className={styles.chipCount}>{categoryCounts.get(category)}</span>
+              </button>
+            ),
+          )}
+        </div>
+
+        {activeCategory ? (
+          <div className={styles.chipRow} role="group" aria-label="サブカテゴリで絞り込む">
+            {(SUBCATEGORIES_BY_CATEGORY[activeCategory] ?? [])
+              .filter((subcategory) => subcategoryCounts.has(subcategory))
+              .map((subcategory) => (
+                <button
+                  key={subcategory}
+                  type="button"
+                  className={`${styles.chip} ${styles.chipSub} ${activeSubcategory === subcategory ? styles.chipActive : ""}`}
+                  aria-pressed={activeSubcategory === subcategory}
+                  onClick={() => handleSubcategoryClick(subcategory)}
+                >
+                  {subcategory}
+                  <span className={styles.chipCount}>{subcategoryCounts.get(subcategory)}</span>
+                </button>
+              ))}
+          </div>
+        ) : null}
       </section>
 
-      {isSearching ? (
+      {isFiltering ? (
         <section className={styles.results} aria-labelledby="results-heading">
           <h2 id="results-heading" className={styles.sectionLabel}>
-            ■ RESULTS 「{query}」の検索結果 — {searchResults.length}件
+            ■ RESULTS {filterLabel}の絞り込み結果 — {filteredResults.length}件
           </h2>
-          {searchResults.length === 0 ? (
+          {filteredResults.length === 0 ? (
             <div className={styles.emptyState}>
-              該当するアルゴリズムが見つかりませんでした。別のキーワードでお試しください。
+              該当するアルゴリズムが見つかりませんでした。別のキーワードやカテゴリでお試しください。
             </div>
           ) : (
             <ul className={styles.listItems}>
-              {searchResults.map((algorithm) => (
+              {filteredResults.map((algorithm) => (
                 <AlgorithmRow
                   key={algorithm.id}
                   algorithm={algorithm}
@@ -121,7 +217,9 @@ export function AlgorithmCatalog({
               className={styles.featuredCard}
             >
               <div className={styles.featuredMeta}>
-                <span className={styles.category}>{featured.category}</span>
+                <span className={styles.category}>
+                  {featured.category} ・ {featured.subcategory}
+                </span>
                 <ComplexityBadge notation={featured.complexity} />
               </div>
               <h3 className={styles.featuredName}>{featured.name}</h3>
@@ -165,7 +263,9 @@ function AlgorithmRow({
       <Link href={`/algorithms/${algorithm.id}`} className={styles.listRowHead}>
         <span className={styles.listName}>{algorithm.name}</span>
         {showCategory ? (
-          <span className={styles.listCategory}>{algorithm.category}</span>
+          <span className={styles.listCategory}>
+            {algorithm.category} ・ {algorithm.subcategory}
+          </span>
         ) : null}
         <ComplexityBadge notation={algorithm.complexity} />
       </Link>
