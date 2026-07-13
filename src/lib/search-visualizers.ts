@@ -1058,6 +1058,172 @@ export function manacherSteps(): SearchFrame[] {
   return frames;
 }
 
+/**
+ * 求根アルゴリズム3種(ニュートン法・二分法・割線法)が共有する対象関数。
+ * f(x) = x³ - x - 2 の実根はx≈1.521380の1つだけで、3アルゴリズムを同じ関数・
+ * 同じ「地形」上で比較できるようにしている。
+ */
+function rootFindingFunction(x: number): number {
+  return x ** 3 - x - 2;
+}
+function rootFindingDerivative(x: number): number {
+  return 3 * x ** 2 - 1;
+}
+const ROOT_FINDING_TRUE_ROOT = 1.52138;
+const ROOT_FINDING_X_MIN = 0;
+const ROOT_FINDING_X_MAX = 3;
+const ROOT_FINDING_SAMPLES = 31;
+
+export const ROOT_FINDING_LANDSCAPE: number[] = Array.from({ length: ROOT_FINDING_SAMPLES }, (_, i) => {
+  const x = ROOT_FINDING_X_MIN + (i / (ROOT_FINDING_SAMPLES - 1)) * (ROOT_FINDING_X_MAX - ROOT_FINDING_X_MIN);
+  return Number(rootFindingFunction(x).toFixed(3));
+});
+function rootFindingXToIndex(x: number): number {
+  const t = (x - ROOT_FINDING_X_MIN) / (ROOT_FINDING_X_MAX - ROOT_FINDING_X_MIN);
+  return Math.min(ROOT_FINDING_SAMPLES - 1, Math.max(0, Math.round(t * (ROOT_FINDING_SAMPLES - 1))));
+}
+
+export const NEWTON_METHOD_START = 1.5;
+export const NEWTON_METHOD_ITERATIONS = 5;
+
+/**
+ * ニュートン法のステップ列を生成する。現在の推定値における接線がx軸と交わる点を
+ * 次の推定値とすることを繰り返す。2次収束のため、わずか数回の反復で真の根に
+ * 到達することを可視化する。
+ */
+export function newtonMethodSteps(): SearchFrame[] {
+  const landscape = ROOT_FINDING_LANDSCAPE;
+  let x = NEWTON_METHOD_START;
+  const frames: SearchFrame[] = [
+    frame(landscape, { [rootFindingXToIndex(x)]: "pivot" }, `ニュートン法を開始。初期値x=${x.toFixed(4)}`),
+  ];
+
+  for (let iter = 1; iter <= NEWTON_METHOD_ITERATIONS; iter++) {
+    const fx = rootFindingFunction(x);
+    const fpx = rootFindingDerivative(x);
+    const nextX = x - fx / fpx;
+    frames.push(
+      frame(
+        landscape,
+        { [rootFindingXToIndex(x)]: "comparing" },
+        `[反復${iter}] f(${x.toFixed(4)})=${fx.toFixed(4)}, f'(${x.toFixed(4)})=${fpx.toFixed(4)} → 次の推定値=${nextX.toFixed(4)}`,
+      ),
+    );
+    x = nextX;
+    frames.push(frame(landscape, { [rootFindingXToIndex(x)]: "pivot" }, `x=${x.toFixed(4)}に更新(接線とx軸の交点)`));
+  }
+
+  frames.push(
+    frame(
+      landscape,
+      { [rootFindingXToIndex(x)]: "settled" },
+      `計算完了。収束した根の近似値=${x.toFixed(6)}(真の根≈${ROOT_FINDING_TRUE_ROOT})`,
+    ),
+  );
+  return frames;
+}
+
+export const BISECTION_METHOD_A = 1;
+export const BISECTION_METHOD_B = 2;
+export const BISECTION_METHOD_ITERATIONS = 8;
+
+/**
+ * 二分法のステップ列を生成する。符号が異なる区間の中点を調べ、根を含む方の
+ * 半区間に絞り込むことを繰り返す。ニュートン法より収束は遅いが、区間の両端で
+ * 異符号という前提さえ満たせば必ず収束する。
+ */
+export function bisectionMethodSteps(): SearchFrame[] {
+  const landscape = ROOT_FINDING_LANDSCAPE;
+  let a = BISECTION_METHOD_A;
+  let b = BISECTION_METHOD_B;
+  const frames: SearchFrame[] = [
+    frame(
+      landscape,
+      { [rootFindingXToIndex(a)]: "comparing", [rootFindingXToIndex(b)]: "comparing" },
+      `二分法を開始。区間[${a}, ${b}](f(${a})=${rootFindingFunction(a).toFixed(3)}, f(${b})=${rootFindingFunction(b).toFixed(3)}で異符号)`,
+    ),
+  ];
+
+  for (let iter = 1; iter <= BISECTION_METHOD_ITERATIONS; iter++) {
+    const mid = (a + b) / 2;
+    const fMid = rootFindingFunction(mid);
+    frames.push(
+      frame(landscape, { [rootFindingXToIndex(mid)]: "pivot" }, `[反復${iter}] 中点x=${mid.toFixed(4)}, f(x)=${fMid.toFixed(4)}`),
+    );
+    if (Math.sign(fMid) === Math.sign(rootFindingFunction(a))) {
+      a = mid;
+    } else {
+      b = mid;
+    }
+    frames.push(
+      frame(
+        landscape,
+        { [rootFindingXToIndex(a)]: "comparing", [rootFindingXToIndex(b)]: "comparing" },
+        `区間を[${a.toFixed(4)}, ${b.toFixed(4)}]に絞り込み`,
+      ),
+    );
+  }
+
+  const approx = (a + b) / 2;
+  frames.push(
+    frame(
+      landscape,
+      { [rootFindingXToIndex(approx)]: "settled" },
+      `計算完了。収束した根の近似値=${approx.toFixed(6)}(真の根≈${ROOT_FINDING_TRUE_ROOT})`,
+    ),
+  );
+  return frames;
+}
+
+export const SECANT_METHOD_X0 = 1;
+export const SECANT_METHOD_X1 = 2;
+export const SECANT_METHOD_ITERATIONS = 6;
+
+/**
+ * 割線法のステップ列を生成する。導関数の代わりに直近2点を結ぶ割線の傾きを使い、
+ * その割線がx軸と交わる点を次の推定値とすることを繰り返す。ニュートン法と同じ
+ * 更新式の構造を持ちながら、導関数の計算を一切必要としない。
+ */
+export function secantMethodSteps(): SearchFrame[] {
+  const landscape = ROOT_FINDING_LANDSCAPE;
+  let x0 = SECANT_METHOD_X0;
+  let x1 = SECANT_METHOD_X1;
+  const frames: SearchFrame[] = [
+    frame(
+      landscape,
+      { [rootFindingXToIndex(x0)]: "comparing", [rootFindingXToIndex(x1)]: "comparing" },
+      `割線法を開始。初期の2点x0=${x0}, x1=${x1}`,
+    ),
+  ];
+
+  for (let iter = 1; iter <= SECANT_METHOD_ITERATIONS; iter++) {
+    const f0 = rootFindingFunction(x0);
+    const f1 = rootFindingFunction(x1);
+    const x2 = x1 - (f1 * (x1 - x0)) / (f1 - f0);
+    frames.push(
+      frame(landscape, { [rootFindingXToIndex(x2)]: "pivot" }, `[反復${iter}] 割線がx軸と交わる点=${x2.toFixed(4)}`),
+    );
+    x0 = x1;
+    x1 = x2;
+    frames.push(
+      frame(
+        landscape,
+        { [rootFindingXToIndex(x0)]: "comparing", [rootFindingXToIndex(x1)]: "comparing" },
+        `直近2点を(${x0.toFixed(4)}, ${x1.toFixed(4)})に更新`,
+      ),
+    );
+  }
+
+  frames.push(
+    frame(
+      landscape,
+      { [rootFindingXToIndex(x1)]: "settled" },
+      `計算完了。収束した根の近似値=${x1.toFixed(6)}(真の根≈${ROOT_FINDING_TRUE_ROOT})`,
+    ),
+  );
+  return frames;
+}
+
 export const SEARCH_VISUALIZERS: Record<string, () => SearchFrame[]> = {
   "linear-search": linearSearchSteps,
   "binary-search": binarySearchSteps,
@@ -1076,4 +1242,7 @@ export const SEARCH_VISUALIZERS: Record<string, () => SearchFrame[]> = {
   "gradient-descent": gradientDescentSteps,
   knn: knnSteps,
   manacher: manacherSteps,
+  "newton-method": newtonMethodSteps,
+  "bisection-method": bisectionMethodSteps,
+  "secant-method": secantMethodSteps,
 };

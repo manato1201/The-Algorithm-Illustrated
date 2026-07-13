@@ -2780,6 +2780,845 @@ export function branchAndBoundSteps(): GraphFrame[] {
   return frames;
 }
 
+type GameTreeNode = {
+  id: string;
+  depth: number;
+  isMax: boolean;
+  isLeaf: boolean;
+  leafValue?: number;
+  left: string | null;
+  right: string | null;
+};
+
+/**
+ * ゲーム木(深さ3の完全二分木)のデモ用データ。minimax法・アルファベータ枝刈り法・
+ * モンテカルロ木探索の3アルゴリズムが同じ木・同じ末端値を共有することで、
+ * 探索量や結果を横並びで比較できるようにしている。末端値はアルファベータ枝刈りで
+ * 必ず1箇所の枝刈りが起きるよう意図的に選定した(手動トレースで検証済み)。
+ */
+export const GAME_TREE_LEAF_VALUES = [2, 3, 8, 1, 7, 4, 6, 9];
+
+function buildGameTree(): { nodes: Record<string, GameTreeNode>; rootId: string } {
+  const nodes: Record<string, GameTreeNode> = {};
+  let counter = 0;
+  let leafIndex = 0;
+  const build = (depth: number): string => {
+    const id = `g${counter++}`;
+    if (depth === 3) {
+      nodes[id] = {
+        id,
+        depth,
+        isMax: false,
+        isLeaf: true,
+        leafValue: GAME_TREE_LEAF_VALUES[leafIndex++],
+        left: null,
+        right: null,
+      };
+      return id;
+    }
+    const isMax = depth % 2 === 0;
+    const left = build(depth + 1);
+    const right = build(depth + 1);
+    nodes[id] = { id, depth, isMax, isLeaf: false, left, right };
+    return id;
+  };
+  const rootId = build(0);
+  return { nodes, rootId };
+}
+
+function computeGameTreeLayout(
+  nodes: Record<string, GameTreeNode>,
+  rootId: string,
+): Record<string, { x: number; y: number }> {
+  const positions: Record<string, { x: number; y: number }> = {};
+  let leafCounter = 0;
+  const visit = (id: string) => {
+    const node = nodes[id];
+    if (node.isLeaf) {
+      positions[id] = { x: leafCounter, y: node.depth };
+      leafCounter++;
+      return;
+    }
+    visit(node.left!);
+    visit(node.right!);
+    const xs = [positions[node.left!].x, positions[node.right!].x];
+    positions[id] = { x: (xs[0] + xs[1]) / 2, y: node.depth };
+  };
+  visit(rootId);
+  Object.keys(positions).forEach((id) => {
+    positions[id] = {
+      x: leafCounter > 1 ? positions[id].x / (leafCounter - 1) : 0.5,
+      y: nodes[id].depth / 3,
+    };
+  });
+  return positions;
+}
+
+const GAME_TREE = buildGameTree();
+const GAME_TREE_LAYOUT = computeGameTreeLayout(GAME_TREE.nodes, GAME_TREE.rootId);
+
+export const GAME_TREE_NODES: GraphNode[] = Object.values(GAME_TREE.nodes).map((n) => ({
+  id: n.id,
+  label: n.isLeaf ? String(n.leafValue) : n.isMax ? "MAX" : "MIN",
+  x: GAME_TREE_LAYOUT[n.id].x,
+  y: GAME_TREE_LAYOUT[n.id].y,
+}));
+export const GAME_TREE_EDGES: GraphEdge[] = Object.values(GAME_TREE.nodes).flatMap((n) => {
+  const edges: GraphEdge[] = [];
+  if (n.left !== null) edges.push({ id: `${n.id}-${n.left}`, from: n.id, to: n.left, weight: 1 });
+  if (n.right !== null) edges.push({ id: `${n.id}-${n.right}`, from: n.id, to: n.right, weight: 1 });
+  return edges;
+});
+
+/**
+ * ミニマックス法のステップ列を生成する。深さ優先探索で末端(葉)まで潜り、
+ * 評価値を下から上へ伝播させる: MAXノードでは子の最大値を、MINノードでは
+ * 子の最小値を、そのノード自身の評価値として採用する。
+ */
+export function minimaxSteps(): GraphFrame[] {
+  const nodesMap = GAME_TREE.nodes;
+  const nodeStates = initNodeStates(GAME_TREE_NODES, "idle");
+  const edgeStates = initEdgeStates(GAME_TREE_EDGES, "idle");
+  const values: Record<string, number | null> = {};
+  GAME_TREE_NODES.forEach((n) => {
+    values[n.id] = null;
+  });
+
+  const frames: GraphFrame[] = [
+    {
+      nodeStates: { ...nodeStates },
+      edgeStates: { ...edgeStates },
+      distances: { ...values },
+      description: `ミニマックス法を開始。ルート(MAX)から深さ優先で末端まで評価し、値を下から上へ伝播させる`,
+    },
+  ];
+
+  const visit = (id: string): number => {
+    const node = nodesMap[id];
+    nodeStates[id] = "visited";
+    if (node.isLeaf) {
+      values[id] = node.leafValue!;
+      nodeStates[id] = "settled";
+      frames.push({
+        nodeStates: { ...nodeStates },
+        edgeStates: { ...edgeStates },
+        distances: { ...values },
+        description: `末端${id}: 評価値=${node.leafValue}`,
+      });
+      return node.leafValue!;
+    }
+    frames.push({
+      nodeStates: { ...nodeStates },
+      edgeStates: { ...edgeStates },
+      distances: { ...values },
+      description: `頂点${id}(${node.isMax ? "MAX" : "MIN"})を展開`,
+    });
+    edgeStates[`${id}-${node.left}`] = "tree";
+    const leftVal = visit(node.left!);
+    edgeStates[`${id}-${node.right}`] = "tree";
+    const rightVal = visit(node.right!);
+    const value = node.isMax ? Math.max(leftVal, rightVal) : Math.min(leftVal, rightVal);
+    values[id] = value;
+    nodeStates[id] = "settled";
+    frames.push({
+      nodeStates: { ...nodeStates },
+      edgeStates: { ...edgeStates },
+      distances: { ...values },
+      description: `頂点${id}(${node.isMax ? "MAX" : "MIN"}): 子の評価値(${leftVal}, ${rightVal})から${node.isMax ? "最大値" : "最小値"}${value}を採用`,
+    });
+    return value;
+  };
+
+  const rootValue = visit(GAME_TREE.rootId);
+  frames.push({
+    nodeStates: { ...nodeStates },
+    edgeStates: { ...edgeStates },
+    distances: { ...values },
+    description: `計算完了。ルートの評価値=${rootValue}(この値を実現する手が最善手)`,
+  });
+
+  return frames;
+}
+
+function countGameSubtreeNodes(id: string): number {
+  const node = GAME_TREE.nodes[id];
+  if (node.isLeaf) return 1;
+  return 1 + countGameSubtreeNodes(node.left!) + countGameSubtreeNodes(node.right!);
+}
+
+/**
+ * アルファベータ枝刈りのステップ列を生成する。minimaxStepsと同じゲーム木を使い、
+ * α(自分にとってこれまでに保証できる最良値)とβ(相手にとってこれまでに保証できる
+ * 最良値)を追跡しながら、α≥βになった時点で残りの子の探索を打ち切る(枝刈り)。
+ */
+export function alphaBetaPruningSteps(): GraphFrame[] {
+  const nodesMap = GAME_TREE.nodes;
+  const nodeStates = initNodeStates(GAME_TREE_NODES, "idle");
+  const edgeStates = initEdgeStates(GAME_TREE_EDGES, "idle");
+  const values: Record<string, number | null> = {};
+  GAME_TREE_NODES.forEach((n) => {
+    values[n.id] = null;
+  });
+  let prunedCount = 0;
+
+  const frames: GraphFrame[] = [
+    {
+      nodeStates: { ...nodeStates },
+      edgeStates: { ...edgeStates },
+      distances: { ...values },
+      description: `アルファベータ枝刈りを開始。minimaxStepsと同じゲーム木・同じ末端値を使用`,
+    },
+  ];
+
+  const fmt = (v: number): string => (v === -Infinity ? "-∞" : v === Infinity ? "∞" : String(v));
+
+  const visit = (id: string, alpha: number, beta: number): number => {
+    const node = nodesMap[id];
+    nodeStates[id] = "visited";
+    if (node.isLeaf) {
+      values[id] = node.leafValue!;
+      nodeStates[id] = "settled";
+      frames.push({
+        nodeStates: { ...nodeStates },
+        edgeStates: { ...edgeStates },
+        distances: { ...values },
+        description: `末端${id}: 評価値=${node.leafValue}`,
+      });
+      return node.leafValue!;
+    }
+
+    frames.push({
+      nodeStates: { ...nodeStates },
+      edgeStates: { ...edgeStates },
+      distances: { ...values },
+      description: `頂点${id}(${node.isMax ? "MAX" : "MIN"})を展開(α=${fmt(alpha)}, β=${fmt(beta)})`,
+    });
+
+    edgeStates[`${id}-${node.left}`] = "tree";
+    const leftVal = visit(node.left!, alpha, beta);
+    let value = leftVal;
+    if (node.isMax) alpha = Math.max(alpha, value);
+    else beta = Math.min(beta, value);
+
+    if (alpha >= beta) {
+      const prunedSize = countGameSubtreeNodes(node.right!);
+      prunedCount += prunedSize;
+      values[id] = value;
+      nodeStates[id] = "settled";
+      frames.push({
+        nodeStates: { ...nodeStates },
+        edgeStates: { ...edgeStates },
+        distances: { ...values },
+        description: `頂点${id}: α=${fmt(alpha)} ≥ β=${fmt(beta)} → 右部分木(${prunedSize}頂点)を枝刈り`,
+      });
+      return value;
+    }
+
+    edgeStates[`${id}-${node.right}`] = "tree";
+    const rightVal = visit(node.right!, alpha, beta);
+    value = node.isMax ? Math.max(leftVal, rightVal) : Math.min(leftVal, rightVal);
+    values[id] = value;
+    nodeStates[id] = "settled";
+    frames.push({
+      nodeStates: { ...nodeStates },
+      edgeStates: { ...edgeStates },
+      distances: { ...values },
+      description: `頂点${id}(${node.isMax ? "MAX" : "MIN"}): 評価値=${value}`,
+    });
+    return value;
+  };
+
+  const rootValue = visit(GAME_TREE.rootId, -Infinity, Infinity);
+  frames.push({
+    nodeStates: { ...nodeStates },
+    edgeStates: { ...edgeStates },
+    distances: { ...values },
+    description: `計算完了。ルートの評価値=${rootValue}(ミニマックス法と同じ結果に到達しつつ、${prunedCount}個の頂点を枝刈りして探索量を削減)`,
+  });
+
+  return frames;
+}
+
+function mctsCreateLcg(seed: number): () => number {
+  let state = seed;
+  return () => {
+    state = (state * 1103515245 + 12345) % 2147483648;
+    return state / 2147483648;
+  };
+}
+
+export const MONTE_CARLO_TREE_SEARCH_SEED = 7;
+export const MONTE_CARLO_TREE_SEARCH_ITERATIONS = 24;
+const MONTE_CARLO_TREE_SEARCH_C = Math.SQRT2;
+
+/**
+ * モンテカルロ木探索(MCTS)のステップ列を生成する。minimaxStepsと同じゲーム木を使い、
+ * 「選択(UCB1で有望かつ未探索の枝を優先)→展開→シミュレーション(末端までの
+ * ランダムロールアウト)→バックプロパゲーション(訪問回数・平均評価値の更新)」の
+ * 4フェーズを反復する。最終的に訪問回数が最も多い手を最善手として採用する。
+ */
+export function monteCarloTreeSearchSteps(): GraphFrame[] {
+  const nodesMap = GAME_TREE.nodes;
+  const nodeStates = initNodeStates(GAME_TREE_NODES, "idle");
+  const edgeStates = initEdgeStates(GAME_TREE_EDGES, "idle");
+  const visits: Record<string, number> = {};
+  const totalValue: Record<string, number> = {};
+  GAME_TREE_NODES.forEach((n) => {
+    visits[n.id] = 0;
+    totalValue[n.id] = 0;
+  });
+  const rng = mctsCreateLcg(MONTE_CARLO_TREE_SEARCH_SEED);
+
+  const meanValues = (): Record<string, number | null> => {
+    const out: Record<string, number | null> = {};
+    GAME_TREE_NODES.forEach((n) => {
+      out[n.id] = visits[n.id] > 0 ? Number((totalValue[n.id] / visits[n.id]).toFixed(2)) : null;
+    });
+    return out;
+  };
+
+  const frames: GraphFrame[] = [
+    {
+      nodeStates: { ...nodeStates },
+      edgeStates: { ...edgeStates },
+      distances: meanValues(),
+      description: `モンテカルロ木探索を開始(${MONTE_CARLO_TREE_SEARCH_ITERATIONS}回反復)。minimaxStepsと同じゲーム木を使用。頂点下の数字は訪問済みの平均評価値`,
+    },
+  ];
+
+  const ucb1 = (childId: string, parentVisits: number): number => {
+    if (visits[childId] === 0) return Infinity;
+    const mean = totalValue[childId] / visits[childId];
+    return mean + MONTE_CARLO_TREE_SEARCH_C * Math.sqrt(Math.log(parentVisits) / visits[childId]);
+  };
+
+  const rolloutFrom = (id: string): number => {
+    let cur = nodesMap[id];
+    while (!cur.isLeaf) {
+      const goLeft = rng() < 0.5;
+      cur = nodesMap[goLeft ? cur.left! : cur.right!];
+    }
+    return cur.leafValue!;
+  };
+
+  for (let iter = 1; iter <= MONTE_CARLO_TREE_SEARCH_ITERATIONS; iter++) {
+    const path: string[] = [GAME_TREE.rootId];
+    let cur = GAME_TREE.rootId;
+    while (!nodesMap[cur].isLeaf) {
+      const node = nodesMap[cur];
+      const parentVisits = Math.max(1, visits[cur]);
+      const leftScore = ucb1(node.left!, parentVisits);
+      const rightScore = ucb1(node.right!, parentVisits);
+      cur = leftScore >= rightScore ? node.left! : node.right!;
+      path.push(cur);
+      if (visits[cur] === 0) break;
+    }
+
+    const result = nodesMap[cur].isLeaf ? nodesMap[cur].leafValue! : rolloutFrom(cur);
+    path.forEach((id) => {
+      visits[id]++;
+      totalValue[id] += result;
+    });
+    nodeStates[cur] = "visited";
+
+    frames.push({
+      nodeStates: { ...nodeStates },
+      edgeStates: { ...edgeStates },
+      distances: meanValues(),
+      description: `[反復${iter}] 選択経路 ${path.join("→")}、シミュレーション結果=${result} → バックプロパゲーションで経路上の訪問回数・平均評価値を更新`,
+    });
+  }
+
+  const rootNode = nodesMap[GAME_TREE.rootId];
+  const bestChild = visits[rootNode.left!] >= visits[rootNode.right!] ? rootNode.left! : rootNode.right!;
+  nodeStates[GAME_TREE.rootId] = "settled";
+  nodeStates[bestChild] = "settled";
+  frames.push({
+    nodeStates: { ...nodeStates },
+    edgeStates: { ...edgeStates },
+    distances: meanValues(),
+    description: `計算完了。訪問回数が最も多い手=${bestChild}(訪問${visits[bestChild]}回、平均評価値${(totalValue[bestChild] / visits[bestChild]).toFixed(2)})を最終的な最善手として選択`,
+  });
+
+  return frames;
+}
+
+type NfaTransition = { from: string; to: string; symbol: string };
+type NfaFragment = { states: string[]; transitions: NfaTransition[]; start: string; accept: string };
+type NfaBuilder = { newState: () => string };
+
+function createNfaBuilder(): NfaBuilder {
+  let counter = 0;
+  return { newState: () => `n${counter++}` };
+}
+
+function nfaSymbol(builder: NfaBuilder, symbol: string): NfaFragment {
+  const s = builder.newState();
+  const a = builder.newState();
+  return { states: [s, a], transitions: [{ from: s, to: a, symbol }], start: s, accept: a };
+}
+function nfaConcat(f1: NfaFragment, f2: NfaFragment): NfaFragment {
+  return {
+    states: [...f1.states, ...f2.states],
+    transitions: [...f1.transitions, ...f2.transitions, { from: f1.accept, to: f2.start, symbol: "ε" }],
+    start: f1.start,
+    accept: f2.accept,
+  };
+}
+function nfaUnion(builder: NfaBuilder, f1: NfaFragment, f2: NfaFragment): NfaFragment {
+  const s = builder.newState();
+  const a = builder.newState();
+  return {
+    states: [s, ...f1.states, ...f2.states, a],
+    transitions: [
+      ...f1.transitions,
+      ...f2.transitions,
+      { from: s, to: f1.start, symbol: "ε" },
+      { from: s, to: f2.start, symbol: "ε" },
+      { from: f1.accept, to: a, symbol: "ε" },
+      { from: f2.accept, to: a, symbol: "ε" },
+    ],
+    start: s,
+    accept: a,
+  };
+}
+function nfaStar(builder: NfaBuilder, f: NfaFragment): NfaFragment {
+  const s = builder.newState();
+  const a = builder.newState();
+  return {
+    states: [s, ...f.states, a],
+    transitions: [
+      ...f.transitions,
+      { from: s, to: f.start, symbol: "ε" },
+      { from: s, to: a, symbol: "ε" },
+      { from: f.accept, to: f.start, symbol: "ε" },
+      { from: f.accept, to: a, symbol: "ε" },
+    ],
+    start: s,
+    accept: a,
+  };
+}
+
+/** 正規表現 a(b|c)* のNFAを、記号(symbol)・連接(concat)・選択(union)・繰り返し(star)の4部品から組み立てる。 */
+function buildThompsonNfa(builder: NfaBuilder): NfaFragment {
+  const fa = nfaSymbol(builder, "a");
+  const fb = nfaSymbol(builder, "b");
+  const fc = nfaSymbol(builder, "c");
+  const fbc = nfaUnion(builder, fb, fc);
+  const fstar = nfaStar(builder, fbc);
+  return nfaConcat(fa, fstar);
+}
+
+function computeNfaLayout(fragment: NfaFragment): Record<string, { x: number; y: number }> {
+  const adj: Record<string, string[]> = {};
+  fragment.states.forEach((s) => {
+    adj[s] = [];
+  });
+  fragment.transitions.forEach((t) => adj[t.from].push(t.to));
+  const rank: Record<string, number> = { [fragment.start]: 0 };
+  const queue: string[] = [fragment.start];
+  let qi = 0;
+  while (qi < queue.length) {
+    const cur = queue[qi++];
+    for (const next of adj[cur]) {
+      if (!(next in rank)) {
+        rank[next] = rank[cur] + 1;
+        queue.push(next);
+      }
+    }
+  }
+  const maxRank = Math.max(...Object.values(rank), 1);
+  const rankGroups: Record<number, string[]> = {};
+  fragment.states.forEach((s) => {
+    const r = rank[s] ?? maxRank;
+    (rankGroups[r] ??= []).push(s);
+  });
+  const positions: Record<string, { x: number; y: number }> = {};
+  Object.entries(rankGroups).forEach(([r, states]) => {
+    states.forEach((s, i) => {
+      positions[s] = {
+        x: Number(r) / maxRank,
+        y: states.length > 1 ? (i + 0.5) / states.length : 0.5,
+      };
+    });
+  });
+  return positions;
+}
+
+const qLabel = (id: string): string => id.replace(/^n/, "q");
+const nfaEdgeId = (from: string, to: string): string => `${from}-${to}`;
+
+const THOMPSON_NFA = buildThompsonNfa(createNfaBuilder());
+const THOMPSON_NFA_LAYOUT = computeNfaLayout(THOMPSON_NFA);
+
+export const THOMPSON_NFA_NODES: GraphNode[] = THOMPSON_NFA.states.map((s) => ({
+  id: s,
+  label: qLabel(s),
+  x: THOMPSON_NFA_LAYOUT[s].x,
+  y: THOMPSON_NFA_LAYOUT[s].y,
+}));
+export const THOMPSON_NFA_EDGES: GraphEdge[] = THOMPSON_NFA.transitions.map((t) => ({
+  id: nfaEdgeId(t.from, t.to),
+  from: t.from,
+  to: t.to,
+  weight: 1,
+}));
+const THOMPSON_NFA_EDGE_SYMBOLS: Record<string, string> = Object.fromEntries(
+  THOMPSON_NFA.transitions.map((t) => [nfaEdgeId(t.from, t.to), t.symbol]),
+);
+
+/**
+ * トンプソン構成法のステップ列を生成する。正規表現 a(b|c)* を「記号」「選択(union)」
+ * 「繰り返し(star)」「連接(concat)」の4種の部品に分解し、それぞれをε遷移で
+ * 繋いだNFAの断片として組み立てていく過程を、部品を追加するたびに1フレームずつ可視化する。
+ */
+export function thompsonConstructionSteps(): GraphFrame[] {
+  const nodes = THOMPSON_NFA_NODES;
+  const edges = THOMPSON_NFA_EDGES;
+  const nodeStates = initNodeStates(nodes, "idle");
+  const edgeStates = initEdgeStates(edges, "idle");
+  const edgeLabels: Record<string, string> = { ...THOMPSON_NFA_EDGE_SYMBOLS };
+
+  const frames: GraphFrame[] = [
+    {
+      nodeStates: { ...nodeStates },
+      edgeStates: { ...edgeStates },
+      distances: {},
+      edgeLabels: { ...edgeLabels },
+      description: `トンプソン構成法を開始。正規表現 a(b|c)* のNFAを部品ごとに組み立てる`,
+    },
+  ];
+
+  const reveal = (frag: NfaFragment, description: string) => {
+    frag.states.forEach((s) => {
+      nodeStates[s] = "settled";
+    });
+    frag.transitions.forEach((t) => {
+      edgeStates[nfaEdgeId(t.from, t.to)] = "tree";
+    });
+    frames.push({
+      nodeStates: { ...nodeStates },
+      edgeStates: { ...edgeStates },
+      distances: {},
+      edgeLabels: { ...edgeLabels },
+      description,
+    });
+  };
+
+  const builder = createNfaBuilder();
+  const fa = nfaSymbol(builder, "a");
+  reveal(fa, `記号'a'の基本NFA(2状態、1本の遷移)を作成`);
+  const fb = nfaSymbol(builder, "b");
+  reveal(fb, `記号'b'の基本NFA(2状態)を作成`);
+  const fc = nfaSymbol(builder, "c");
+  reveal(fc, `記号'c'の基本NFA(2状態)を作成`);
+  const fbc = nfaUnion(builder, fb, fc);
+  reveal(fbc, `'b'と'c'をε遷移で選択(union)結合: (b|c)`);
+  const fstar = nfaStar(builder, fbc);
+  reveal(fstar, `(b|c)にクリーネスター(繰り返し)を適用: (b|c)*`);
+  const fall = nfaConcat(fa, fstar);
+  reveal(fall, `'a'と(b|c)*をε遷移で連接(concat): a(b|c)*`);
+
+  frames.push({
+    nodeStates: { ...nodeStates },
+    edgeStates: { ...edgeStates },
+    distances: {},
+    edgeLabels: { ...edgeLabels },
+    description: `構成完了。開始状態=${qLabel(fall.start)}、受理状態=${qLabel(fall.accept)}の非決定性有限オートマトン(NFA)が完成`,
+  });
+
+  return frames;
+}
+
+function nfaEpsilonClosure(states: Set<string>, transitions: NfaTransition[]): Set<string> {
+  const stack = [...states];
+  const closure = new Set(states);
+  while (stack.length) {
+    const s = stack.pop()!;
+    transitions
+      .filter((t) => t.from === s && t.symbol === "ε")
+      .forEach((t) => {
+        if (!closure.has(t.to)) {
+          closure.add(t.to);
+          stack.push(t.to);
+        }
+      });
+  }
+  return closure;
+}
+function nfaMove(states: Set<string>, symbol: string, transitions: NfaTransition[]): Set<string> {
+  const result = new Set<string>();
+  transitions
+    .filter((t) => states.has(t.from) && t.symbol === symbol)
+    .forEach((t) => result.add(t.to));
+  return result;
+}
+function nfaSetKey(s: Set<string>): string {
+  return [...s].sort().join(",");
+}
+function nfaSetLabel(s: Set<string>): string {
+  return `{${[...s]
+    .map(qLabel)
+    .sort((a, b) => Number(a.slice(1)) - Number(b.slice(1)))
+    .join(",")}}`;
+}
+
+type DfaBuildResult = {
+  states: Record<string, Set<string>>;
+  order: string[];
+  transitions: { from: string; to: string; symbol: string }[];
+  startKey: string;
+  acceptKeys: Set<string>;
+  alphabet: string[];
+};
+
+function buildSubsetConstructionDfa(nfa: NfaFragment): DfaBuildResult {
+  const alphabet = [...new Set(nfa.transitions.filter((t) => t.symbol !== "ε").map((t) => t.symbol))].sort();
+  const startSet = nfaEpsilonClosure(new Set([nfa.start]), nfa.transitions);
+  const startKey = nfaSetKey(startSet);
+  const states: Record<string, Set<string>> = { [startKey]: startSet };
+  const order: string[] = [startKey];
+  const transitions: { from: string; to: string; symbol: string }[] = [];
+  const acceptKeys = new Set<string>();
+  if (startSet.has(nfa.accept)) acceptKeys.add(startKey);
+
+  const queue = [startKey];
+  let qi = 0;
+  while (qi < queue.length) {
+    const key = queue[qi++];
+    const set = states[key];
+    for (const sym of alphabet) {
+      const moved = nfaMove(set, sym, nfa.transitions);
+      if (moved.size === 0) continue;
+      const closure = nfaEpsilonClosure(moved, nfa.transitions);
+      const newKey = nfaSetKey(closure);
+      if (!(newKey in states)) {
+        states[newKey] = closure;
+        order.push(newKey);
+        queue.push(newKey);
+        if (closure.has(nfa.accept)) acceptKeys.add(newKey);
+      }
+      transitions.push({ from: key, to: newKey, symbol: sym });
+    }
+  }
+  return { states, order, transitions, startKey, acceptKeys, alphabet };
+}
+
+function computeDfaLayout(result: DfaBuildResult): Record<string, { x: number; y: number }> {
+  const adj: Record<string, string[]> = {};
+  result.order.forEach((k) => {
+    adj[k] = [];
+  });
+  result.transitions.forEach((t) => adj[t.from].push(t.to));
+  const rank: Record<string, number> = { [result.startKey]: 0 };
+  const queue: string[] = [result.startKey];
+  let qi = 0;
+  while (qi < queue.length) {
+    const cur = queue[qi++];
+    for (const next of adj[cur]) {
+      if (!(next in rank)) {
+        rank[next] = rank[cur] + 1;
+        queue.push(next);
+      }
+    }
+  }
+  const maxRank = Math.max(...Object.values(rank), 1);
+  const rankGroups: Record<number, string[]> = {};
+  result.order.forEach((k) => {
+    const r = rank[k] ?? maxRank;
+    (rankGroups[r] ??= []).push(k);
+  });
+  const positions: Record<string, { x: number; y: number }> = {};
+  Object.entries(rankGroups).forEach(([r, keys]) => {
+    keys.forEach((k, i) => {
+      positions[k] = {
+        x: Number(r) / maxRank,
+        y: keys.length > 1 ? (i + 0.5) / keys.length : 0.5,
+      };
+    });
+  });
+  return positions;
+}
+
+const SUBSET_CONSTRUCTION_DFA = buildSubsetConstructionDfa(THOMPSON_NFA);
+const SUBSET_CONSTRUCTION_LAYOUT = computeDfaLayout(SUBSET_CONSTRUCTION_DFA);
+
+export const SUBSET_CONSTRUCTION_NODES: GraphNode[] = SUBSET_CONSTRUCTION_DFA.order.map((k) => ({
+  id: k,
+  label: nfaSetLabel(SUBSET_CONSTRUCTION_DFA.states[k]),
+  x: SUBSET_CONSTRUCTION_LAYOUT[k].x,
+  y: SUBSET_CONSTRUCTION_LAYOUT[k].y,
+}));
+export const SUBSET_CONSTRUCTION_EDGES: GraphEdge[] = SUBSET_CONSTRUCTION_DFA.transitions.map((t, i) => ({
+  id: `${t.from}=>${t.to}#${i}`,
+  from: t.from,
+  to: t.to,
+  weight: 1,
+}));
+const SUBSET_CONSTRUCTION_EDGE_SYMBOLS: Record<string, string> = Object.fromEntries(
+  SUBSET_CONSTRUCTION_DFA.transitions.map((t, i) => [`${t.from}=>${t.to}#${i}`, t.symbol]),
+);
+
+/**
+ * 部分集合構成法のステップ列を生成する。トンプソン構成法で作ったNFAに対し、
+ * 「NFAが同時に取りうる状態の集合」1つひとつをDFAの1状態とみなし、記号ごとの
+ * 移動先集合(ε閉包込み)を計算して新しいDFA状態を発見するたびに1フレームずつ可視化する。
+ */
+export function subsetConstructionSteps(): GraphFrame[] {
+  const nodes = SUBSET_CONSTRUCTION_NODES;
+  const edges = SUBSET_CONSTRUCTION_EDGES;
+  const nodeStates = initNodeStates(nodes, "idle");
+  const edgeStates = initEdgeStates(edges, "idle");
+  const edgeLabels: Record<string, string> = { ...SUBSET_CONSTRUCTION_EDGE_SYMBOLS };
+
+  const nfa = THOMPSON_NFA;
+  const alphabet = [...new Set(nfa.transitions.filter((t) => t.symbol !== "ε").map((t) => t.symbol))].sort();
+  const startSet = nfaEpsilonClosure(new Set([nfa.start]), nfa.transitions);
+  const startKey = nfaSetKey(startSet);
+  const states: Record<string, Set<string>> = { [startKey]: startSet };
+
+  nodeStates[startKey] = "settled";
+  const frames: GraphFrame[] = [
+    {
+      nodeStates: { ...nodeStates },
+      edgeStates: { ...edgeStates },
+      distances: {},
+      edgeLabels: { ...edgeLabels },
+      description: `部分集合構成法を開始。開始状態のε閉包 ${nfaSetLabel(startSet)} を最初のDFA状態とする`,
+    },
+  ];
+
+  const queue = [startKey];
+  let qi = 0;
+  while (qi < queue.length) {
+    const key = queue[qi++];
+    const set = states[key];
+    for (const sym of alphabet) {
+      const moved = nfaMove(set, sym, nfa.transitions);
+      if (moved.size === 0) continue;
+      const closure = nfaEpsilonClosure(moved, nfa.transitions);
+      const newKey = nfaSetKey(closure);
+      const isNew = !(newKey in states);
+      if (isNew) {
+        states[newKey] = closure;
+        queue.push(newKey);
+        nodeStates[newKey] = "settled";
+      }
+      const edgeId = edges.find((e) => e.from === key && e.to === newKey && edgeLabels[e.id] === sym)?.id;
+      if (edgeId) edgeStates[edgeId] = "tree";
+      frames.push({
+        nodeStates: { ...nodeStates },
+        edgeStates: { ...edgeStates },
+        distances: {},
+        edgeLabels: { ...edgeLabels },
+        description: isNew
+          ? `${nfaSetLabel(set)} から記号'${sym}'で ${nfaSetLabel(closure)} へ遷移(新しいDFA状態を発見)`
+          : `${nfaSetLabel(set)} から記号'${sym}'で既存のDFA状態 ${nfaSetLabel(closure)} へ遷移`,
+      });
+    }
+  }
+
+  frames.push({
+    nodeStates: { ...nodeStates },
+    edgeStates: { ...edgeStates },
+    distances: {},
+    edgeLabels: { ...edgeLabels },
+    description: `構成完了。NFAの${THOMPSON_NFA.states.length}状態から、決定性有限オートマトン(DFA)の${Object.keys(states).length}状態が得られた`,
+  });
+
+  return frames;
+}
+
+function minimizeDfaPartitions(result: DfaBuildResult): Record<string, number>[] {
+  const stateKeys = result.order;
+  const transMap: Record<string, Record<string, string>> = {};
+  stateKeys.forEach((k) => {
+    transMap[k] = {};
+  });
+  result.transitions.forEach((t) => {
+    transMap[t.from][t.symbol] = t.to;
+  });
+
+  let partition: Record<string, number> = {};
+  stateKeys.forEach((k) => {
+    partition[k] = result.acceptKeys.has(k) ? 1 : 0;
+  });
+  const history: Record<string, number>[] = [{ ...partition }];
+
+  for (;;) {
+    const signature: Record<string, string> = {};
+    stateKeys.forEach((k) => {
+      const parts = [String(partition[k])];
+      result.alphabet.forEach((sym) => {
+        const to = transMap[k][sym];
+        parts.push(to !== undefined ? String(partition[to]) : "-");
+      });
+      signature[k] = parts.join("|");
+    });
+    const sigToClass: Record<string, number> = {};
+    let next = 0;
+    const newPartition: Record<string, number> = {};
+    stateKeys.forEach((k) => {
+      if (!(signature[k] in sigToClass)) sigToClass[signature[k]] = next++;
+      newPartition[k] = sigToClass[signature[k]];
+    });
+    const oldClassCount = new Set(Object.values(partition)).size;
+    const newClassCount = new Set(Object.values(newPartition)).size;
+    partition = newPartition;
+    history.push({ ...partition });
+    if (newClassCount === oldClassCount) break;
+  }
+  return history;
+}
+
+/**
+ * DFA最小化のステップ列を生成する。部分集合構成法で得たDFAに対し、Mooreの分割改良法
+ * (Hopcroftのアルゴリズムと同じ最終結果を与える等価類分割の手法)で、まず受理/非受理の
+ * 2クラスに分け、各状態の記号ごとの遷移先クラスが一致する状態同士だけをまとめる、
+ * という細分化をこれ以上分割できなくなるまで繰り返す。
+ */
+export function dfaMinimizationSteps(): GraphFrame[] {
+  const nodes = SUBSET_CONSTRUCTION_NODES;
+  const edges = SUBSET_CONSTRUCTION_EDGES;
+  const nodeStates = initNodeStates(nodes, "idle");
+  const edgeStates = initEdgeStates(edges, "idle");
+
+  const history = minimizeDfaPartitions(SUBSET_CONSTRUCTION_DFA);
+  const frames: GraphFrame[] = [];
+
+  history.forEach((partition, i) => {
+    const distances: Record<string, number | null> = {};
+    nodes.forEach((n) => {
+      distances[n.id] = partition[n.id];
+    });
+    const classCount = new Set(Object.values(partition)).size;
+    frames.push({
+      nodeStates: { ...nodeStates },
+      edgeStates: { ...edgeStates },
+      distances,
+      description:
+        i === 0
+          ? `初期分割: 受理状態(クラス1)と非受理状態(クラス0)の2クラスに分ける(頂点下の数字が所属クラス)`
+          : `[反復${i}] 各状態を、記号ごとの遷移先クラスの組み合わせ(シグネチャ)が一致する状態同士でグループ化。クラス数=${classCount}`,
+    });
+  });
+
+  const finalPartition = history[history.length - 1];
+  const classCount = new Set(Object.values(finalPartition)).size;
+  const finalDistances: Record<string, number | null> = {};
+  nodes.forEach((n) => {
+    finalDistances[n.id] = finalPartition[n.id];
+  });
+  frames.push({
+    nodeStates: initNodeStates(nodes, "settled"),
+    edgeStates: initEdgeStates(edges, "tree"),
+    distances: finalDistances,
+    description: `計算完了。これ以上分割できず収束。元のDFA${nodes.length}状態が最小${classCount}状態の等価クラスにまとまった`,
+  });
+
+  return frames;
+}
+
 export type GraphDataset = {
   nodes: GraphNode[];
   edges: GraphEdge[];
@@ -3705,6 +4544,12 @@ export const GRAPH_DATASETS: Record<string, GraphDataset> = {
   "decision-tree": { nodes: DECISION_TREE_GRAPH_NODES, edges: DECISION_TREE_GRAPH_EDGES, directed: true },
   fft: { nodes: FFT_NODES, edges: FFT_EDGES, directed: true },
   "branch-and-bound": { nodes: BNB_GRAPH_NODES, edges: BNB_GRAPH_EDGES, directed: true },
+  minimax: { nodes: GAME_TREE_NODES, edges: GAME_TREE_EDGES, directed: true },
+  "alpha-beta-pruning": { nodes: GAME_TREE_NODES, edges: GAME_TREE_EDGES, directed: true },
+  "monte-carlo-tree-search": { nodes: GAME_TREE_NODES, edges: GAME_TREE_EDGES, directed: true },
+  "thompson-construction": { nodes: THOMPSON_NFA_NODES, edges: THOMPSON_NFA_EDGES, directed: true },
+  "subset-construction": { nodes: SUBSET_CONSTRUCTION_NODES, edges: SUBSET_CONSTRUCTION_EDGES, directed: true },
+  "dfa-minimization": { nodes: SUBSET_CONSTRUCTION_NODES, edges: SUBSET_CONSTRUCTION_EDGES, directed: true },
 };
 
 export const GRAPH_VISUALIZERS: Record<string, () => GraphFrame[]> = {
@@ -3736,4 +4581,10 @@ export const GRAPH_VISUALIZERS: Record<string, () => GraphFrame[]> = {
   "decision-tree": decisionTreeSteps,
   fft: fftSteps,
   "branch-and-bound": branchAndBoundSteps,
+  minimax: minimaxSteps,
+  "alpha-beta-pruning": alphaBetaPruningSteps,
+  "monte-carlo-tree-search": monteCarloTreeSearchSteps,
+  "thompson-construction": thompsonConstructionSteps,
+  "subset-construction": subsetConstructionSteps,
+  "dfa-minimization": dfaMinimizationSteps,
 };
