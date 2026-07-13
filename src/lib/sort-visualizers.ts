@@ -998,6 +998,290 @@ export function timSortSteps(initial: number[]): SortFrame[] {
   return frames;
 }
 
+/**
+ * ノームソートのステップ列を生成する。
+ * 挿入ソートと同じ考え方を、配列の先頭から位置ポインタを前後させるだけの単純なループで実現する。
+ */
+export function gnomeSortSteps(initial: number[]): SortFrame[] {
+  const array = [...initial];
+  const frames: SortFrame[] = [frame(array, {}, "初期状態")];
+  const n = array.length;
+  let pos = 0;
+
+  while (pos < n) {
+    if (pos === 0) {
+      pos++;
+      continue;
+    }
+    frames.push(
+      frame(array, { [pos - 1]: "comparing", [pos]: "comparing" }, `${pos}番目と${pos + 1}番目を比較`),
+    );
+    if (array[pos - 1] <= array[pos]) {
+      pos++;
+    } else {
+      [array[pos - 1], array[pos]] = [array[pos], array[pos - 1]];
+      frames.push(
+        frame(array, { [pos - 1]: "swapping", [pos]: "swapping" }, `${pos}番目と${pos + 1}番目を交換し、1つ手前へ戻る`),
+      );
+      pos--;
+    }
+  }
+
+  const allSettled: Partial<Record<number, StateColorKey>> = {};
+  array.forEach((_, idx) => {
+    allSettled[idx] = "settled";
+  });
+  frames.push(frame(array, allSettled, "ソート完了"));
+  return frames;
+}
+
+/**
+ * 奇偶転置ソート(ブリックソート)のステップ列を生成する。
+ * 奇数位置・偶数位置の隣接比較を交互に繰り返し、交換が起きなくなったら終了する。
+ */
+export function oddEvenSortSteps(initial: number[]): SortFrame[] {
+  const array = [...initial];
+  const frames: SortFrame[] = [frame(array, {}, "初期状態")];
+  const n = array.length;
+  let sorted = false;
+
+  while (!sorted) {
+    sorted = true;
+    for (let i = 1; i < n - 1; i += 2) {
+      frames.push(
+        frame(array, { [i]: "comparing", [i + 1]: "comparing" }, `奇数フェーズ: ${i + 1}番目と${i + 2}番目を比較`),
+      );
+      if (array[i] > array[i + 1]) {
+        [array[i], array[i + 1]] = [array[i + 1], array[i]];
+        sorted = false;
+        frames.push(frame(array, { [i]: "swapping", [i + 1]: "swapping" }, "奇数フェーズ: 交換"));
+      }
+    }
+    for (let i = 0; i < n - 1; i += 2) {
+      frames.push(
+        frame(array, { [i]: "comparing", [i + 1]: "comparing" }, `偶数フェーズ: ${i + 1}番目と${i + 2}番目を比較`),
+      );
+      if (array[i] > array[i + 1]) {
+        [array[i], array[i + 1]] = [array[i + 1], array[i]];
+        sorted = false;
+        frames.push(frame(array, { [i]: "swapping", [i + 1]: "swapping" }, "偶数フェーズ: 交換"));
+      }
+    }
+  }
+
+  const allSettled: Partial<Record<number, StateColorKey>> = {};
+  array.forEach((_, idx) => {
+    allSettled[idx] = "settled";
+  });
+  frames.push(frame(array, allSettled, "ソート完了(奇数フェーズ・偶数フェーズの交互反復)"));
+  return frames;
+}
+
+/**
+ * ペイシェンスソートのステップ列を生成する。
+ * カードゲームのソリティアと同じ要領で「山(パイル)」に配り、その後k路マージで統合する。
+ * 山の構築自体は補助配列上の処理のため、元の配列に対する走査位置だけをハイライトする。
+ * マージ段階は出力配列を0で初期化してから確定した値が現れる形で表現する(bucket-sort等と同じパターン)。
+ */
+export function patienceSortSteps(initial: number[]): SortFrame[] {
+  const array = [...initial];
+  const frames: SortFrame[] = [frame(array, {}, "初期状態")];
+  const n = array.length;
+
+  const piles: number[][] = [];
+  for (let i = 0; i < n; i++) {
+    const value = array[i];
+    let target = -1;
+    for (let p = 0; p < piles.length; p++) {
+      if (piles[p][piles[p].length - 1] >= value) {
+        target = p;
+        break;
+      }
+    }
+    if (target === -1) {
+      piles.push([value]);
+      target = piles.length - 1;
+    } else {
+      piles[target].push(value);
+    }
+    frames.push(
+      frame(array, { [i]: "comparing" }, `${i + 1}番目(値${value})をパイル${target + 1}(現在${piles.length}個)へ配置`),
+    );
+  }
+
+  const output = new Array(n).fill(0);
+  for (let step = 0; step < n; step++) {
+    let bestPile = -1;
+    let bestValue = Infinity;
+    for (let p = 0; p < piles.length; p++) {
+      if (piles[p].length === 0) continue;
+      const top = piles[p][piles[p].length - 1];
+      if (top < bestValue) {
+        bestValue = top;
+        bestPile = p;
+      }
+    }
+    piles[bestPile].pop();
+    output[step] = bestValue;
+    frames.push(
+      frame(output, { [step]: "settled" }, `パイル${bestPile + 1}の頂上(値${bestValue})を${step + 1}番目に確定`),
+    );
+  }
+
+  const allSettled: Partial<Record<number, StateColorKey>> = {};
+  output.forEach((_, idx) => {
+    allSettled[idx] = "settled";
+  });
+  frames.push(frame(output, allSettled, "ソート完了(各パイルは常に増加列。頂上を比較し続けるk路マージ)"));
+  return frames;
+}
+
+/**
+ * トーナメントソート(勝ち抜き木ソート)のステップ列を生成する。
+ * 葉に要素を並べた完全二分木を作り、各内部ノードに勝者(より小さい値)を伝播させる。
+ * 根から最小値を1つずつ取り出し、取り出した葉を+infにして経路だけ勝者を再計算する。
+ */
+export function tournamentSortSteps(initial: number[]): SortFrame[] {
+  const array = [...initial];
+  const frames: SortFrame[] = [frame(array, {}, "初期状態")];
+  const n = array.length;
+
+  let size = 1;
+  while (size < n) size *= 2;
+
+  type Node = { value: number; idx: number };
+  const INF: Node = { value: Infinity, idx: -1 };
+  const nodes: Node[] = new Array(2 * size).fill(INF);
+  for (let i = 0; i < size; i++) {
+    nodes[size + i] = i < n ? { value: array[i], idx: i } : INF;
+  }
+  for (let k = size - 1; k >= 1; k--) {
+    const left = nodes[2 * k];
+    const right = nodes[2 * k + 1];
+    nodes[k] = left.value <= right.value ? left : right;
+  }
+
+  const output = new Array(n).fill(0);
+  for (let step = 0; step < n; step++) {
+    const winner = nodes[1];
+    output[step] = winner.value;
+    frames.push(
+      frame(output, { [step]: "settled" }, `トーナメントの勝者(値${winner.value})を${step + 1}番目に確定`),
+    );
+
+    let pos = size + winner.idx;
+    nodes[pos] = INF;
+    pos = Math.floor(pos / 2);
+    while (pos >= 1) {
+      const left = nodes[2 * pos];
+      const right = nodes[2 * pos + 1];
+      nodes[pos] = left.value <= right.value ? left : right;
+      pos = Math.floor(pos / 2);
+    }
+  }
+
+  const allSettled: Partial<Record<number, StateColorKey>> = {};
+  output.forEach((_, idx) => {
+    allSettled[idx] = "settled";
+  });
+  frames.push(frame(output, allSettled, "ソート完了(勝ち抜き木を根から1つずつ取り出す選択ソートの一種)"));
+  return frames;
+}
+
+/**
+ * 鳩の巣ソートのステップ列を生成する。
+ * 値の範囲ぶんの「巣」を用意し、各要素を対応する巣へ配ってから巣の順に取り出す。
+ * カウンティングソートと近い構造だが、巣ごとに実際の値のリストを保持する点が異なる。
+ */
+export function pigeonholeSortSteps(initial: number[]): SortFrame[] {
+  const array = [...initial];
+  const frames: SortFrame[] = [frame(array, {}, "初期状態")];
+  const n = array.length;
+  const minValue = Math.min(...array);
+  const maxValue = Math.max(...array);
+  const holeCount = maxValue - minValue + 1;
+  const holes: number[][] = Array.from({ length: holeCount }, () => []);
+
+  for (let i = 0; i < n; i++) {
+    const h = array[i] - minValue;
+    holes[h].push(array[i]);
+    frames.push(frame(array, { [i]: "comparing" }, `${i + 1}番目(値${array[i]})を巣${h + 1}へ配置`));
+  }
+
+  const output = new Array(n).fill(0);
+  let pos = 0;
+  for (let h = 0; h < holeCount; h++) {
+    for (const value of holes[h]) {
+      output[pos] = value;
+      frames.push(frame(output, { [pos]: "settled" }, `巣${h + 1}から値${value}を${pos + 1}番目に確定`));
+      pos++;
+    }
+  }
+
+  const allSettled: Partial<Record<number, StateColorKey>> = {};
+  output.forEach((_, idx) => {
+    allSettled[idx] = "settled";
+  });
+  frames.push(frame(output, allSettled, "ソート完了"));
+  return frames;
+}
+
+/**
+ * フラッシュソートのステップ列を生成する(簡略版)。
+ * 値の範囲を線形写像でm個のクラスに分類し、クラス順に並べ替える(粗い配置)。
+ * 実際のFlashsortは配列内で循環置換を使いin-placeに分類するが、ここでは
+ * クラスごとの補助配列に振り分けてから連結する形に単純化している(イントロソート・TimSortと同じ簡略化方針)。
+ * 分類だけではクラス内が未整列のため、仕上げに挿入ソート(ほぼ整列済みなのでO(n)に近い)を適用する。
+ */
+export function flashSortSteps(initial: number[]): SortFrame[] {
+  const array = [...initial];
+  const frames: SortFrame[] = [frame(array, {}, "初期状態")];
+  const n = array.length;
+  const minValue = Math.min(...array);
+  const maxValue = Math.max(...array);
+
+  if (minValue === maxValue) {
+    const allSame: Partial<Record<number, StateColorKey>> = {};
+    array.forEach((_, idx) => {
+      allSame[idx] = "settled";
+    });
+    frames.push(frame(array, allSame, "全要素が同値のためソート完了"));
+    return frames;
+  }
+
+  const m = Math.max(2, Math.floor(0.42 * n));
+  const classOf = (v: number) => Math.min(m - 1, Math.floor(((m - 1) * (v - minValue)) / (maxValue - minValue)));
+
+  const classes: number[][] = Array.from({ length: m }, () => []);
+  for (let i = 0; i < n; i++) {
+    const c = classOf(array[i]);
+    classes[c].push(array[i]);
+    frames.push(frame(array, { [i]: "comparing" }, `${i + 1}番目(値${array[i]})をクラス${c + 1}/${m}へ分類`));
+  }
+
+  const output: number[] = [];
+  for (let c = 0; c < m; c++) output.push(...classes[c]);
+  frames.push(frame(output, {}, "クラス順に並べ替え(粗い配置。クラス内はまだ未整列)"));
+
+  for (let i = 1; i < n; i++) {
+    const key = output[i];
+    let p = i - 1;
+    while (p >= 0 && output[p] > key) {
+      output[p + 1] = output[p];
+      p--;
+    }
+    output[p + 1] = key;
+    frames.push(frame(output, { [p + 1]: "swapping" }, `仕上げの挿入ソートで${p + 2}番目に確定`));
+  }
+
+  const allSettled: Partial<Record<number, StateColorKey>> = {};
+  output.forEach((_, idx) => {
+    allSettled[idx] = "settled";
+  });
+  frames.push(frame(output, allSettled, "ソート完了"));
+  return frames;
+}
+
 export const SORT_VISUALIZERS: Record<string, (initial: number[]) => SortFrame[]> = {
   "bubble-sort": bubbleSortSteps,
   "quick-sort": quickSortSteps,
@@ -1016,4 +1300,10 @@ export const SORT_VISUALIZERS: Record<string, (initial: number[]) => SortFrame[]
   "intro-sort": introSortSteps,
   bogosort: bogoSortSteps,
   "tim-sort": timSortSteps,
+  "gnome-sort": gnomeSortSteps,
+  "odd-even-sort": oddEvenSortSteps,
+  "patience-sorting": patienceSortSteps,
+  "tournament-sort": tournamentSortSteps,
+  "pigeonhole-sort": pigeonholeSortSteps,
+  flashsort: flashSortSteps,
 };
