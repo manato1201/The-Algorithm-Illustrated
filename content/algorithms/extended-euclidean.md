@@ -1,8 +1,9 @@
 ---
-name: "拡張ユークリッドの互除法"
-category: "数論・暗号"
-complexity: "O(log min(a,b))"
-summary: "最大公約数に加え、ax + by = gcd(a,b) を満たす係数まで同時に求める。"
+name: 拡張ユークリッドの互除法
+category: 数論・暗号
+subcategory: 合同算術・剰余系
+complexity: 'O(log min(a,b))'
+summary: '最大公約数に加え、ax + by = gcd(a,b) を満たす係数まで同時に求める。'
 ---
 
 ## 概要

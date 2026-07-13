@@ -1,8 +1,9 @@
 ---
-name: "Iterator(イテレーター)"
-category: "デザインパターン"
-complexity: "振る舞いに関するパターン"
-summary: "集合の内部構造を隠したまま、要素へ順番にアクセスする手段を提供する。"
+name: Iterator(イテレーター)
+category: デザインパターン
+subcategory: 振る舞い
+complexity: 振る舞いに関するパターン
+summary: 集合の内部構造を隠したまま、要素へ順番にアクセスする手段を提供する。
 ---
 ## 概要
 

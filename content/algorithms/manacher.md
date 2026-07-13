@@ -1,8 +1,9 @@
 ---
-name: "Manacherのアルゴリズム"
-category: "文字列"
-complexity: "O(n)"
-summary: "すべての中心について最長回文半径を線形時間で求める。"
+name: Manacherのアルゴリズム
+category: 文字列
+subcategory: 回文・圧縮その他
+complexity: O(n)
+summary: すべての中心について最長回文半径を線形時間で求める。
 ---
 
 ## 概要

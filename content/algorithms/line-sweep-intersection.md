@@ -1,8 +1,9 @@
 ---
-name: "線分交差判定(走査線法)"
-category: "計算幾何"
-complexity: "O(n log n)"
-summary: "平面を掃くように処理することで、素朴なO(n²)の全探索を避ける計算幾何の基本テクニック。"
+name: 線分交差判定(走査線法)
+category: 計算幾何
+subcategory: 分割統治・走査
+complexity: O(n log n)
+summary: 平面を掃くように処理することで、素朴なO(n²)の全探索を避ける計算幾何の基本テクニック。
 ---
 
 ## 概要

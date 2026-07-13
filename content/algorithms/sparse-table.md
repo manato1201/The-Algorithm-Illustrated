@@ -1,8 +1,9 @@
 ---
-name: "疎表(Sparse Table)"
-category: "データ構造"
-complexity: "O(1)(クエリ)"
-summary: "事前計算で区間最小値などのクエリを定数時間で答える、更新のないデータ向けの構造。"
+name: 疎表(Sparse Table)
+category: データ構造
+subcategory: 区間・累積クエリ構造
+complexity: O(1)(クエリ)
+summary: 事前計算で区間最小値などのクエリを定数時間で答える、更新のないデータ向けの構造。
 ---
 
 ## 概要

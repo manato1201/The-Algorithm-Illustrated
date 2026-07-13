@@ -1,8 +1,9 @@
 ---
-name: "最長共通部分文字列"
-category: "文字列"
-complexity: "O(n + m)"
-summary: "接尾辞配列や接尾辞木を使うことで、2つの文字列に連続して共通する部分を高速に見つける。"
+name: 最長共通部分文字列
+category: 文字列
+subcategory: 回文・圧縮その他
+complexity: O(n + m)
+summary: 接尾辞配列や接尾辞木を使うことで、2つの文字列に連続して共通する部分を高速に見つける。
 ---
 
 ## 概要

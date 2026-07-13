@@ -1,8 +1,9 @@
 ---
-name: "ダイクストラ法"
-category: "グラフ"
-complexity: "O((V + E) log V)"
-summary: "重み付きグラフの最短経路を、確定済み頂点を1つずつ広げながら求める。負の辺には非対応。"
+name: ダイクストラ法
+category: グラフ
+subcategory: 最短路
+complexity: O((V + E) log V)
+summary: 重み付きグラフの最短経路を、確定済み頂点を1つずつ広げながら求める。負の辺には非対応。
 ---
 
 ## 概要

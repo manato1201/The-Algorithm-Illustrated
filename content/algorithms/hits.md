@@ -1,8 +1,9 @@
 ---
-name: "HITS(Hyperlink-Induced Topic Search)"
-category: "情報検索・ランキング"
-complexity: "O(V + E)(反復1回あたり)"
-summary: "ハブ(良いリンク集)とオーソリティ(良い被リンク先)を相互に強化しながらスコアリングする。"
+name: HITS(Hyperlink-Induced Topic Search)
+category: 情報検索・ランキング
+subcategory: グラフベースランキング
+complexity: O(V + E)(反復1回あたり)
+summary: ハブ(良いリンク集)とオーソリティ(良い被リンク先)を相互に強化しながらスコアリングする。
 ---
 
 ## 概要

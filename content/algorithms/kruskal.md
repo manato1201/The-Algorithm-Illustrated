@@ -1,8 +1,9 @@
 ---
-name: "クラスカル法"
-category: "グラフ"
-complexity: "O(E log E)"
-summary: "辺をコストの小さい順に採用し、Union-Findで閉路を避けながら最小全域木を作る。"
+name: クラスカル法
+category: グラフ
+subcategory: 最小全域木
+complexity: O(E log E)
+summary: 辺をコストの小さい順に採用し、Union-Findで閉路を避けながら最小全域木を作る。
 ---
 
 ## 概要

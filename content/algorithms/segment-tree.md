@@ -1,8 +1,9 @@
 ---
-name: "セグメント木"
-category: "データ構造"
-complexity: "O(log n)"
-summary: "区間に対する演算(和・最小値など)を高速に更新・照会できる木構造。"
+name: セグメント木
+category: データ構造
+subcategory: 区間・累積クエリ構造
+complexity: O(log n)
+summary: 区間に対する演算(和・最小値など)を高速に更新・照会できる木構造。
 ---
 
 ## 概要

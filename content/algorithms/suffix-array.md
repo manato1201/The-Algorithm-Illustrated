@@ -1,8 +1,9 @@
 ---
-name: "接尾辞配列(Suffix Array)"
-category: "文字列"
-complexity: "O(n log n)"
-summary: "全ての接尾辞をソートした配列。文字列検索や最長共通部分文字列の土台になる。"
+name: 接尾辞配列(Suffix Array)
+category: 文字列
+subcategory: 接尾辞構造
+complexity: O(n log n)
+summary: 全ての接尾辞をソートした配列。文字列検索や最長共通部分文字列の土台になる。
 ---
 
 ## 概要

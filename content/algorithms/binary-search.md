@@ -1,8 +1,9 @@
 ---
-name: "二分探索"
-category: "探索"
-complexity: "O(log n)"
-summary: "ソート済み配列を半分ずつ絞り込みながら目的の値を探す。前提条件(整列済み)が鍵。"
+name: 二分探索
+category: 探索
+subcategory: 配列探索
+complexity: O(log n)
+summary: ソート済み配列を半分ずつ絞り込みながら目的の値を探す。前提条件(整列済み)が鍵。
 ---
 
 ## 概要

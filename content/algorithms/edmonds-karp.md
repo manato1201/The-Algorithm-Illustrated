@@ -1,8 +1,9 @@
 ---
-name: "エドモンズ・カープ法"
-category: "グラフ"
-complexity: "O(VE²)"
-summary: "フォード・ファルカーソン法の増加パスをBFSで選ぶことで計算量を保証した版。"
+name: エドモンズ・カープ法
+category: グラフ
+subcategory: 最大流・マッチング
+complexity: O(VE²)
+summary: フォード・ファルカーソン法の増加パスをBFSで選ぶことで計算量を保証した版。
 ---
 
 ## 概要

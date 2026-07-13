@@ -1,8 +1,9 @@
 ---
-name: "指数探索"
-category: "探索"
-complexity: "O(log n)"
-summary: "範囲を倍々に広げて対象区間を見つけてから二分探索する。先頭に値が集中する無限長データに強い。"
+name: 指数探索
+category: 探索
+subcategory: 配列探索
+complexity: O(log n)
+summary: 範囲を倍々に広げて対象区間を見つけてから二分探索する。先頭に値が集中する無限長データに強い。
 ---
 
 ## 概要

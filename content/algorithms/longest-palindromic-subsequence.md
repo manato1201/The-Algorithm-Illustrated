@@ -1,8 +1,9 @@
 ---
-name: "最長回文部分列"
-category: "動的計画法"
-complexity: "O(n²)"
-summary: "文字列を反転したものとのLCSとして解ける、DPの応用力を示す好例。"
+name: 最長回文部分列
+category: 動的計画法
+subcategory: 数列・部分列
+complexity: O(n²)
+summary: 文字列を反転したものとのLCSとして解ける、DPの応用力を示す好例。
 ---
 
 ## 概要

@@ -1,8 +1,9 @@
 ---
-name: "主成分分析(PCA)"
-category: "機械学習"
-complexity: "O(min(n²d, nd²))"
-summary: "データの分散が最大になる方向を新しい軸として、次元を削減しながら情報の損失を最小限に抑える。"
+name: 主成分分析(PCA)
+category: 機械学習
+subcategory: 教師なし学習
+complexity: 'O(min(n²d, nd²))'
+summary: データの分散が最大になる方向を新しい軸として、次元を削減しながら情報の損失を最小限に抑える。
 ---
 
 ## 概要

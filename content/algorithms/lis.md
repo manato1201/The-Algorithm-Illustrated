@@ -1,8 +1,9 @@
 ---
-name: "最長増加部分列(LIS)"
-category: "動的計画法"
-complexity: "O(n log n)"
-summary: "二分探索を併用することで、素朴なO(n²)から高速化できる典型例。"
+name: 最長増加部分列(LIS)
+category: 動的計画法
+subcategory: 数列・部分列
+complexity: O(n log n)
+summary: 二分探索を併用することで、素朴なO(n²)から高速化できる典型例。
 ---
 
 ## 概要

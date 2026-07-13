@@ -1,8 +1,9 @@
 ---
-name: "二分探索木"
-category: "データ構造"
-complexity: "O(log n) 〜 O(n)"
-summary: "左小右大の性質で探索・挿入・削除をこなす。偏ると性能が線形に劣化する弱点を持つ。"
+name: 二分探索木
+category: データ構造
+subcategory: 木構造
+complexity: O(log n) 〜 O(n)
+summary: 左小右大の性質で探索・挿入・削除をこなす。偏ると性能が線形に劣化する弱点を持つ。
 ---
 
 ## 概要

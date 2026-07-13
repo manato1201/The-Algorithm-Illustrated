@@ -1,8 +1,9 @@
 ---
-name: "四分木(Quadtree)"
-category: "データ構造"
-complexity: "O(log n)(平衡時)"
-summary: "2次元空間を4分割し続ける木構造。衝突判定や画像圧縮、地図タイルの管理に使う。"
+name: 四分木(Quadtree)
+category: データ構造
+subcategory: 空間分割構造
+complexity: O(log n)(平衡時)
+summary: 2次元空間を4分割し続ける木構造。衝突判定や画像圧縮、地図タイルの管理に使う。
 ---
 
 ## 概要

@@ -1,8 +1,9 @@
 ---
-name: "A*探索"
-category: "探索"
-complexity: "O(E)"
-summary: "ヒューリスティックで探索方向を絞り込むダイクストラ法の拡張。ゲームの経路探索の定番。"
+name: A*探索
+category: 探索
+subcategory: グラフ・経路探索
+complexity: O(E)
+summary: ヒューリスティックで探索方向を絞り込むダイクストラ法の拡張。ゲームの経路探索の定番。
 ---
 
 ## 概要

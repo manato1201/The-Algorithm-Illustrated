@@ -1,8 +1,9 @@
 ---
-name: "ジョンソンのアルゴリズム"
-category: "グラフ"
-complexity: "O(V² log V + VE)"
-summary: "負の辺を再重み付けしてから全点対最短経路を高速に解く。"
+name: ジョンソンのアルゴリズム
+category: グラフ
+subcategory: 最短路
+complexity: O(V² log V + VE)
+summary: 負の辺を再重み付けしてから全点対最短経路を高速に解く。
 ---
 
 ## 概要

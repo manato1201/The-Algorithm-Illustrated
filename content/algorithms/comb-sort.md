@@ -1,8 +1,9 @@
 ---
-name: "コムソート"
-category: "ソート"
-complexity: "O(n log n)(平均)"
-summary: "間隔を1.3倍ずつ縮めながらバブルソートを行い、小さい値が末尾に残る「亀」問題を解消する。"
+name: コムソート
+category: ソート
+subcategory: 比較ベース
+complexity: O(n log n)(平均)
+summary: 間隔を1.3倍ずつ縮めながらバブルソートを行い、小さい値が末尾に残る「亀」問題を解消する。
 ---
 
 ## 概要

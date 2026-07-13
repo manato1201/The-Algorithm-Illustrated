@@ -1,8 +1,9 @@
 ---
-name: "最長共通部分列(LCS)"
-category: "動的計画法"
-complexity: "O(nm)"
-summary: "2つの列に共通する最長の並びを求める。差分表示(diff)の基礎理論。"
+name: 最長共通部分列(LCS)
+category: 動的計画法
+subcategory: 数列・部分列
+complexity: O(nm)
+summary: 2つの列に共通する最長の並びを求める。差分表示(diff)の基礎理論。
 ---
 
 ## 概要

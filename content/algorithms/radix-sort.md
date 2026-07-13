@@ -1,8 +1,9 @@
 ---
-name: "基数ソート"
-category: "ソート"
-complexity: "O(d(n + k))"
-summary: "桁ごとに安定ソートを繰り返す。整数や固定長文字列の整列に向く。"
+name: 基数ソート
+category: ソート
+subcategory: 非比較ベース
+complexity: O(d(n + k))
+summary: 桁ごとに安定ソートを繰り返す。整数や固定長文字列の整列に向く。
 ---
 
 ## 概要

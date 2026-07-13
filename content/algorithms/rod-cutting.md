@@ -1,8 +1,9 @@
 ---
-name: "棒の切断問題(Rod Cutting)"
-category: "動的計画法"
-complexity: "O(n²)"
-summary: "棒をどう切り分ければ売却額を最大化できるかを、部分問題の組み合わせで求める。"
+name: 棒の切断問題(Rod Cutting)
+category: 動的計画法
+subcategory: ナップサック・組合せ最適化
+complexity: O(n²)
+summary: 棒をどう切り分ければ売却額を最大化できるかを、部分問題の組み合わせで求める。
 ---
 
 ## 概要

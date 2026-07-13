@@ -1,8 +1,9 @@
 ---
-name: "トライ木"
-category: "データ構造"
-complexity: "O(文字数)"
-summary: "共通の接頭辞を共有して文字列集合を格納する木。前方一致検索や入力補完に向く。"
+name: トライ木
+category: データ構造
+subcategory: 木構造
+complexity: O(文字数)
+summary: 共通の接頭辞を共有して文字列集合を格納する木。前方一致検索や入力補完に向く。
 ---
 
 ## 概要

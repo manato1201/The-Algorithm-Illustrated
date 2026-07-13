@@ -1,8 +1,9 @@
 ---
-name: "ミラー・ラビン素数判定法"
-category: "数論・暗号"
-complexity: "O(k log³ n)"
-summary: "確率的に大きな数の素数判定を行う。RSA暗号の鍵生成などで実用される。"
+name: ミラー・ラビン素数判定法
+category: 数論・暗号
+subcategory: 素数判定・素因数分解
+complexity: O(k log³ n)
+summary: 確率的に大きな数の素数判定を行う。RSA暗号の鍵生成などで実用される。
 ---
 
 ## 概要

@@ -1,8 +1,9 @@
 ---
-name: "ハフマン符号化"
-category: "貪欲法"
-complexity: "O(n log n)"
-summary: "出現頻度の低い記号ほど長い符号を割り当て、全体の符号長を最小化する。"
+name: ハフマン符号化
+category: 貪欲法
+subcategory: 基本貪欲法
+complexity: O(n log n)
+summary: 出現頻度の低い記号ほど長い符号を割り当て、全体の符号長を最小化する。
 ---
 
 ## 概要

@@ -1,8 +1,9 @@
 ---
-name: "Factory Method(ファクトリーメソッド)"
-category: "デザインパターン"
-complexity: "生成に関するパターン"
-summary: "インスタンス生成をサブクラスに委ねることで、生成ロジックと利用側を分離する。"
+name: Factory Method(ファクトリーメソッド)
+category: デザインパターン
+subcategory: 生成
+complexity: 生成に関するパターン
+summary: インスタンス生成をサブクラスに委ねることで、生成ロジックと利用側を分離する。
 ---
 ## 概要
 

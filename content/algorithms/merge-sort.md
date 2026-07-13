@@ -1,8 +1,9 @@
 ---
-name: "マージソート"
-category: "ソート"
-complexity: "O(n log n)"
-summary: "分割統治+マージで安定ソートを実現する。外部ソートや並列化と相性が良い。"
+name: マージソート
+category: ソート
+subcategory: 比較ベース
+complexity: O(n log n)
+summary: 分割統治+マージで安定ソートを実現する。外部ソートや並列化と相性が良い。
 ---
 
 ## 概要

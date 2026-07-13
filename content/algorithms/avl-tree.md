@@ -1,8 +1,9 @@
 ---
-name: "AVL木"
-category: "データ構造"
-complexity: "O(log n)"
-summary: "左右の高さの差を1以内に保つことで自己平衡する、最初に発明された平衡二分探索木。"
+name: AVL木
+category: データ構造
+subcategory: 木構造
+complexity: O(log n)
+summary: 左右の高さの差を1以内に保つことで自己平衡する、最初に発明された平衡二分探索木。
 ---
 
 ## 概要

@@ -1,8 +1,9 @@
 ---
-name: "バブルソート"
-category: "ソート"
-complexity: "O(n²)"
-summary: "隣接要素の比較・交換を繰り返す最も素朴な手法。仕組みの理解に最適だが実務での採用は少ない。"
+name: バブルソート
+category: ソート
+subcategory: 比較ベース
+complexity: O(n²)
+summary: 隣接要素の比較・交換を繰り返す最も素朴な手法。仕組みの理解に最適だが実務での採用は少ない。
 ---
 
 ## 概要

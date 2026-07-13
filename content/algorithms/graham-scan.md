@@ -1,8 +1,9 @@
 ---
-name: "凸包(グラハムスキャン)"
-category: "計算幾何"
-complexity: "O(n log n)"
-summary: "点群を角度順にソートしてスタックで包んでいく、凸包を求める代表的手法。"
+name: 凸包(グラハムスキャン)
+category: 計算幾何
+subcategory: 凸包・多角形
+complexity: O(n log n)
+summary: 点群を角度順にソートしてスタックで包んでいく、凸包を求める代表的手法。
 ---
 
 ## 概要

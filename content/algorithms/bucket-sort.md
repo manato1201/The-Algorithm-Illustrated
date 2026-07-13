@@ -1,8 +1,9 @@
 ---
-name: "バケットソート"
-category: "ソート"
-complexity: "O(n + k)"
-summary: "値域をバケットに分けて個別に整列する。一様分布のデータで威力を発揮する。"
+name: バケットソート
+category: ソート
+subcategory: 非比較ベース
+complexity: O(n + k)
+summary: 値域をバケットに分けて個別に整列する。一様分布のデータで威力を発揮する。
 ---
 
 ## 概要

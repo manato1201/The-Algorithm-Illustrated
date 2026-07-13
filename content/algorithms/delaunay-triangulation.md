@@ -1,8 +1,9 @@
 ---
-name: "ドロネー三角形分割"
-category: "計算幾何"
-complexity: "O(n log n)"
-summary: "各三角形の外接円が他の点を含まないように点群を三角形分割する。地形モデリングやメッシュ生成の基礎。"
+name: ドロネー三角形分割
+category: 計算幾何
+subcategory: 三角形分割・分割図
+complexity: O(n log n)
+summary: 各三角形の外接円が他の点を含まないように点群を三角形分割する。地形モデリングやメッシュ生成の基礎。
 ---
 
 ## 概要

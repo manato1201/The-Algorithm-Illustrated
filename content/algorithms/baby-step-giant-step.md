@@ -1,8 +1,9 @@
 ---
-name: "Baby-step Giant-step法"
-category: "数論・暗号"
-complexity: "O(√n)"
-summary: "離散対数問題を、力任せのO(n)から時間・空間トレードオフでO(√n)に高速化する。"
+name: Baby-step Giant-step法
+category: 数論・暗号
+subcategory: 暗号・鍵交換
+complexity: O(√n)
+summary: 離散対数問題を、力任せのO(n)から時間・空間トレードオフでO(√n)に高速化する。
 ---
 
 ## 概要

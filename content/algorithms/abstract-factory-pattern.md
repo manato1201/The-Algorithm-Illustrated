@@ -1,8 +1,9 @@
 ---
-name: "Abstract Factory(抽象ファクトリー)"
-category: "デザインパターン"
-complexity: "生成に関するパターン"
-summary: "関連するオブジェクト群をまとめて生成するインターフェースを提供し、具体的な実装群を丸ごと差し替え可能にする。"
+name: Abstract Factory(抽象ファクトリー)
+category: デザインパターン
+subcategory: 生成
+complexity: 生成に関するパターン
+summary: 関連するオブジェクト群をまとめて生成するインターフェースを提供し、具体的な実装群を丸ごと差し替え可能にする。
 ---
 ## 概要
 

@@ -1,8 +1,9 @@
 ---
-name: "Bridge(ブリッジ)"
-category: "デザインパターン"
-complexity: "構造に関するパターン"
-summary: "抽象と実装を別々の継承階層に分離し、両者を独立に拡張できるようにする。"
+name: Bridge(ブリッジ)
+category: デザインパターン
+subcategory: 構造
+complexity: 構造に関するパターン
+summary: 抽象と実装を別々の継承階層に分離し、両者を独立に拡張できるようにする。
 ---
 ## 概要
 

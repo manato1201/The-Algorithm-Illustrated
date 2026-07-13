@@ -1,8 +1,9 @@
 ---
-name: "Flyweight(フライウェイト)"
-category: "デザインパターン"
-complexity: "構造に関するパターン"
-summary: "共有可能な状態を複数のオブジェクトで使い回すことで、大量オブジェクト生成時のメモリ消費を抑える。"
+name: Flyweight(フライウェイト)
+category: デザインパターン
+subcategory: 構造
+complexity: 構造に関するパターン
+summary: 共有可能な状態を複数のオブジェクトで使い回すことで、大量オブジェクト生成時のメモリ消費を抑える。
 ---
 ## 概要
 

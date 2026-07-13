@@ -1,8 +1,9 @@
 ---
-name: "高速フーリエ変換(FFT)"
-category: "数論・暗号"
-complexity: "O(n log n)"
-summary: "多項式乗算や信号処理を、素朴なO(n²)から劇的に高速化する分割統治アルゴリズム。"
+name: 高速フーリエ変換(FFT)
+category: 数論・暗号
+subcategory: 高速演算
+complexity: O(n log n)
+summary: 多項式乗算や信号処理を、素朴なO(n²)から劇的に高速化する分割統治アルゴリズム。
 ---
 
 ## 概要

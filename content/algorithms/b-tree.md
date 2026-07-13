@@ -1,8 +1,9 @@
 ---
-name: "B木"
-category: "データ構造"
-complexity: "O(log n)"
-summary: "1ノードに複数キーを持たせ木を浅く保つ。ディスクI/Oを最小化するためデータベースやファイルシステムで多用される。"
+name: B木
+category: データ構造
+subcategory: 木構造
+complexity: O(log n)
+summary: 1ノードに複数キーを持たせ木を浅く保つ。ディスクI/Oを最小化するためデータベースやファイルシステムで多用される。
 ---
 
 ## 概要

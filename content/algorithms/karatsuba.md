@@ -1,8 +1,9 @@
 ---
-name: "カラツバ法"
-category: "数論・暗号"
-complexity: "O(n^1.585)"
-summary: "大きな数の掛け算を3回の乗算に分割統治することで、筆算より高速化する。"
+name: カラツバ法
+category: 数論・暗号
+subcategory: 高速演算
+complexity: O(n^1.585)
+summary: 大きな数の掛け算を3回の乗算に分割統治することで、筆算より高速化する。
 ---
 
 ## 概要

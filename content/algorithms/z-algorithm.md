@@ -1,8 +1,9 @@
 ---
-name: "Z algorithm"
-category: "文字列"
-complexity: "O(n)"
-summary: "各位置から始まる接頭辞との一致長を、線形時間ですべて求める。"
+name: Z algorithm
+category: 文字列
+subcategory: パターンマッチング
+complexity: O(n)
+summary: 各位置から始まる接頭辞との一致長を、線形時間ですべて求める。
 ---
 
 ## 概要

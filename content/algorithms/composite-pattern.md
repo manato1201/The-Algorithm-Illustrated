@@ -1,8 +1,9 @@
 ---
-name: "Composite(コンポジット)"
-category: "デザインパターン"
-complexity: "構造に関するパターン"
-summary: "個々のオブジェクトとその集合を同じインターフェースで扱い、木構造を再帰的に統一的に処理する。"
+name: Composite(コンポジット)
+category: デザインパターン
+subcategory: 構造
+complexity: 構造に関するパターン
+summary: 個々のオブジェクトとその集合を同じインターフェースで扱い、木構造を再帰的に統一的に処理する。
 ---
 ## 概要
 

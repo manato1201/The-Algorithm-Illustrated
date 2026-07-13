@@ -1,8 +1,9 @@
 ---
-name: "決定木"
-category: "機械学習"
-complexity: "O(n log n)(構築)"
-summary: "情報利得やジニ不純度が最大になる条件で再帰的にデータを分割する、人間にも読める予測モデル。"
+name: 決定木
+category: 機械学習
+subcategory: 教師あり学習
+complexity: O(n log n)(構築)
+summary: 情報利得やジニ不純度が最大になる条件で再帰的にデータを分割する、人間にも読める予測モデル。
 ---
 
 ## 概要

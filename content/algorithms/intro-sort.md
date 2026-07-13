@@ -1,8 +1,9 @@
 ---
-name: "イントロソート(Introsort)"
-category: "ソート"
-complexity: "O(n log n)"
-summary: "クイックソートを基本にしつつ再帰が深くなるとヒープソートに切り替える実用重視のハイブリッド。C++標準ライブラリのstd::sortに採用。"
+name: イントロソート(Introsort)
+category: ソート
+subcategory: 比較ベース
+complexity: O(n log n)
+summary: 'クイックソートを基本にしつつ再帰が深くなるとヒープソートに切り替える実用重視のハイブリッド。C++標準ライブラリのstd::sortに採用。'
 ---
 
 ## 概要
