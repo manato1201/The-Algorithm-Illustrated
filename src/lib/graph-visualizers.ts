@@ -2416,6 +2416,370 @@ export function decisionTreeSteps(): GraphFrame[] {
   return frames;
 }
 
+type FftComplex = { re: number; im: number };
+const fftAdd = (a: FftComplex, b: FftComplex): FftComplex => ({ re: a.re + b.re, im: a.im + b.im });
+const fftSub = (a: FftComplex, b: FftComplex): FftComplex => ({ re: a.re - b.re, im: a.im - b.im });
+const fftMul = (a: FftComplex, b: FftComplex): FftComplex => ({
+  re: a.re * b.re - a.im * b.im,
+  im: a.re * b.im + a.im * b.re,
+});
+const fftTwiddle = (k: number, n: number): FftComplex => {
+  const angle = (-2 * Math.PI * k) / n;
+  return { re: Math.cos(angle), im: Math.sin(angle) };
+};
+const fftMagnitude = (a: FftComplex): number => Math.sqrt(a.re ** 2 + a.im ** 2);
+function fftBitReverse(x: number, bits: number): number {
+  let result = 0;
+  let v = x;
+  for (let i = 0; i < bits; i++) {
+    result = (result << 1) | (v & 1);
+    v >>= 1;
+  }
+  return result;
+}
+
+/** FFTのデモ用入力(N=4、2の累乗)。バタフライ図は3列(入力のビット反転並べ替え→段1→段2=出力)。 */
+export const FFT_INPUT = [1, 2, 3, 4];
+export const FFT_N = FFT_INPUT.length;
+const FFT_BITS = Math.log2(FFT_N);
+const FFT_STAGE1_PAIRS: [number, number][] = [
+  [0, 1],
+  [2, 3],
+];
+const FFT_STAGE2_PAIRS: [number, number][] = [
+  [0, 2],
+  [1, 3],
+];
+
+export const FFT_NODES: GraphNode[] = [0, 1, 2].flatMap((stage) =>
+  Array.from({ length: FFT_N }, (_, row) => ({
+    id: `s${stage}_${row}`,
+    label: String(row),
+    x: stage * 0.45 + 0.05,
+    y: 0.15 + row * 0.28,
+  })),
+);
+export const FFT_EDGES: GraphEdge[] = [
+  ...FFT_STAGE1_PAIRS.flatMap(([a, b]) => [
+    { id: `s0_${a}-s1_${a}`, from: `s0_${a}`, to: `s1_${a}`, weight: 1 },
+    { id: `s0_${b}-s1_${a}`, from: `s0_${b}`, to: `s1_${a}`, weight: 1 },
+    { id: `s0_${a}-s1_${b}`, from: `s0_${a}`, to: `s1_${b}`, weight: 1 },
+    { id: `s0_${b}-s1_${b}`, from: `s0_${b}`, to: `s1_${b}`, weight: 1 },
+  ]),
+  ...FFT_STAGE2_PAIRS.flatMap(([a, b]) => [
+    { id: `s1_${a}-s2_${a}`, from: `s1_${a}`, to: `s2_${a}`, weight: 1 },
+    { id: `s1_${b}-s2_${a}`, from: `s1_${b}`, to: `s2_${a}`, weight: 1 },
+    { id: `s1_${a}-s2_${b}`, from: `s1_${a}`, to: `s2_${b}`, weight: 1 },
+    { id: `s1_${b}-s2_${b}`, from: `s1_${b}`, to: `s2_${b}`, weight: 1 },
+  ]),
+];
+
+/**
+ * 高速フーリエ変換(FFT、N=4のバタフライ図)のステップ列を生成する。
+ * 素朴なDFT(離散フーリエ変換)がO(N²)かかるのに対し、FFTは「N点のDFTは、
+ * 偶数番目・奇数番目の要素をそれぞれN/2点でDFTしたものを、回転因子(twiddle factor)を
+ * 掛けて足し引きするだけで組み立てられる」という分割統治で再帰的に解くことでO(N log N)を
+ * 達成する。まず入力をビット反転順に並べ替えておくことで、再帰を「下から積み上げる」形の
+ * 反復処理に変換できるのが、このバタフライ図の骨格(log₂N段の2入力2出力の蝶形演算)。
+ */
+export function fftSteps(): GraphFrame[] {
+  const nodes = FFT_NODES;
+  const edges = FFT_EDGES;
+
+  const nodeStates = initNodeStates(nodes, "idle");
+  const edgeStates = initEdgeStates(edges, "idle");
+  const magnitudes: Record<string, number | null> = {};
+  nodes.forEach((n) => {
+    magnitudes[n.id] = null;
+  });
+
+  const frames: GraphFrame[] = [
+    {
+      nodeStates: { ...nodeStates },
+      edgeStates: { ...edgeStates },
+      distances: { ...magnitudes },
+      description: `FFTを開始。入力: [${FFT_INPUT.join(", ")}](N=${FFT_N}点)。頂点下の数字は各時点での複素数値の大きさ`,
+    },
+  ];
+
+  const stage0: FftComplex[] = Array.from({ length: FFT_N }, (_, i) => ({
+    re: FFT_INPUT[fftBitReverse(i, FFT_BITS)],
+    im: 0,
+  }));
+  stage0.forEach((v, row) => {
+    magnitudes[`s0_${row}`] = Number(fftMagnitude(v).toFixed(2));
+    nodeStates[`s0_${row}`] = "settled";
+  });
+  frames.push({
+    nodeStates: { ...nodeStates },
+    edgeStates: { ...edgeStates },
+    distances: { ...magnitudes },
+    description: `ビット反転並べ替え: [${FFT_INPUT.join(",")}] → [${stage0.map((v) => v.re).join(",")}]`,
+  });
+
+  const stage1: FftComplex[] = new Array(FFT_N);
+  FFT_STAGE1_PAIRS.forEach(([a, b]) => {
+    const w = fftTwiddle(0, 2);
+    const wb = fftMul(w, stage0[b]);
+    stage1[a] = fftAdd(stage0[a], wb);
+    stage1[b] = fftSub(stage0[a], wb);
+    [`s0_${a}-s1_${a}`, `s0_${b}-s1_${a}`, `s0_${a}-s1_${b}`, `s0_${b}-s1_${b}`].forEach((id) => {
+      edgeStates[id] = "tree";
+    });
+    [a, b].forEach((row) => {
+      magnitudes[`s1_${row}`] = Number(fftMagnitude(stage1[row]).toFixed(2));
+      nodeStates[`s1_${row}`] = "settled";
+    });
+    frames.push({
+      nodeStates: { ...nodeStates },
+      edgeStates: { ...edgeStates },
+      distances: { ...magnitudes },
+      description: `段1のバタフライ(${a},${b}): out${a}=in${a}+w⁰×in${b}=${stage1[a].re.toFixed(2)}${stage1[a].im >= 0 ? "+" : ""}${stage1[a].im.toFixed(2)}i, out${b}=in${a}-w⁰×in${b}=${stage1[b].re.toFixed(2)}${stage1[b].im >= 0 ? "+" : ""}${stage1[b].im.toFixed(2)}i`,
+    });
+  });
+
+  const stage2: FftComplex[] = new Array(FFT_N);
+  FFT_STAGE2_PAIRS.forEach(([a, b], pairIdx) => {
+    const w = fftTwiddle(pairIdx, FFT_N);
+    const wb = fftMul(w, stage1[b]);
+    stage2[a] = fftAdd(stage1[a], wb);
+    stage2[b] = fftSub(stage1[a], wb);
+    [`s1_${a}-s2_${a}`, `s1_${b}-s2_${a}`, `s1_${a}-s2_${b}`, `s1_${b}-s2_${b}`].forEach((id) => {
+      edgeStates[id] = "tree";
+    });
+    [a, b].forEach((row) => {
+      magnitudes[`s2_${row}`] = Number(fftMagnitude(stage2[row]).toFixed(2));
+      nodeStates[`s2_${row}`] = "settled";
+    });
+    frames.push({
+      nodeStates: { ...nodeStates },
+      edgeStates: { ...edgeStates },
+      distances: { ...magnitudes },
+      description: `段2のバタフライ(${a},${b}): out${a}=in${a}+w^${pairIdx}×in${b}=${stage2[a].re.toFixed(2)}${stage2[a].im >= 0 ? "+" : ""}${stage2[a].im.toFixed(2)}i, out${b}=in${a}-w^${pairIdx}×in${b}=${stage2[b].re.toFixed(2)}${stage2[b].im >= 0 ? "+" : ""}${stage2[b].im.toFixed(2)}i`,
+    });
+  });
+
+  frames.push({
+    nodeStates: { ...nodeStates },
+    edgeStates: { ...edgeStates },
+    distances: { ...magnitudes },
+    description: `計算完了。DFT結果: [${stage2.map((v) => `${v.re.toFixed(2)}${v.im >= 0 ? "+" : ""}${v.im.toFixed(2)}i`).join(", ")}]`,
+  });
+
+  return frames;
+}
+
+type BnbItem = { name: string; weight: number; value: number };
+export const BNB_ITEMS: BnbItem[] = [
+  { name: "A", weight: 2, value: 3 },
+  { name: "B", weight: 3, value: 4 },
+  { name: "C", weight: 4, value: 5 },
+];
+export const BNB_CAPACITY = 6;
+
+type BnbNode = {
+  id: string;
+  index: number;
+  weight: number;
+  value: number;
+  bound: number;
+  pruned: boolean;
+  isLeaf: boolean;
+  left: string | null;
+  right: string | null;
+};
+
+function bnbBound(index: number, weight: number, value: number, items: BnbItem[], capacity: number): number {
+  if (weight > capacity) return -Infinity;
+  let bound = value;
+  let totalWeight = weight;
+  for (let i = index; i < items.length; i++) {
+    if (totalWeight + items[i].weight <= capacity) {
+      totalWeight += items[i].weight;
+      bound += items[i].value;
+    } else {
+      const remaining = capacity - totalWeight;
+      bound += items[i].value * (remaining / items[i].weight);
+      break;
+    }
+  }
+  return bound;
+}
+
+function buildBnbTree(
+  items: BnbItem[],
+  capacity: number,
+  nodes: Record<string, BnbNode>,
+  idCounter: { value: number },
+  bestRef: { value: number },
+): string {
+  const build = (index: number, weight: number, value: number): string => {
+    const id = `n${idCounter.value++}`;
+    const bound = bnbBound(index, weight, value, items, capacity);
+    const infeasible = weight > capacity;
+    if (index === items.length || infeasible) {
+      nodes[id] = { id, index, weight, value, bound, pruned: infeasible, isLeaf: true, left: null, right: null };
+      if (!infeasible) bestRef.value = Math.max(bestRef.value, value);
+      return id;
+    }
+    if (bound <= bestRef.value) {
+      nodes[id] = { id, index, weight, value, bound, pruned: true, isLeaf: true, left: null, right: null };
+      return id;
+    }
+    const item = items[index];
+    const leftId = build(index + 1, weight + item.weight, value + item.value);
+    const rightId = build(index + 1, weight, value);
+    nodes[id] = { id, index, weight, value, bound, pruned: false, isLeaf: false, left: leftId, right: rightId };
+    return id;
+  };
+  return build(0, 0, 0);
+}
+
+function computeBnbLayout(nodes: Record<string, BnbNode>, rootId: string): Record<string, { x: number; y: number }> {
+  const positions: Record<string, { x: number; y: number }> = {};
+  let counter = 0;
+  let maxDepth = 0;
+  const visit = (id: string, depth: number) => {
+    const node = nodes[id];
+    maxDepth = Math.max(maxDepth, depth);
+    if (node.isLeaf) {
+      positions[id] = { x: counter, y: depth };
+      counter++;
+      return;
+    }
+    visit(node.left!, depth + 1);
+    visit(node.right!, depth + 1);
+    const xs = [positions[node.left!].x, positions[node.right!].x];
+    positions[id] = { x: (Math.min(...xs) + Math.max(...xs)) / 2, y: depth };
+  };
+  visit(rootId, 0);
+  Object.keys(positions).forEach((id) => {
+    positions[id] = {
+      x: counter > 1 ? positions[id].x / (counter - 1) : 0.5,
+      y: maxDepth > 0 ? positions[id].y / maxDepth : 0,
+    };
+  });
+  return positions;
+}
+
+const BNB_NODES_MAP: Record<string, BnbNode> = {};
+const BNB_ROOT_ID = buildBnbTree(BNB_ITEMS, BNB_CAPACITY, BNB_NODES_MAP, { value: 0 }, { value: 0 });
+const BNB_LAYOUT = computeBnbLayout(BNB_NODES_MAP, BNB_ROOT_ID);
+
+export const BNB_GRAPH_NODES: GraphNode[] = Object.values(BNB_NODES_MAP).map((n) => ({
+  id: n.id,
+  label: n.isLeaf ? String(n.value) : BNB_ITEMS[n.index].name,
+  x: BNB_LAYOUT[n.id].x,
+  y: BNB_LAYOUT[n.id].y,
+}));
+export const BNB_GRAPH_EDGES: GraphEdge[] = Object.values(BNB_NODES_MAP).flatMap((n) => {
+  const edges: GraphEdge[] = [];
+  if (n.left !== null) edges.push({ id: `${n.id}-${n.left}`, from: n.id, to: n.left, weight: 1 });
+  if (n.right !== null) edges.push({ id: `${n.id}-${n.right}`, from: n.id, to: n.right, weight: 1 });
+  return edges;
+});
+
+/**
+ * 分枝限定法(Branch and Bound)のステップ列を生成する。0-1ナップサック問題を
+ * 「各品物を入れる/入れない」の二分決定木として総当たりする代わりに、各頂点で
+ * 「ここから先、容量制約を無視してでも(品物を分数個入れられるとしても)得られる
+ * 最大価値」という楽観的な上界(bound)を計算し、それが既に見つかっている最良解以下
+ * なら、その先をどう選んでも最良解を超えられないと確定するので探索を打ち切る(枝刈り)。
+ * 全探索なら2ⁿ通り調べる必要があるところを、上界による枝刈りで大幅に削減しながら
+ * 厳密な最適解を保証するのが分枝限定法の要点。
+ */
+export function branchAndBoundSteps(): GraphFrame[] {
+  const items = BNB_ITEMS;
+  const capacity = BNB_CAPACITY;
+  const nodesMap = BNB_NODES_MAP;
+
+  const graphNodes = BNB_GRAPH_NODES;
+  const graphEdges = BNB_GRAPH_EDGES;
+  const nodeStates = initNodeStates(graphNodes, "idle");
+  const edgeStates = initEdgeStates(graphEdges, "idle");
+
+  const frames: GraphFrame[] = [
+    {
+      nodeStates: { ...nodeStates },
+      edgeStates: { ...edgeStates },
+      distances: {},
+      description: `分枝限定法を開始。品物: ${items.map((it) => `${it.name}(重さ${it.weight}/価値${it.value})`).join(", ")}、容量=${capacity}`,
+    },
+  ];
+
+  let best = 0;
+  let prunedCount = 0;
+  const visit = (id: string) => {
+    const node = nodesMap[id];
+    nodeStates[id] = "visited";
+    if (node.left !== null) edgeStates[`${id}-${node.left}`] = "checking";
+    if (node.right !== null) edgeStates[`${id}-${node.right}`] = "checking";
+
+    if (node.isLeaf) {
+      if (node.pruned && node.weight <= capacity) {
+        nodeStates[id] = "idle";
+        prunedCount++;
+        frames.push({
+          nodeStates: { ...nodeStates },
+          edgeStates: { ...edgeStates },
+          distances: {},
+          description: `頂点${id}: 上界=${node.bound.toFixed(1)}が現在の最良解${best}以下 → 枝刈り(これ以上探索しても改善しない)`,
+        });
+        return;
+      }
+      if (node.weight > capacity) {
+        nodeStates[id] = "idle";
+        frames.push({
+          nodeStates: { ...nodeStates },
+          edgeStates: { ...edgeStates },
+          distances: {},
+          description: `頂点${id}: 重さ${node.weight}が容量${capacity}を超過 → 実行不可能`,
+        });
+        return;
+      }
+      if (node.value > best) {
+        best = node.value;
+        frames.push({
+          nodeStates: { ...nodeStates },
+          edgeStates: { ...edgeStates },
+          distances: {},
+          description: `頂点${id}: 全品物を検討済み、価値${node.value} → 新しい最良解として更新(重さ${node.weight}/容量${capacity})`,
+        });
+      } else {
+        frames.push({
+          nodeStates: { ...nodeStates },
+          edgeStates: { ...edgeStates },
+          distances: {},
+          description: `頂点${id}: 全品物を検討済み、価値${node.value}(現在の最良解${best}を超えない)`,
+        });
+      }
+      return;
+    }
+
+    frames.push({
+      nodeStates: { ...nodeStates },
+      edgeStates: { ...edgeStates },
+      distances: {},
+      description: `頂点${id}: 品物${items[node.index].name}を検討(上界=${node.bound.toFixed(1)}、現在の最良解=${best})。含める/含めないの両方に分岐`,
+    });
+
+    visit(node.left!);
+    visit(node.right!);
+    nodeStates[id] = "settled";
+  };
+
+  visit(BNB_ROOT_ID);
+
+  frames.push({
+    nodeStates: { ...nodeStates },
+    edgeStates: { ...edgeStates },
+    distances: {},
+    description: `計算完了。最良解=${best}(${prunedCount}個の頂点を上界による枝刈りで探索省略)`,
+  });
+
+  return frames;
+}
+
 export type GraphDataset = {
   nodes: GraphNode[];
   edges: GraphEdge[];
@@ -3339,6 +3703,8 @@ export const GRAPH_DATASETS: Record<string, GraphDataset> = {
   paxos: { nodes: PAXOS_NODES, edges: PAXOS_EDGES, directed: true },
   "vector-clocks": { nodes: VECTOR_CLOCK_NODES, edges: VECTOR_CLOCK_EDGES, directed: true },
   "decision-tree": { nodes: DECISION_TREE_GRAPH_NODES, edges: DECISION_TREE_GRAPH_EDGES, directed: true },
+  fft: { nodes: FFT_NODES, edges: FFT_EDGES, directed: true },
+  "branch-and-bound": { nodes: BNB_GRAPH_NODES, edges: BNB_GRAPH_EDGES, directed: true },
 };
 
 export const GRAPH_VISUALIZERS: Record<string, () => GraphFrame[]> = {
@@ -3368,4 +3734,6 @@ export const GRAPH_VISUALIZERS: Record<string, () => GraphFrame[]> = {
   paxos: paxosSteps,
   "vector-clocks": vectorClocksSteps,
   "decision-tree": decisionTreeSteps,
+  fft: fftSteps,
+  "branch-and-bound": branchAndBoundSteps,
 };

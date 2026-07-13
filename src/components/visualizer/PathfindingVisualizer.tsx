@@ -6,7 +6,7 @@ import { PlaybackControls } from "./PlaybackControls";
 import { useStepPlayer } from "./useStepPlayer";
 import { useWorkerFrames } from "./useWorkerFrames";
 import { coreColors, stateColors } from "@/lib/design-tokens";
-import { MAZE_COLS, MAZE_ROWS, type GridCellState, type GridFrame } from "@/lib/pathfinding-visualizers";
+import { type GridCellState, type GridFrame } from "@/lib/pathfinding-visualizers";
 import type { WorkerRequest } from "@/workers/algorithm-worker";
 
 const CELL_COLORS: Record<GridCellState, string> = {
@@ -66,9 +66,11 @@ export function PathfindingVisualizer({ algorithmId }: PathfindingVisualizerProp
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     ctx.clearRect(0, 0, width, height);
 
+    const rows = currentFrame.cellStates.length;
+    const cols = currentFrame.cellStates[0]?.length ?? 0;
     const gap = 3;
-    const cellWidth = (width - gap * (MAZE_COLS - 1)) / MAZE_COLS;
-    const cellHeight = (height - gap * (MAZE_ROWS - 1)) / MAZE_ROWS;
+    const cellWidth = (width - gap * (cols - 1)) / cols;
+    const cellHeight = (height - gap * (rows - 1)) / rows;
 
     currentFrame.cellStates.forEach((row, r) => {
       row.forEach((state, c) => {

@@ -32,6 +32,7 @@ const TARGET_SEARCH_ALGORITHMS = new Set([
 const SWAPPING_LEGEND_LABEL: Partial<Record<string, string>> = {
   "sieve-of-eratosthenes": "合成数(篩い落とし済み)",
   "bloom-filter": "確実に未追加、または偽陽性",
+  "tabu-search": "タブー(直近訪問済み、移動禁止)",
 };
 
 type SearchVisualizerProps = {
