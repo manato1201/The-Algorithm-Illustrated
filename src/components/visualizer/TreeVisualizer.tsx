@@ -88,9 +88,12 @@ export function TreeVisualizer({ algorithmId }: TreeVisualizerProps) {
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     ctx.clearRect(0, 0, width, height);
 
+    const hasIntervalNodes = Object.values(currentFrame.nodes).some((n) => n.hi !== undefined);
     const marginX = 30;
     const marginTop = 30;
-    const marginBottom = 20;
+    // 区間木は最下段ノードの下に「max=」ラベル(radius 22 + 10px)を描くため、
+    // 通常木より広いマージンを確保しないとcanvas下端からはみ出る(見切れの原因だった)。
+    const marginBottom = hasIntervalNodes ? 46 : 20;
     const positions = computeLayout(currentFrame.nodes, currentFrame.rootId);
 
     const point = (id: string) => {

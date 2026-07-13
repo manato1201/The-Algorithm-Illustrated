@@ -6,7 +6,8 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "verify": "node --experimental-strip-types scripts/verify-visualizations.mjs"
   },
   "dependencies": {
     "gray-matter": "^4.0.3",

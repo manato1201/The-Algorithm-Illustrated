@@ -15,19 +15,13 @@ import { TREE_VISUALIZERS } from "@/lib/tree-visualizers";
 import { STRING_VISUALIZERS } from "@/lib/string-visualizers";
 import { TRIE_VISUALIZERS } from "@/lib/trie-visualizer";
 
-/** このidに対応する可視化コンポーネントが存在するかどうか。詳細ページ・比較画面の両方から使う。 */
-export function hasVisualizer(algorithmId: string): boolean {
-  return (
-    algorithmId in SORT_VISUALIZERS ||
-    algorithmId in PATHFINDING_VISUALIZERS ||
-    algorithmId in DP_VISUALIZERS ||
-    algorithmId in GRAPH_VISUALIZERS ||
-    algorithmId in SEARCH_VISUALIZERS ||
-    algorithmId in TREE_VISUALIZERS ||
-    algorithmId in STRING_VISUALIZERS ||
-    algorithmId in TRIE_VISUALIZERS
-  );
-}
+/**
+ * このidに対応する可視化コンポーネントが存在するかどうか。詳細ページ・比較画面の両方から使う。
+ * 実体は src/lib/has-visualizer.ts に一本化されている(React componentへの依存を持たないため、
+ * カタログ一覧のビルド時メタデータ計算(getAllAlgorithmsMeta)からも安全にimportできる)。
+ * ここでは既存の呼び出し元(詳細ページ・比較画面)のimportパスを変えずに済むようre-exportする。
+ */
+export { hasVisualizer } from "@/lib/has-visualizer";
 
 type AlgorithmVisualizerProps = {
   algorithmId: string;
