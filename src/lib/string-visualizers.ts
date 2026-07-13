@@ -344,9 +344,71 @@ export function boyerMooreSteps(): StringMatchFrame[] {
   return frames;
 }
 
+export const RLE_INPUT = "AAABBBCCDAA";
+
+/**
+ * ランレングス符号化(RLE)のステップ列を生成する。同じ文字が連続する区間(ラン)を
+ * 「文字とその連続回数」の組に置き換えるだけの、最も単純な可逆圧縮。
+ * 同じ値が連続しやすいデータ(単色が多い画像、繰り返しの多いログ等)では大きな圧縮率を
+ * 発揮するが、ランダムな(連続の少ない)データではむしろ膨張することもある
+ * ——「データの性質に合った圧縮手法を選ぶ」ことの重要性を体感できる最小の例。
+ * text/pattern行を持つStringMatchVisualizerを、text=入力・pattern=出力(蓄積中)として転用する。
+ */
+export function runLengthEncodingSteps(): StringMatchFrame[] {
+  const text = RLE_INPUT;
+  const frames: StringMatchFrame[] = [
+    { text, pattern: "", textHighlight: {}, patternOffset: 0, patternHighlight: {}, description: `ランレングス符号化を開始。入力: "${text}"` },
+  ];
+
+  let output = "";
+  let i = 0;
+  while (i < text.length) {
+    let j = i;
+    while (j < text.length && text[j] === text[i]) j++;
+    const runLength = j - i;
+
+    const textHighlight: Partial<Record<number, CharState>> = {};
+    for (let k = i; k < j; k++) textHighlight[k] = "matching";
+    frames.push({
+      text,
+      pattern: output,
+      textHighlight,
+      patternOffset: 0,
+      patternHighlight: {},
+      description: `文字'${text[i]}'が${runLength}回連続 → "${runLength}${text[i]}"に置き換える`,
+    });
+
+    const addedStart = output.length;
+    output += `${runLength}${text[i]}`;
+    const patternHighlight: Partial<Record<number, CharState>> = {};
+    for (let k = addedStart; k < output.length; k++) patternHighlight[k] = "matched";
+    frames.push({
+      text,
+      pattern: output,
+      textHighlight: {},
+      patternOffset: 0,
+      patternHighlight,
+      description: `出力に追加: "${output}"`,
+    });
+    i = j;
+  }
+
+  frames.push({
+    text,
+    pattern: output,
+    textHighlight: {},
+    patternOffset: 0,
+    patternHighlight: {},
+    description: `計算完了。"${text}"(${text.length}文字) → "${output}"(${output.length}文字)`,
+  });
+
+  return frames;
+}
+
 export const STRING_VISUALIZERS: Record<string, () => StringMatchFrame[]> = {
   kmp: kmpSteps,
   "rabin-karp": rabinKarpSteps,
   "z-algorithm": zAlgorithmSteps,
   "boyer-moore": boyerMooreSteps,
+  "run-length-encoding": runLengthEncodingSteps,
 };

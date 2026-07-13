@@ -2433,6 +2433,512 @@ export function naiveBayesSteps(): DPFrame[] {
   return frames;
 }
 
+export const GA_POPULATION_INITIAL = [3, 10, 17, 24, 29, 6];
+export const GA_GENERATIONS = 5;
+export const GA_TARGET = 15;
+export const GA_SEED = 7;
+
+function gaFitness(x: number): number {
+  return -((x - GA_TARGET) ** 2) + 100;
+}
+
+function gaCreateLcg(seed: number): () => number {
+  let state = seed;
+  return () => {
+    state = (state * 1103515245 + 12345) % 2147483648;
+    return state / 2147483648;
+  };
+}
+
+/**
+ * 遺伝的アルゴリズムのステップ列を生成する。目的関数f(x)=-(x-15)²+100(x=15で最大値100)を
+ * 最大化する個体を、選択(上位個体を優先的に親に選ぶ)・交叉(2つの親のビット列を組み合わせる)・
+ * 突然変異(低確率でビットを反転)という3つの操作を繰り返す集団で探索する。
+ * 上位2個体をそのまま次世代に残す「エリート主義」により、世代を重ねても
+ * 最良適応度が絶対に悪化しないことが保証されている。
+ */
+export function geneticAlgorithmSteps(): DPFrame[] {
+  const rng = gaCreateLcg(GA_SEED);
+  let population = [...GA_POPULATION_INITIAL];
+
+  const rows = population.length;
+  const cols = GA_GENERATIONS + 1;
+  const table: (number | null)[][] = Array.from({ length: rows }, () => new Array(cols).fill(null));
+  const state: DPCellState[][] = Array.from({ length: rows }, () => new Array(cols).fill("idle"));
+
+  const frames: DPFrame[] = [];
+  const snapshot = (description: string): DPFrame => ({
+    table: table.map((row, r) => row.map((value, c) => ({ value, state: state[r][c] }))),
+    description,
+  });
+
+  const recordGeneration = (gen: number) => {
+    population.forEach((x, i) => {
+      table[i][gen] = x;
+      state[i][gen] = "pivot";
+    });
+  };
+
+  recordGeneration(0);
+  frames.push(
+    snapshot(
+      `遺伝的アルゴリズムを開始。f(x)=-(x-${GA_TARGET})²+100を最大化する個体xを進化させる。初期集団: [${population.join(", ")}]`,
+    ),
+  );
+  population.forEach((_, i) => {
+    state[i][0] = "settled";
+  });
+
+  for (let gen = 1; gen <= GA_GENERATIONS; gen++) {
+    const scored = population.map((x) => ({ x, fitness: gaFitness(x) })).sort((a, b) => b.fitness - a.fitness);
+    const elites = scored.slice(0, 2).map((s) => s.x);
+
+    const nextPop: number[] = [...elites];
+    while (nextPop.length < population.length) {
+      const p1 = scored[Math.floor(rng() * 3)].x;
+      const p2 = scored[Math.floor(rng() * 3)].x;
+      const crossPoint = 2;
+      const mask = (1 << crossPoint) - 1;
+      let child = (p1 & ~mask) | (p2 & mask);
+      if (rng() < 0.3) {
+        const bit = Math.floor(rng() * 5);
+        child = child ^ (1 << bit);
+      }
+      child = Math.max(0, Math.min(31, child));
+      nextPop.push(child);
+    }
+    population = nextPop;
+    recordGeneration(gen);
+    const best = Math.max(...population.map(gaFitness));
+    frames.push(
+      snapshot(
+        `世代${gen}: 上位2個体(エリート)をそのまま継承、残り4個体は上位3個体からの交叉+突然変異で生成。集団: [${population.join(", ")}](最良適応度=${best})`,
+      ),
+    );
+    population.forEach((_, i) => {
+      state[i][gen] = "settled";
+    });
+  }
+
+  const finalBest = Math.max(...population.map(gaFitness));
+  const initialBest = Math.max(...GA_POPULATION_INITIAL.map(gaFitness));
+  frames.push(
+    snapshot(`計算完了(${GA_GENERATIONS}世代)。最良適応度: 初期集団=${initialBest} → 最終世代=${finalBest}(エリート主義により悪化しない)`),
+  );
+
+  return frames;
+}
+
+export const MONTE_CARLO_SEED = 123;
+export const MONTE_CARLO_CHECKPOINTS = [20, 40, 60, 80, 100, 140, 180, 220, 260, 300];
+
+function monteCarloCreateLcg(seed: number): () => number {
+  let state = seed;
+  return () => {
+    state = (state * 1103515245 + 12345) % 2147483648;
+    return state / 2147483648;
+  };
+}
+
+/**
+ * モンテカルロ法のステップ列を生成する。1辺2の正方形(面積4)の中に、
+ * 半径1の四分円(面積π)をランダムな点を大量に打ち込んで近似する古典的な例。
+ * 「点が四分円の内側に入った割合×4」が円周率πの推定値になる
+ * (四分円の面積/正方形の面積 = π/4 という比が、打ち込んだ点の比率で近似できるため)。
+ * サンプル数を増やすほど推定値が真の値に近づいていく大数の法則を体感できる。
+ */
+export function monteCarloSteps(): DPFrame[] {
+  const rng = monteCarloCreateLcg(MONTE_CARLO_SEED);
+  const checkpoints = MONTE_CARLO_CHECKPOINTS;
+  const totalSamples = checkpoints[checkpoints.length - 1];
+
+  let insideCount = 0;
+  const estimates: number[] = [];
+  let nextCheckpointIdx = 0;
+
+  for (let i = 1; i <= totalSamples; i++) {
+    const x = rng();
+    const y = rng();
+    if (x * x + y * y <= 1) insideCount++;
+    if (nextCheckpointIdx < checkpoints.length && i === checkpoints[nextCheckpointIdx]) {
+      estimates.push(Number(((insideCount / i) * 4).toFixed(4)));
+      nextCheckpointIdx++;
+    }
+  }
+
+  const cols = checkpoints.length;
+  const rowLabels = ["累計サンプル数", "円周率の推定値"];
+  const table: (number | null)[][] = rowLabels.map(() => new Array(cols).fill(null));
+  const state: DPCellState[][] = rowLabels.map(() => new Array(cols).fill("idle"));
+
+  const frames: DPFrame[] = [];
+  const snapshot = (description: string): DPFrame => ({
+    table: table.map((row, r) => row.map((value, c) => ({ value, state: state[r][c] }))),
+    description,
+  });
+
+  frames.push(
+    snapshot(
+      `モンテカルロ法を開始。1辺2の正方形に入る半径1の四分円を使い、点を打ち込んだ割合からπを推定する(打ち込む点の総数: ${totalSamples})`,
+    ),
+  );
+
+  checkpoints.forEach((cp, i) => {
+    table[0][i] = cp;
+    table[1][i] = estimates[i];
+    state[0][i] = "pivot";
+    state[1][i] = "pivot";
+    frames.push(
+      snapshot(`累計${cp}点打ち込んだ時点でのπの推定値 = (円内の点/総点数)×4 = ${estimates[i]}`),
+    );
+    state[0][i] = "settled";
+    state[1][i] = "settled";
+  });
+
+  const finalEstimate = estimates[estimates.length - 1];
+  frames.push(
+    snapshot(
+      `計算完了。${totalSamples}点でのπの推定値 = ${finalEstimate}(真の値 ${Math.PI.toFixed(4)} との誤差 = ${Math.abs(finalEstimate - Math.PI).toFixed(4)})`,
+    ),
+  );
+
+  return frames;
+}
+
+export const TSP_BITDP_CITIES = 4;
+export const TSP_BITDP_DIST: number[][] = [
+  [0, 10, 15, 20],
+  [10, 0, 35, 25],
+  [15, 35, 0, 30],
+  [20, 25, 30, 0],
+];
+
+/**
+ * 巡回セールスマン問題(ビットマスクDP)のステップ列を生成する。訪問済み都市の集合を
+ * ビットマスクで表し、dp[訪問済み集合][現在地]=その状態に至る最小コストとして、
+ * 全ての(部分集合, 現在地)の組み合わせについて動的計画法で解く。
+ * 素朴な全探索(全順列 (n-1)! 通り)よりも大幅に少ないO(n²×2ⁿ)で厳密な最適解が求まる
+ * (nが小さいうちだけ現実的だが、bitDP特有の「集合を整数として扱う」考え方の好例)。
+ */
+export function tspBitDpSteps(): DPFrame[] {
+  const n = TSP_BITDP_CITIES;
+  const dist = TSP_BITDP_DIST;
+  const fullMask = (1 << n) - 1;
+  const dp: (number | null)[][] = Array.from({ length: 1 << n }, () => new Array<number | null>(n).fill(null));
+  const cellState: DPCellState[][] = Array.from({ length: 1 << n }, () => new Array<DPCellState>(n).fill("idle"));
+  dp[1][0] = 0;
+  cellState[1][0] = "settled";
+
+  const frames: DPFrame[] = [];
+  const snapshot = (description: string): DPFrame => ({
+    table: dp.map((row, r) => row.map((value, c) => ({ value, state: cellState[r][c] }))),
+    description,
+  });
+
+  frames.push(snapshot(`巡回セールスマン問題(ビットマスクDP)を開始。都市0を出発し全都市を1回ずつ訪問して都市0に戻る最短経路を求める。dp[1][0]=0(都市0のみ訪問済み、現在地0)で初期化`));
+
+  for (let mask = 1; mask <= fullMask; mask++) {
+    for (let i = 0; i < n; i++) {
+      if (dp[mask][i] === null) continue;
+      if (!(mask & (1 << i))) continue;
+      for (let j = 0; j < n; j++) {
+        if (mask & (1 << j)) continue;
+        const nextMask = mask | (1 << j);
+        const candidate = dp[mask][i]! + dist[i][j];
+        if (dp[nextMask][j] === null || candidate < dp[nextMask][j]!) {
+          dp[nextMask][j] = candidate;
+          cellState[nextMask][j] = "pivot";
+          frames.push(
+            snapshot(
+              `dp[${nextMask}][${j}] = dp[${mask}][${i}] + dist(${i},${j}) = ${dp[mask][i]} + ${dist[i][j]} = ${candidate} に更新(集合${nextMask.toString(2).padStart(n, "0")}を訪問済み、現在地${j})`,
+            ),
+          );
+          cellState[nextMask][j] = "settled";
+        }
+      }
+    }
+  }
+
+  let best = Infinity;
+  let bestLast = -1;
+  for (let i = 1; i < n; i++) {
+    if (dp[fullMask][i] === null) continue;
+    const total = dp[fullMask][i]! + dist[i][0];
+    if (total < best) {
+      best = total;
+      bestLast = i;
+    }
+  }
+
+  frames.push(
+    snapshot(`計算完了。全都市訪問後に都市0へ戻る最小コスト = ${best}(最後に訪れた都市は${bestLast})`),
+  );
+
+  return frames;
+}
+
+export type MinhashSet = { name: string; elements: number[] };
+export const MINHASH_SET_A: MinhashSet = { name: "集合A", elements: [1, 2, 3, 4, 5] };
+export const MINHASH_SET_B: MinhashSet = { name: "集合B", elements: [3, 4, 5, 6, 7] };
+export const MINHASH_HASH_PARAMS: [number, number][] = [
+  [1, 0],
+  [3, 1],
+  [5, 2],
+  [7, 3],
+];
+export const MINHASH_PRIME = 11;
+
+/**
+ * MinHash(局所性鋭敏型ハッシュの一種)のステップ列を生成する。2つの集合の類似度
+ * (Jaccard係数=共通要素数/和集合の要素数)を、集合の全要素を比較する代わりに、
+ * 複数のハッシュ関数それぞれについて「集合内の最小ハッシュ値」(MinHash)だけを
+ * 記録した短い署名で近似する。異なる2つの集合が同じMinHash値を持つ確率は、
+ * 理論的にちょうどJaccard係数に等しくなることが証明されており、
+ * ハッシュ関数の数を増やすほど推定精度が上がる(このデモは4個だけなので粗い近似になる)。
+ */
+export function minhashLshSteps(): DPFrame[] {
+  const setA = MINHASH_SET_A;
+  const setB = MINHASH_SET_B;
+  const hashParams = MINHASH_HASH_PARAMS;
+  const p = MINHASH_PRIME;
+
+  const hashOf = (a: number, b: number, x: number) => (a * x + b) % p;
+
+  const cols = hashParams.length;
+  const rowLabels = [`${setA.name}のMinHash`, `${setB.name}のMinHash`, "一致(1)/不一致(0)"];
+  const table: (number | null)[][] = rowLabels.map(() => new Array(cols).fill(null));
+  const state: DPCellState[][] = rowLabels.map(() => new Array(cols).fill("idle"));
+
+  const frames: DPFrame[] = [];
+  const snapshot = (description: string): DPFrame => ({
+    table: table.map((row, r) => row.map((value, c) => ({ value, state: state[r][c] }))),
+    description,
+  });
+
+  const trueJaccard =
+    setA.elements.filter((x) => setB.elements.includes(x)).length /
+    new Set([...setA.elements, ...setB.elements]).size;
+
+  frames.push(
+    snapshot(
+      `MinHashを開始。${setA.name}={${setA.elements.join(",")}}, ${setB.name}={${setB.elements.join(",")}}(真のJaccard係数=${trueJaccard.toFixed(3)})を${hashParams.length}個のハッシュ関数で近似する`,
+    ),
+  );
+
+  let matches = 0;
+  hashParams.forEach(([a, b], i) => {
+    const minA = Math.min(...setA.elements.map((x) => hashOf(a, b, x)));
+    const minB = Math.min(...setB.elements.map((x) => hashOf(a, b, x)));
+    table[0][i] = minA;
+    table[1][i] = minB;
+    const match = minA === minB ? 1 : 0;
+    table[2][i] = match;
+    matches += match;
+    state[0][i] = "pivot";
+    state[1][i] = "pivot";
+    state[2][i] = "pivot";
+    frames.push(
+      snapshot(
+        `ハッシュ関数h(x)=(${a}x+${b}) mod ${p}: ${setA.name}の最小値=${minA}, ${setB.name}の最小値=${minB} → ${match ? "一致" : "不一致"}`,
+      ),
+    );
+    state[0][i] = "settled";
+    state[1][i] = "settled";
+    state[2][i] = "settled";
+  });
+
+  const estimate = matches / hashParams.length;
+  frames.push(
+    snapshot(
+      `計算完了。${matches}/${hashParams.length}個のハッシュ関数で一致 → 推定Jaccard係数=${estimate.toFixed(3)}(真の値${trueJaccard.toFixed(3)}との差は、ハッシュ関数を増やすことで縮まる)`,
+    ),
+  );
+
+  return frames;
+}
+
+export const SUFFIX_ARRAY_STRING = "banana$";
+
+/**
+ * 接尾辞配列(Suffix Array)のステップ列を生成する。文字列の全ての接尾辞
+ * (末尾から始まる部分文字列)を辞書順にソートし、各接尾辞の開始位置だけを記録した配列。
+ * これを一度構築しておけば、任意のパターンの検索を二分探索でO(m log n)に高速化でき、
+ * 最長共通接頭辞情報と組み合わせれば最長重複部分文字列なども求まる、文字列処理の基盤データ構造。
+ * 末尾に他のどの文字よりも小さい番兵記号($)を付けることで、接尾辞同士の比較で
+ * 片方がもう片方の接頭辞になる曖昧なケースを避けている。
+ */
+export function suffixArraySteps(): DPFrame[] {
+  const s = SUFFIX_ARRAY_STRING;
+  const n = s.length;
+  const suffixes = Array.from({ length: n }, (_, i) => ({ index: i, text: s.slice(i) }));
+  const sorted = [...suffixes].sort((a, b) => (a.text < b.text ? -1 : a.text > b.text ? 1 : 0));
+
+  const cols = n;
+  const table: (number | null)[][] = [new Array(cols).fill(null)];
+  const state: DPCellState[][] = [new Array(cols).fill("idle")];
+
+  const frames: DPFrame[] = [];
+  const snapshot = (description: string): DPFrame => ({
+    table: table.map((row, r) => row.map((value, c) => ({ value, state: state[r][c] }))),
+    description,
+  });
+
+  frames.push(
+    snapshot(
+      `接尾辞配列の構築を開始。文字列"${s}"の全${n}個の接尾辞: ${suffixes.map((sf) => `${sf.index}:"${sf.text}"`).join(", ")}`,
+    ),
+  );
+
+  sorted.forEach((sf, rank) => {
+    table[0][rank] = sf.index;
+    state[0][rank] = "pivot";
+    frames.push(snapshot(`辞書順で${rank}番目: 開始位置${sf.index}("${sf.text}")`));
+    state[0][rank] = "settled";
+  });
+
+  frames.push(
+    snapshot(`構築完了。接尾辞配列 = [${sorted.map((sf) => sf.index).join(", ")}](辞書順に並べた接尾辞の開始位置)`),
+  );
+
+  return frames;
+}
+
+/**
+ * シンプレックス法のデモ用LP(Wikipedia等で広く引用される教科書的な例):
+ * maximize z = 3x1 + 5x2, s.t. x1<=4, 2x2<=12, 3x1+2x2<=18, x1,x2>=0
+ * 既知の最適解: x1=2, x2=6, z=36。
+ */
+export const SIMPLEX_OBJECTIVE = [3, 5];
+export const SIMPLEX_CONSTRAINTS: { coeffs: number[]; rhs: number }[] = [
+  { coeffs: [1, 0], rhs: 4 },
+  { coeffs: [0, 2], rhs: 12 },
+  { coeffs: [3, 2], rhs: 18 },
+];
+
+/**
+ * シンプレックス法のステップ列を生成する。制約条件にスラック変数を加えて等式に変換した
+ * タブロー(表)を使い、(1) 目的関数の行で最も負に大きい係数の列を「入る変数」として選び、
+ * (2) その列で正の係数を持つ行のうち、RHS/係数の比が最小の行を「出る変数」として選び、
+ * (3) その要素(ピボット)が1になるよう行を正規化し、他の全行からその列の成分を消去する
+ * (掃き出し法/ガウスの消去法と同じ操作)、という3ステップを目的関数の行に負の係数が
+ * 残らなくなるまで繰り返す。各頂点(実行可能領域の角)を辿りながら目的関数を改善していく様子が、
+ * タブローの数値の変化として直接見える。
+ */
+export function simplexMethodSteps(): DPFrame[] {
+  const numVars = SIMPLEX_OBJECTIVE.length;
+  const constraints = SIMPLEX_CONSTRAINTS;
+  const numSlack = constraints.length;
+  const numCols = numVars + numSlack + 1;
+  const numRows = numSlack + 1;
+
+  const tableau: number[][] = [];
+  constraints.forEach((con, i) => {
+    const row = new Array(numCols).fill(0);
+    con.coeffs.forEach((v, j) => {
+      row[j] = v;
+    });
+    row[numVars + i] = 1;
+    row[numCols - 1] = con.rhs;
+    tableau.push(row);
+  });
+  const objRow = new Array(numCols).fill(0);
+  SIMPLEX_OBJECTIVE.forEach((v, j) => {
+    objRow[j] = -v;
+  });
+  tableau.push(objRow);
+
+  const rowLabels = [...constraints.map((_, i) => `s${i + 1}`), "z"];
+  const colLabels = [...Array.from({ length: numVars }, (_, i) => `x${i + 1}`), ...Array.from({ length: numSlack }, (_, i) => `s${i + 1}`), "RHS"];
+
+  let highlight: { row: number; col: number } | null = null;
+  const frames: DPFrame[] = [];
+  const snapshot = (description: string): DPFrame => ({
+    table: tableau.map((row, r) =>
+      row.map((value, c) => ({
+        value,
+        state: highlight && highlight.row === r && highlight.col === c ? "pivot" : ("idle" as DPCellState),
+      })),
+    ),
+    description,
+  });
+
+  frames.push(
+    snapshot(
+      `シンプレックス法を開始。maximize z=${SIMPLEX_OBJECTIVE.map((c, i) => `${c}x${i + 1}`).join("+")}、制約: ${constraints.map((c) => `${c.coeffs.map((v, i) => `${v}x${i + 1}`).filter((_, i) => c.coeffs[i] !== 0).join("+")}<=${c.rhs}`).join(", ")}`,
+    ),
+  );
+
+  let iteration = 0;
+  for (;;) {
+    iteration++;
+    const lastRow = tableau[numRows - 1];
+    let pivotCol = -1;
+    let mostNegative = 0;
+    for (let j = 0; j < numCols - 1; j++) {
+      if (lastRow[j] < mostNegative) {
+        mostNegative = lastRow[j];
+        pivotCol = j;
+      }
+    }
+    if (pivotCol === -1) {
+      highlight = null;
+      break;
+    }
+
+    let pivotRow = -1;
+    let minRatio = Infinity;
+    for (let i = 0; i < numRows - 1; i++) {
+      if (tableau[i][pivotCol] > 0) {
+        const ratio = tableau[i][numCols - 1] / tableau[i][pivotCol];
+        if (ratio < minRatio) {
+          minRatio = ratio;
+          pivotRow = i;
+        }
+      }
+    }
+    highlight = pivotRow === -1 ? null : { row: pivotRow, col: pivotCol };
+    if (pivotRow === -1) break;
+
+    frames.push(
+      snapshot(
+        `[反復${iteration}] 入る変数=${colLabels[pivotCol]}(目的関数の行で最も負な係数${mostNegative}) / 出る変数=${rowLabels[pivotRow]}(比${minRatio.toFixed(2)}が最小)`,
+      ),
+    );
+
+    const pivotValue = tableau[pivotRow][pivotCol];
+    for (let j = 0; j < numCols; j++) {
+      tableau[pivotRow][j] /= pivotValue;
+    }
+    rowLabels[pivotRow] = colLabels[pivotCol];
+    for (let i = 0; i < numRows; i++) {
+      if (i === pivotRow) continue;
+      const factor = tableau[i][pivotCol];
+      if (factor === 0) continue;
+      for (let j = 0; j < numCols; j++) {
+        tableau[i][j] -= factor * tableau[pivotRow][j];
+      }
+    }
+
+    frames.push(snapshot(`[反復${iteration}] ピボット操作(掃き出し法)完了。タブローを更新`));
+  }
+
+  const solution = colLabels
+    .slice(0, numVars)
+    .map((label) => {
+      const rowIdx = rowLabels.indexOf(label);
+      return rowIdx !== -1 && rowIdx < numRows - 1 ? tableau[rowIdx][numCols - 1] : 0;
+    });
+  const z = tableau[numRows - 1][numCols - 1];
+
+  frames.push(
+    snapshot(
+      `計算完了。目的関数の行に負の係数が残らなくなり最適解に到達: ${solution.map((v, i) => `x${i + 1}=${v.toFixed(2)}`).join(", ")}, z=${z.toFixed(2)}`,
+    ),
+  );
+
+  return frames;
+}
+
 export type DPTableMeta = {
   /** テーブル上の情報チップ(品物一覧や対象文字列など)。 */
   chips: string[];
@@ -2702,6 +3208,49 @@ export const DP_TABLE_META: Record<string, DPTableMeta> = {
     rowHeaders: ["P(class)", "P(f1=query値|class)", "P(f2=query値|class)", "事後確率(比例値)"],
     colHeaders: ["class=0", "class=1"],
   },
+  "genetic-algorithm": {
+    chips: [`目的関数: f(x)=-(x-${GA_TARGET})²+100`, `初期集団: [${GA_POPULATION_INITIAL.join(", ")}]`],
+    cornerLabel: "個体 \\ 世代",
+    rowHeaders: GA_POPULATION_INITIAL.map((_, i) => `個体${i + 1}`),
+    colHeaders: Array.from({ length: GA_GENERATIONS + 1 }, (_, i) => `世代${i}`),
+  },
+  "monte-carlo": {
+    chips: ["半径1の四分円 / 1辺2の正方形でπを推定"],
+    cornerLabel: "値 \\ チェックポイント",
+    rowHeaders: ["累計サンプル数", "円周率の推定値"],
+    colHeaders: MONTE_CARLO_CHECKPOINTS.map((cp) => `${cp}点`),
+  },
+  "tsp-bitdp": {
+    chips: [`都市数: ${TSP_BITDP_CITIES}`, "訪問済み集合をビットマスクで管理"],
+    cornerLabel: "訪問済み集合(mask) \\ 現在地",
+    rowHeaders: Array.from({ length: 1 << TSP_BITDP_CITIES }, (_, mask) => mask.toString(2).padStart(TSP_BITDP_CITIES, "0")),
+    colHeaders: Array.from({ length: TSP_BITDP_CITIES }, (_, i) => `都市${i}`),
+  },
+  "minhash-lsh": {
+    chips: [`${MINHASH_SET_A.name}={${MINHASH_SET_A.elements.join(",")}}`, `${MINHASH_SET_B.name}={${MINHASH_SET_B.elements.join(",")}}`],
+    cornerLabel: "値 \\ ハッシュ関数",
+    rowHeaders: [`${MINHASH_SET_A.name}のMinHash`, `${MINHASH_SET_B.name}のMinHash`, "一致(1)/不一致(0)"],
+    colHeaders: MINHASH_HASH_PARAMS.map(([a, b]) => `h(${a}x+${b})`),
+  },
+  "suffix-array": {
+    chips: [`文字列: "${SUFFIX_ARRAY_STRING}"`],
+    cornerLabel: "開始位置(辞書順)",
+    rowHeaders: ["開始位置"],
+    colHeaders: Array.from({ length: SUFFIX_ARRAY_STRING.length }, (_, i) => `第${i}位`),
+  },
+  "simplex-method": {
+    chips: [
+      `maximize z=${SIMPLEX_OBJECTIVE.map((c, i) => `${c}x${i + 1}`).join("+")}`,
+      ...SIMPLEX_CONSTRAINTS.map((c) => `${c.coeffs.map((v, i) => `${v}x${i + 1}`).join("+")}<=${c.rhs}`),
+    ],
+    cornerLabel: "基底変数 \\ 変数",
+    rowHeaders: [...SIMPLEX_CONSTRAINTS.map((_, i) => `s${i + 1}`), "z"],
+    colHeaders: [
+      ...SIMPLEX_OBJECTIVE.map((_, i) => `x${i + 1}`),
+      ...SIMPLEX_CONSTRAINTS.map((_, i) => `s${i + 1}`),
+      "RHS",
+    ],
+  },
 };
 
 export const DP_VISUALIZERS: Record<string, () => DPFrame[]> = {
@@ -2738,4 +3287,10 @@ export const DP_VISUALIZERS: Record<string, () => DPFrame[]> = {
   perceptron: perceptronSteps,
   backpropagation: backpropagationSteps,
   "naive-bayes": naiveBayesSteps,
+  "genetic-algorithm": geneticAlgorithmSteps,
+  "monte-carlo": monteCarloSteps,
+  "tsp-bitdp": tspBitDpSteps,
+  "minhash-lsh": minhashLshSteps,
+  "suffix-array": suffixArraySteps,
+  "simplex-method": simplexMethodSteps,
 };
