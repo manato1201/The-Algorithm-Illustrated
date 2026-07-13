@@ -47,6 +47,10 @@ export const CATEGORY_TAXONOMY = [
     category: "ゲーム",
     subcategories: ["ゲームAI・意思決定", "手続き型コンテンツ生成", "数理ゲーム理論"],
   },
+  {
+    category: "数値計算",
+    subcategories: ["求根アルゴリズム", "数値積分・微分方程式", "線形代数計算", "信号処理"],
+  },
 ] as const;
 
 export const CATEGORY_ORDER = CATEGORY_TAXONOMY.map((c) => c.category);
