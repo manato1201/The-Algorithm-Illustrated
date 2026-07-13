@@ -30,13 +30,14 @@ Node.js v20以降を推奨(動作確認環境: v22)。
 
 ## 実行・動作手順
 
-| コマンド           | 内容                                                               |
-| ------------------ | ------------------------------------------------------------------ |
-| `npm run dev`      | 開発サーバーを起動([http://localhost:3000](http://localhost:3000)) |
-| `npm run build`    | 本番ビルドを作成                                                   |
-| `npm run start`    | `npm run build` 後、本番ビルドをローカルで起動                     |
-| `npm run lint`     | ESLintを実行                                                       |
-| `npx tsc --noEmit` | 型チェックのみ実行(ビルドなし)                                     |
+| コマンド           | 内容                                                                                                              |
+| ------------------ | ----------------------------------------------------------------------------------------------------------------- |
+| `npm run dev`      | 開発サーバーを起動([http://localhost:3000](http://localhost:3000))                                                |
+| `npm run build`    | 本番ビルドを作成                                                                                                  |
+| `npm run start`    | `npm run build` 後、本番ビルドをローカルで起動                                                                    |
+| `npm run lint`     | ESLintを実行                                                                                                      |
+| `npm run verify`   | 可視化(148件)の正しさを独立実装のbrute-force・既知の正解値と突き合わせて検証(`scripts/verify-visualizations.mjs`) |
+| `npx tsc --noEmit` | 型チェックのみ実行(ビルドなし)                                                                                    |
 
 開発中の変更確認は `npm run dev` → ブラウザで `http://localhost:3000` を開く、が基本フロー。コードを変更するたびに以下を通しておくと安全:
 
