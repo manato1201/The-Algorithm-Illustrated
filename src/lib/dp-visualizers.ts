@@ -2939,6 +2939,332 @@ export function simplexMethodSteps(): DPFrame[] {
   return frames;
 }
 
+export const WORD_BREAK_STRING = "leetcode";
+export const WORD_BREAK_DICTIONARY = ["leet", "code"];
+
+/**
+ * 単語分割問題(Word Break)のDPを1行のテーブルとして埋めていくステップ列を生成する。
+ * dp[i]=「先頭i文字が辞書の単語だけで分割可能か」。coin-changeと同じ1行DPパターンを流用。
+ */
+export function wordBreakSteps(): DPFrame[] {
+  const s = WORD_BREAK_STRING;
+  const dict = new Set(WORD_BREAK_DICTIONARY);
+  const n = s.length;
+  const dp: (number | null)[] = new Array(n + 1).fill(null);
+  dp[0] = 1;
+  const state: DPCellState[] = new Array(n + 1).fill("idle");
+  state[0] = "settled";
+
+  const frames: DPFrame[] = [];
+  const snapshot = (description: string): DPFrame => ({
+    table: [dp.map((value, i) => ({ value, state: state[i] }))],
+    description,
+  });
+
+  frames.push(
+    snapshot(`初期状態: dp[0]=1(空文字列は分割可能)。対象文字列="${s}"、辞書={${WORD_BREAK_DICTIONARY.join(",")}}`),
+  );
+
+  for (let i = 1; i <= n; i++) {
+    let found = false;
+    for (let j = 0; j < i; j++) {
+      state[j] = "comparing";
+      const word = s.slice(j, i);
+      frames.push(snapshot(`dp[${i}]を検討: dp[${j}]=${dp[j] ?? 0}かつ"${word}"が辞書に含まれるか`));
+      state[j] = "idle";
+      if (dp[j] === 1 && dict.has(word)) {
+        found = true;
+        break;
+      }
+    }
+    dp[i] = found ? 1 : 0;
+    state[i] = "settled";
+    frames.push(snapshot(`dp[${i}] = ${dp[i]} を確定(先頭${i}文字="${s.slice(0, i)}"が分割可能か)`));
+  }
+
+  frames.push(
+    snapshot(`計算完了。"${s}"は辞書の単語だけで分割${dp[n] === 1 ? "可能" : "不可能"}(dp[${n}]=${dp[n]})`),
+  );
+  return frames;
+}
+
+export const UNBOUNDED_KNAPSACK_ITEMS: DPItem[] = [
+  { name: "A", weight: 2, value: 3 },
+  { name: "B", weight: 3, value: 4 },
+  { name: "C", weight: 4, value: 5 },
+];
+export const UNBOUNDED_KNAPSACK_CAPACITY = 8;
+
+/**
+ * 完全ナップサック問題のDPを1行のテーブルとして埋めていくステップ列を生成する。
+ * 0-1ナップサック(knapsackSteps)と違い、容量を小さい方から大きい方へ更新することで
+ * 同じ品物を何度でも使える性質を表現する。
+ */
+export function unboundedKnapsackSteps(): DPFrame[] {
+  const items = UNBOUNDED_KNAPSACK_ITEMS;
+  const capacity = UNBOUNDED_KNAPSACK_CAPACITY;
+  const dp: (number | null)[] = new Array(capacity + 1).fill(null);
+  dp[0] = 0;
+  const state: DPCellState[] = new Array(capacity + 1).fill("idle");
+  state[0] = "settled";
+
+  const frames: DPFrame[] = [];
+  const snapshot = (description: string): DPFrame => ({
+    table: [dp.map((value, w) => ({ value, state: state[w] }))],
+    description,
+  });
+  frames.push(snapshot("初期状態: dp[0]=0(容量0では価値0)"));
+
+  for (const item of items) {
+    frames.push(
+      snapshot(`品物${item.name}(重さ${item.weight}/価値${item.value})の検討開始(容量の小さい方から更新=同じ品物を繰り返し使える)`),
+    );
+    for (let w = item.weight; w <= capacity; w++) {
+      state[w] = "comparing";
+      const candidate = dp[w - item.weight] !== null ? dp[w - item.weight]! + item.value : null;
+      frames.push(
+        snapshot(
+          `dp[${w}]候補: dp[${w - item.weight}](=${dp[w - item.weight]})+価値${item.value}=${candidate} と現在のdp[${w}](=${dp[w] ?? 0})を比較`,
+        ),
+      );
+      if (candidate !== null && (dp[w] === null || candidate > dp[w]!)) {
+        dp[w] = candidate;
+      }
+      state[w] = "settled";
+      frames.push(snapshot(`dp[${w}] = ${dp[w]} を確定`));
+    }
+  }
+
+  frames.push(snapshot(`計算完了。容量${capacity}での最大価値は${dp[capacity]}(品物を何度でも使ってよい)`));
+  return frames;
+}
+
+export const PARTITION_PROBLEM_NUMBERS = [1, 5, 11, 5];
+
+/**
+ * 集合分割問題のDPテーブルを埋めていくステップ列を生成する。
+ * 「合計の半分をちょうど作れる部分集合が存在するか」という部分和問題に帰着させ、
+ * subsetSumStepsと全く同じ2次元DPパターンで解く。
+ */
+export function partitionProblemSteps(): DPFrame[] {
+  const nums = PARTITION_PROBLEM_NUMBERS;
+  const total = nums.reduce((a, b) => a + b, 0);
+
+  if (total % 2 !== 0) {
+    return [
+      {
+        table: [[{ value: total, state: "idle" }]],
+        description: `合計${total}が奇数のため、2つの等しい部分集合には分割不可能`,
+      },
+    ];
+  }
+
+  const target = total / 2;
+  const n = nums.length;
+  const dp: (number | null)[][] = Array.from({ length: n + 1 }, () => new Array(target + 1).fill(null));
+  for (let i = 0; i <= n; i++) dp[i][0] = 1;
+  for (let s = 1; s <= target; s++) dp[0][s] = 0;
+
+  const settled = new Set<string>();
+  for (let i = 0; i <= n; i++) settled.add(`${i},0`);
+  for (let s = 0; s <= target; s++) settled.add(`0,${s}`);
+
+  const frames: DPFrame[] = [];
+  const snapshot = (extra: Map<string, "comparing" | "pivot">, description: string): DPFrame => {
+    const table: DPCell[][] = dp.map((row, i) =>
+      row.map((value, s) => {
+        const key = `${i},${s}`;
+        return { value, state: extra.get(key) ?? (settled.has(key) ? "settled" : "idle") };
+      }),
+    );
+    return { table, description };
+  };
+
+  frames.push(
+    snapshot(new Map(), `合計${total}は偶数。目標和${target}(=合計の半分)を作れる部分集合があるか判定(部分和問題への帰着)`),
+  );
+
+  for (let i = 1; i <= n; i++) {
+    const num = nums[i - 1];
+    for (let s = 1; s <= target; s++) {
+      const highlight = new Map<string, "comparing" | "pivot">();
+      highlight.set(`${i - 1},${s}`, "comparing");
+      let achievable = dp[i - 1][s] === 1;
+      if (num <= s) {
+        highlight.set(`${i - 1},${s - num}`, "comparing");
+        achievable = achievable || dp[i - 1][s - num] === 1;
+      }
+      frames.push(snapshot(highlight, `数値${num}を目標和${s}の達成に使うかどうかを検討`));
+      dp[i][s] = achievable ? 1 : 0;
+      settled.add(`${i},${s}`);
+      frames.push(
+        snapshot(new Map([[`${i},${s}`, "pivot"]]), `dp[${i}][${s}] = ${achievable ? "1(達成可能)" : "0(不可)"} を確定`),
+      );
+    }
+  }
+
+  frames.push(
+    snapshot(
+      new Map(),
+      `計算完了。{${nums.join(",")}}は${dp[n][target] === 1 ? "合計が等しい2つの部分集合に分割可能" : "分割不可能"}(dp[${n}][${target}]=${dp[n][target]})`,
+    ),
+  );
+  return frames;
+}
+
+export const ASSEMBLY_LINE_ENTRY: [number, number] = [2, 4];
+export const ASSEMBLY_LINE_EXIT: [number, number] = [3, 2];
+export const ASSEMBLY_LINE_STATION_TIMES: [number[], number[]] = [
+  [7, 9, 3, 4, 8, 4],
+  [8, 5, 6, 4, 5, 7],
+];
+export const ASSEMBLY_LINE_TRANSFER_TIMES: [number[], number[]] = [
+  [2, 3, 1, 3, 4],
+  [2, 1, 2, 2, 1],
+];
+
+/**
+ * 組立ラインスケジューリング問題のDPを2行(ライン1・ライン2)のテーブルとして埋めていくステップ列を生成する。
+ * f[line][i] = 「そのラインのi番目のステーションに到達するまでの最短所要時間」。
+ * CLRS(Cormen等)の教科書の定番例題と同じ構造の数値を使用。
+ */
+export function assemblyLineSchedulingSteps(): DPFrame[] {
+  const [entry1, entry2] = ASSEMBLY_LINE_ENTRY;
+  const [exit1, exit2] = ASSEMBLY_LINE_EXIT;
+  const [times1, times2] = ASSEMBLY_LINE_STATION_TIMES;
+  const [transfer1, transfer2] = ASSEMBLY_LINE_TRANSFER_TIMES;
+  const n = times1.length;
+
+  const f: (number | null)[][] = [new Array(n).fill(null), new Array(n).fill(null)];
+  const state: DPCellState[][] = [new Array(n).fill("idle"), new Array(n).fill("idle")];
+
+  const frames: DPFrame[] = [];
+  const snapshot = (description: string): DPFrame => ({
+    table: f.map((row, line) => row.map((value, i) => ({ value, state: state[line][i] }))),
+    description,
+  });
+
+  f[0][0] = entry1 + times1[0];
+  f[1][0] = entry2 + times2[0];
+  state[0][0] = "settled";
+  state[1][0] = "settled";
+  frames.push(
+    snapshot(`初期状態: f[1][1]=進入コスト${entry1}+処理時間${times1[0]}=${f[0][0]}、f[2][1]=進入コスト${entry2}+処理時間${times2[0]}=${f[1][0]}`),
+  );
+
+  for (let i = 1; i < n; i++) {
+    state[0][i] = "comparing";
+    state[1][i - 1] = "comparing";
+    const stay1 = f[0][i - 1]! + times1[i];
+    const switchFrom2 = f[1][i - 1]! + transfer2[i - 1] + times1[i];
+    frames.push(
+      snapshot(`f[1][${i + 1}]を検討: ライン1に留まる(${stay1}) vs ライン2から乗り換える(${switchFrom2})`),
+    );
+    f[0][i] = Math.min(stay1, switchFrom2);
+    state[0][i] = "settled";
+    state[1][i - 1] = "idle";
+    frames.push(snapshot(`f[1][${i + 1}] = ${f[0][i]} を確定`));
+
+    state[1][i] = "comparing";
+    state[0][i - 1] = "comparing";
+    const stay2 = f[1][i - 1]! + times2[i];
+    const switchFrom1 = f[0][i - 1]! + transfer1[i - 1] + times2[i];
+    frames.push(
+      snapshot(`f[2][${i + 1}]を検討: ライン2に留まる(${stay2}) vs ライン1から乗り換える(${switchFrom1})`),
+    );
+    f[1][i] = Math.min(stay2, switchFrom1);
+    state[1][i] = "settled";
+    state[0][i - 1] = "idle";
+    frames.push(snapshot(`f[2][${i + 1}] = ${f[1][i]} を確定`));
+  }
+
+  const total1 = f[0][n - 1]! + exit1;
+  const total2 = f[1][n - 1]! + exit2;
+  const best = Math.min(total1, total2);
+  frames.push(
+    snapshot(`計算完了。出口コストを加えるとライン1経由=${total1}、ライン2経由=${total2}。最小所要時間は${best}`),
+  );
+  return frames;
+}
+
+export type FractionalKnapsackItem = { name: string; weight: number; value: number };
+export const FRACTIONAL_KNAPSACK_ITEMS: FractionalKnapsackItem[] = [
+  { name: "A", weight: 10, value: 60 },
+  { name: "B", weight: 20, value: 100 },
+  { name: "C", weight: 30, value: 120 },
+];
+export const FRACTIONAL_KNAPSACK_CAPACITY = 50;
+
+/**
+ * 分数ナップサック問題(貪欲法)のステップ列を生成する。価値密度(価値/重さ)の高い順に
+ * ソートし、容量が許す限り詰め、最後の品物だけ端数を詰める。interval-schedulingと
+ * 同じ「1回のソート+線形走査」の貪欲法パターン。
+ */
+export function fractionalKnapsackSteps(): DPFrame[] {
+  const sorted = [...FRACTIONAL_KNAPSACK_ITEMS].sort(
+    (a, b) => b.value / b.weight - a.value / a.weight,
+  );
+  const n = sorted.length;
+  const table: (number | null)[][] = [
+    sorted.map((it) => it.weight),
+    sorted.map((it) => Math.round((it.value / it.weight) * 100) / 100),
+    sorted.map(() => null),
+  ];
+  const state: DPCellState[][] = [
+    sorted.map(() => "settled"),
+    sorted.map(() => "settled"),
+    sorted.map(() => "idle"),
+  ];
+
+  const frames: DPFrame[] = [];
+  const snapshot = (description: string): DPFrame => ({
+    table: table.map((row, r) => row.map((value, c) => ({ value, state: state[r][c] }))),
+    description,
+  });
+
+  frames.push(
+    snapshot(
+      `価値密度(価値/重さ)の高い順にソート: ${sorted.map((it) => `${it.name}(密度${(it.value / it.weight).toFixed(2)})`).join(", ")}`,
+    ),
+  );
+
+  let remaining = FRACTIONAL_KNAPSACK_CAPACITY;
+  let totalValue = 0;
+  for (let c = 0; c < n; c++) {
+    state[2][c] = "comparing";
+    const item = sorted[c];
+    frames.push(snapshot(`品物${item.name}(重さ${item.weight}/価値${item.value})を検討(残り容量${remaining})`));
+
+    if (remaining <= 0) {
+      table[2][c] = 0;
+      state[2][c] = "idle";
+      frames.push(snapshot(`容量が尽きたため品物${item.name}は詰めない`));
+      continue;
+    }
+
+    if (item.weight <= remaining) {
+      table[2][c] = 1;
+      state[2][c] = "pivot";
+      remaining -= item.weight;
+      totalValue += item.value;
+      frames.push(snapshot(`品物${item.name}を丸ごと詰める(価値${item.value}を追加、残り容量${remaining})`));
+    } else {
+      const fraction = remaining / item.weight;
+      table[2][c] = Math.round(fraction * 100) / 100;
+      state[2][c] = "pivot";
+      const partialValue = item.value * fraction;
+      totalValue += partialValue;
+      remaining = 0;
+      frames.push(
+        snapshot(`品物${item.name}を${(fraction * 100).toFixed(0)}%だけ詰めて容量を使い切る(価値${partialValue.toFixed(2)}を追加)`),
+      );
+    }
+  }
+
+  frames.push(snapshot(`計算完了。容量${FRACTIONAL_KNAPSACK_CAPACITY}での最大価値は${totalValue.toFixed(2)}`));
+  return frames;
+}
+
 export type DPTableMeta = {
   /** テーブル上の情報チップ(品物一覧や対象文字列など)。 */
   chips: string[];
@@ -3251,6 +3577,54 @@ export const DP_TABLE_META: Record<string, DPTableMeta> = {
       "RHS",
     ],
   },
+  "word-break-problem": {
+    chips: [`対象文字列: "${WORD_BREAK_STRING}"`, `辞書: {${WORD_BREAK_DICTIONARY.join(",")}}`],
+    cornerLabel: "分割可能?(1/0)",
+    rowHeaders: ["dp"],
+    colHeaders: Array.from({ length: WORD_BREAK_STRING.length + 1 }, (_, i) => String(i)),
+  },
+  "unbounded-knapsack": {
+    chips: [
+      ...UNBOUNDED_KNAPSACK_ITEMS.map((item) => `${item.name}: 重さ${item.weight} / 価値${item.value}`),
+      `容量: ${UNBOUNDED_KNAPSACK_CAPACITY}(品物は何度でも使用可)`,
+    ],
+    cornerLabel: "最大価値 \\ 容量",
+    rowHeaders: ["価値"],
+    colHeaders: Array.from({ length: UNBOUNDED_KNAPSACK_CAPACITY + 1 }, (_, w) => String(w)),
+  },
+  "partition-problem": {
+    chips: [
+      `数値集合: {${PARTITION_PROBLEM_NUMBERS.join(",")}}`,
+      `目標和: 合計の半分(1=達成可能/0=不可)`,
+    ],
+    cornerLabel: "個数 \\ 和",
+    rowHeaders: ["∅", ...PARTITION_PROBLEM_NUMBERS.map(String)],
+    colHeaders: Array.from(
+      { length: PARTITION_PROBLEM_NUMBERS.reduce((a, b) => a + b, 0) / 2 + 1 },
+      (_, s) => String(s),
+    ),
+  },
+  "assembly-line-scheduling": {
+    chips: [
+      `ライン1の処理時間: ${ASSEMBLY_LINE_STATION_TIMES[0].join(", ")}`,
+      `ライン2の処理時間: ${ASSEMBLY_LINE_STATION_TIMES[1].join(", ")}`,
+      `進入コスト: ${ASSEMBLY_LINE_ENTRY.join(", ")} / 出口コスト: ${ASSEMBLY_LINE_EXIT.join(", ")}`,
+    ],
+    cornerLabel: "ライン \\ ステーション",
+    rowHeaders: ["ライン1", "ライン2"],
+    colHeaders: ASSEMBLY_LINE_STATION_TIMES[0].map((_, i) => `S${i + 1}`),
+  },
+  "fractional-knapsack": {
+    chips: [
+      ...FRACTIONAL_KNAPSACK_ITEMS.map((it) => `${it.name}: 重さ${it.weight} / 価値${it.value}`),
+      `容量: ${FRACTIONAL_KNAPSACK_CAPACITY}(分割して詰めてよい)`,
+    ],
+    cornerLabel: "属性 \\ 品物(価値密度順)",
+    rowHeaders: ["重さ", "価値密度", "詰めた割合(0〜1)"],
+    colHeaders: [...FRACTIONAL_KNAPSACK_ITEMS]
+      .sort((a, b) => b.value / b.weight - a.value / a.weight)
+      .map((it) => it.name),
+  },
 };
 
 export const DP_VISUALIZERS: Record<string, () => DPFrame[]> = {
@@ -3293,4 +3667,9 @@ export const DP_VISUALIZERS: Record<string, () => DPFrame[]> = {
   "minhash-lsh": minhashLshSteps,
   "suffix-array": suffixArraySteps,
   "simplex-method": simplexMethodSteps,
+  "word-break-problem": wordBreakSteps,
+  "unbounded-knapsack": unboundedKnapsackSteps,
+  "partition-problem": partitionProblemSteps,
+  "assembly-line-scheduling": assemblyLineSchedulingSteps,
+  "fractional-knapsack": fractionalKnapsackSteps,
 };
