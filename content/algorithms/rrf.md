@@ -1,8 +1,9 @@
 ---
-name: "RRF(Reciprocal Rank Fusion)"
-category: "情報検索・ランキング"
-complexity: "O(kΣ結果数)"
-summary: "複数の検索結果(キーワード検索とベクトル検索など)の順位の逆数を足し合わせるだけで、スコアの単位を揃えずに統合できるハイブリッド検索の定番手法。"
+name: RRF(Reciprocal Rank Fusion)
+category: 情報検索・ランキング
+subcategory: スコアリング
+complexity: O(kΣ結果数)
+summary: 複数の検索結果(キーワード検索とベクトル検索など)の順位の逆数を足し合わせるだけで、スコアの単位を揃えずに統合できるハイブリッド検索の定番手法。
 ---
 
 ## 概要

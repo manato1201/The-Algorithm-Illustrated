@@ -1,8 +1,9 @@
 ---
-name: "0-1ナップサック問題"
-category: "動的計画法"
-complexity: "O(nW)"
-summary: "部分問題の解を表に記録し、重複計算を避けながら最適な詰め方を組み立てる。"
+name: 0-1ナップサック問題
+category: 動的計画法
+subcategory: ナップサック・組合せ最適化
+complexity: O(nW)
+summary: 部分問題の解を表に記録し、重複計算を避けながら最適な詰め方を組み立てる。
 ---
 
 ## 概要

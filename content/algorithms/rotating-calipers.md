@@ -1,8 +1,9 @@
 ---
-name: "回転キャリパー法"
-category: "計算幾何"
-complexity: "O(n)"
-summary: "凸多角形の周りを2本の平行線で挟んで回転させ、最大幅や最小包含長方形などを求める。"
+name: 回転キャリパー法
+category: 計算幾何
+subcategory: 凸包・多角形
+complexity: O(n)
+summary: 凸多角形の周りを2本の平行線で挟んで回転させ、最大幅や最小包含長方形などを求める。
 ---
 
 ## 概要

@@ -1,8 +1,9 @@
 ---
-name: "Observer(オブザーバー)"
-category: "デザインパターン"
-complexity: "振る舞いに関するパターン"
-summary: "状態変化を購読者全員に自動通知する。イベント駆動アーキテクチャの基礎。"
+name: Observer(オブザーバー)
+category: デザインパターン
+subcategory: 振る舞い
+complexity: 振る舞いに関するパターン
+summary: 状態変化を購読者全員に自動通知する。イベント駆動アーキテクチャの基礎。
 ---
 ## 概要
 

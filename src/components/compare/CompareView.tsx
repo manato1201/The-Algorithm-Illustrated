@@ -38,7 +38,7 @@ export function CompareView({ algorithms }: CompareViewProps) {
     return algorithms
       .filter((a) => !selectedIds.includes(a.id))
       .filter((a) =>
-        [a.name, a.category, a.summary].some((field) =>
+        [a.name, a.category, a.subcategory, a.summary].some((field) =>
           field.toLowerCase().includes(trimmedQuery),
         ),
       )

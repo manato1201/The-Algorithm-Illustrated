@@ -1,8 +1,9 @@
 ---
-name: "RSA暗号"
-category: "数論・暗号"
-complexity: "O(log n)(べき乗剰余)"
-summary: "素因数分解の困難さを安全性の根拠にした公開鍵暗号。べき乗剰余の高速計算が実装の要。"
+name: RSA暗号
+category: 数論・暗号
+subcategory: 暗号・鍵交換
+complexity: O(log n)(べき乗剰余)
+summary: 素因数分解の困難さを安全性の根拠にした公開鍵暗号。べき乗剰余の高速計算が実装の要。
 ---
 
 ## 概要

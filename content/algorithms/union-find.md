@@ -1,8 +1,9 @@
 ---
-name: "Union-Find(素集合データ構造)"
-category: "グラフ"
-complexity: "O(α(n))(ほぼ定数)"
-summary: "グループの併合と所属判定をほぼ定数時間で行う。クラスカル法の内部でも活躍する。"
+name: Union-Find(素集合データ構造)
+category: グラフ
+subcategory: 連結性・順序
+complexity: O(α(n))(ほぼ定数)
+summary: グループの併合と所属判定をほぼ定数時間で行う。クラスカル法の内部でも活躍する。
 ---
 
 ## 概要

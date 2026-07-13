@@ -1,8 +1,9 @@
 ---
-name: "Prototype(プロトタイプ)"
-category: "デザインパターン"
-complexity: "生成に関するパターン"
-summary: "既存のインスタンスを複製(クローン)することで、コストの高い生成処理を避ける。"
+name: Prototype(プロトタイプ)
+category: デザインパターン
+subcategory: 生成
+complexity: 生成に関するパターン
+summary: 既存のインスタンスを複製(クローン)することで、コストの高い生成処理を避ける。
 ---
 ## 概要
 

@@ -1,8 +1,9 @@
 ---
-name: "挿入ソート"
-category: "ソート"
-complexity: "O(n²)"
-summary: "整列済み部分に1つずつ挿入していく。ほぼ整列済みのデータに対しては高速に動く。"
+name: 挿入ソート
+category: ソート
+subcategory: 比較ベース
+complexity: O(n²)
+summary: 整列済み部分に1つずつ挿入していく。ほぼ整列済みのデータに対しては高速に動く。
 ---
 
 ## 概要

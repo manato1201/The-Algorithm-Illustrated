@@ -1,8 +1,9 @@
 ---
-name: "Mediator(メディエーター)"
-category: "デザインパターン"
-complexity: "振る舞いに関するパターン"
-summary: "オブジェクト同士を直接やりとりさせず、仲介役に集約することで結合度を下げる。"
+name: Mediator(メディエーター)
+category: デザインパターン
+subcategory: 振る舞い
+complexity: 振る舞いに関するパターン
+summary: オブジェクト同士を直接やりとりさせず、仲介役に集約することで結合度を下げる。
 ---
 ## 概要
 

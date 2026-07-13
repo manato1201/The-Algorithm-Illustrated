@@ -1,8 +1,9 @@
 ---
-name: "Burrows-Wheeler変換(BWT)"
-category: "文字列"
-complexity: "O(n log n)"
-summary: "文字列を可逆的に並べ替えて同じ文字を隣接させ、圧縮しやすい形に変換する。bzip2の中核技術。"
+name: Burrows-Wheeler変換(BWT)
+category: 文字列
+subcategory: 接尾辞構造
+complexity: O(n log n)
+summary: 文字列を可逆的に並べ替えて同じ文字を隣接させ、圧縮しやすい形に変換する。bzip2の中核技術。
 ---
 
 ## 概要

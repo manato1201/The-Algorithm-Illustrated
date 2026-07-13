@@ -1,8 +1,9 @@
 ---
-name: "ボロノイ図"
-category: "計算幾何"
-complexity: "O(n log n)"
-summary: "各点に最も近い領域で平面を分割する。ドロネー三角形分割と双対の関係にある。"
+name: ボロノイ図
+category: 計算幾何
+subcategory: 三角形分割・分割図
+complexity: O(n log n)
+summary: 各点に最も近い領域で平面を分割する。ドロネー三角形分割と双対の関係にある。
 ---
 
 ## 概要

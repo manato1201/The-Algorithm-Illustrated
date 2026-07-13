@@ -1,8 +1,9 @@
 ---
-name: "Template Method(テンプレートメソッド)"
-category: "デザインパターン"
-complexity: "振る舞いに関するパターン"
-summary: "処理の骨格を親クラスに固定し、可変部分だけをサブクラスに実装させる。"
+name: Template Method(テンプレートメソッド)
+category: デザインパターン
+subcategory: 振る舞い
+complexity: 振る舞いに関するパターン
+summary: 処理の骨格を親クラスに固定し、可変部分だけをサブクラスに実装させる。
 ---
 ## 概要
 

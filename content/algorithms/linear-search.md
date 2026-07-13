@@ -1,8 +1,9 @@
 ---
-name: "線形探索"
-category: "探索"
-complexity: "O(n)"
-summary: "先頭から順に調べる最も単純な探索。前処理不要でどんなデータにも使える。"
+name: 線形探索
+category: 探索
+subcategory: 配列探索
+complexity: O(n)
+summary: 先頭から順に調べる最も単純な探索。前処理不要でどんなデータにも使える。
 ---
 
 ## 概要

@@ -1,8 +1,9 @@
 ---
-name: "接尾辞オートマトン"
-category: "文字列"
-complexity: "O(n)"
-summary: "全ての部分文字列の出現を線形サイズのオートマトンで表現する、文字列処理の圧縮表現。"
+name: 接尾辞オートマトン
+category: 文字列
+subcategory: 接尾辞構造
+complexity: O(n)
+summary: 全ての部分文字列の出現を線形サイズのオートマトンで表現する、文字列処理の圧縮表現。
 ---
 
 ## 概要

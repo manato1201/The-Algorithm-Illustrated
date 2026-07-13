@@ -1,8 +1,9 @@
 ---
-name: "カーンのアルゴリズム(トポロジカルソート)"
-category: "グラフ"
-complexity: "O(V + E)"
-summary: "入次数0の頂点から順に取り除いていく、DFSを使わないトポロジカルソートの実装。"
+name: カーンのアルゴリズム(トポロジカルソート)
+category: グラフ
+subcategory: 連結性・順序
+complexity: O(V + E)
+summary: 入次数0の頂点から順に取り除いていく、DFSを使わないトポロジカルソートの実装。
 ---
 
 ## 概要

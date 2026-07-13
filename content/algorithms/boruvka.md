@@ -1,8 +1,9 @@
 ---
-name: "ボルーフカ法"
-category: "グラフ"
-complexity: "O(E log V)"
-summary: "各連結成分から最も安い辺を同時に選び続ける、並列化しやすい最小全域木アルゴリズム。"
+name: ボルーフカ法
+category: グラフ
+subcategory: 最小全域木
+complexity: O(E log V)
+summary: 各連結成分から最も安い辺を同時に選び続ける、並列化しやすい最小全域木アルゴリズム。
 ---
 
 ## 概要

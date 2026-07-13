@@ -1,8 +1,9 @@
 ---
-name: "ライフゲーム(Conway's Game of Life)"
-category: "シミュレーション・群知能"
-complexity: "O(セル数)(1世代)"
-summary: "生死2状態と近傍数だけの単純な規則から、グライダーのような自己組織化パターンが生まれるセル・オートマトンの代表例。"
+name: ライフゲーム(Conway's Game of Life)
+category: シミュレーション・群知能
+subcategory: セルオートマトン
+complexity: O(セル数)(1世代)
+summary: 生死2状態と近傍数だけの単純な規則から、グライダーのような自己組織化パターンが生まれるセル・オートマトンの代表例。
 ---
 
 ## 概要

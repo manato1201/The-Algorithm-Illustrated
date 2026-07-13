@@ -1,8 +1,9 @@
 ---
-name: "タージャンの強連結成分分解"
-category: "グラフ"
-complexity: "O(V + E)"
-summary: "1回のDFSで有向グラフの強連結成分をすべて求める。"
+name: タージャンの強連結成分分解
+category: グラフ
+subcategory: 連結性・順序
+complexity: O(V + E)
+summary: 1回のDFSで有向グラフの強連結成分をすべて求める。
 ---
 
 ## 概要

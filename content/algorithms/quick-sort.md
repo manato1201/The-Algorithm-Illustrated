@@ -1,8 +1,9 @@
 ---
-name: "クイックソート"
-category: "ソート"
-complexity: "O(n log n)"
-summary: "ピボットを軸に分割統治する。平均は非常に高速だが、ピボット選択次第で最悪ケースに落ち込む。"
+name: クイックソート
+category: ソート
+subcategory: 比較ベース
+complexity: O(n log n)
+summary: ピボットを軸に分割統治する。平均は非常に高速だが、ピボット選択次第で最悪ケースに落ち込む。
 ---
 
 ## 概要

@@ -1,8 +1,9 @@
 ---
-name: "ランレングス符号化(RLE)"
-category: "文字列"
-complexity: "O(n)"
-summary: "同じ値の連続をその値と回数の組に置き換える、最も単純な可逆圧縮。"
+name: ランレングス符号化(RLE)
+category: 文字列
+subcategory: 回文・圧縮その他
+complexity: O(n)
+summary: 同じ値の連続をその値と回数の組に置き換える、最も単純な可逆圧縮。
 ---
 
 ## 概要

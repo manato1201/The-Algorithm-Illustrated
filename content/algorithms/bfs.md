@@ -1,8 +1,9 @@
 ---
-name: "幅優先探索(BFS)"
-category: "探索"
-complexity: "O(V + E)"
-summary: "近い頂点から順に探索し、重みなしグラフでの最短経路を保証する。"
+name: 幅優先探索(BFS)
+category: 探索
+subcategory: グラフ・経路探索
+complexity: O(V + E)
+summary: 近い頂点から順に探索し、重みなしグラフでの最短経路を保証する。
 ---
 
 ## 概要

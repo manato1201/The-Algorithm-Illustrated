@@ -1,8 +1,9 @@
 ---
-name: "プリム法"
-category: "グラフ"
-complexity: "O(E log V)"
-summary: "頂点を1つずつ広げながら最小全域木を構築する。"
+name: プリム法
+category: グラフ
+subcategory: 最小全域木
+complexity: O(E log V)
+summary: 頂点を1つずつ広げながら最小全域木を構築する。
 ---
 
 ## 概要

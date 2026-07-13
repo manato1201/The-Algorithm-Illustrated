@@ -1,8 +1,9 @@
 ---
-name: "トポロジカルソート"
-category: "グラフ"
-complexity: "O(V + E)"
-summary: "依存関係のあるタスクを実行可能な順序に並べる。DAG(有向非巡回グラフ)にのみ適用できる。"
+name: トポロジカルソート
+category: グラフ
+subcategory: 連結性・順序
+complexity: O(V + E)
+summary: 依存関係のあるタスクを実行可能な順序に並べる。DAG(有向非巡回グラフ)にのみ適用できる。
 ---
 
 ## 概要

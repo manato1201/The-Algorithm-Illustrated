@@ -1,8 +1,9 @@
 ---
-name: "巡回セールスマン問題(ビットDP)"
-category: "動的計画法"
-complexity: "O(2ⁿ・n²)"
-summary: "訪問済み集合をビットで表現し状態数を抑える、古典的なDP高速化テクニック。"
+name: 巡回セールスマン問題(ビットDP)
+category: 動的計画法
+subcategory: ナップサック・組合せ最適化
+complexity: O(2ⁿ・n²)
+summary: 訪問済み集合をビットで表現し状態数を抑える、古典的なDP高速化テクニック。
 ---
 
 ## 概要

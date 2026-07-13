@@ -1,8 +1,9 @@
 ---
-name: "LRUキャッシュ"
-category: "データ構造"
-complexity: "O(1)"
-summary: "ハッシュマップと双方向リストを組み合わせ、最も使われていないデータを定数時間で追い出す。"
+name: LRUキャッシュ
+category: データ構造
+subcategory: 確率的・キャッシュ構造
+complexity: O(1)
+summary: ハッシュマップと双方向リストを組み合わせ、最も使われていないデータを定数時間で追い出す。
 ---
 
 ## 概要

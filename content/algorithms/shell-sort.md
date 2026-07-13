@@ -1,8 +1,9 @@
 ---
-name: "シェルソート"
-category: "ソート"
-complexity: "O(n log n) 〜 O(n²)"
-summary: "挿入ソートを間隔を空けて繰り返し適用し、徐々に間隔を詰めていく改良版。"
+name: シェルソート
+category: ソート
+subcategory: 比較ベース
+complexity: O(n log n) 〜 O(n²)
+summary: 挿入ソートを間隔を空けて繰り返し適用し、徐々に間隔を詰めていく改良版。
 ---
 
 ## 概要

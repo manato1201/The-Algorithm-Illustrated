@@ -1,8 +1,9 @@
 ---
-name: "中国剰余定理(CRT)"
-category: "数論・暗号"
-complexity: "O(log n)"
-summary: "複数の合同式から元の値を復元する。RSA復号の高速化にも応用される。"
+name: 中国剰余定理(CRT)
+category: 数論・暗号
+subcategory: 合同算術・剰余系
+complexity: O(log n)
+summary: 複数の合同式から元の値を復元する。RSA復号の高速化にも応用される。
 ---
 
 ## 概要

@@ -1,8 +1,9 @@
 ---
-name: "TF-IDF"
-category: "情報検索・ランキング"
-complexity: "O(語彙数)"
-summary: "単語の出現頻度(TF)と、その単語がどれだけ珍しいか(IDF)を掛け合わせて重要度を数値化する。"
+name: TF-IDF
+category: 情報検索・ランキング
+subcategory: スコアリング
+complexity: O(語彙数)
+summary: 単語の出現頻度(TF)と、その単語がどれだけ珍しいか(IDF)を掛け合わせて重要度を数値化する。
 ---
 
 ## 概要

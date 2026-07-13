@@ -1,8 +1,9 @@
 ---
-name: "赤黒木"
-category: "データ構造"
-complexity: "O(log n)"
-summary: "色と回転規則で自己平衡を保つ二分探索木。多くの言語の標準ライブラリの内部実装に採用されている。"
+name: 赤黒木
+category: データ構造
+subcategory: 木構造
+complexity: O(log n)
+summary: 色と回転規則で自己平衡を保つ二分探索木。多くの言語の標準ライブラリの内部実装に採用されている。
 ---
 
 ## 概要

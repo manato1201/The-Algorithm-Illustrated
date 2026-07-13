@@ -1,8 +1,9 @@
 ---
-name: "フロイドの循環検出法(Tortoise and Hare)"
-category: "グラフ"
-complexity: "O(n)"
-summary: "遅いポインタと速いポインタを使い、追加メモリなしで連結リストやシーケンスの循環を検出する。"
+name: フロイドの循環検出法(Tortoise and Hare)
+category: グラフ
+subcategory: 連結性・順序
+complexity: O(n)
+summary: 遅いポインタと速いポインタを使い、追加メモリなしで連結リストやシーケンスの循環を検出する。
 ---
 
 ## 概要

@@ -1,8 +1,9 @@
 ---
-name: "行列連鎖積(区間DP)"
-category: "動的計画法"
-complexity: "O(n³)"
-summary: "行列の掛け算の順序を工夫することで、総計算量を最小化する。"
+name: 行列連鎖積(区間DP)
+category: 動的計画法
+subcategory: 区間分割DP
+complexity: O(n³)
+summary: 行列の掛け算の順序を工夫することで、総計算量を最小化する。
 ---
 
 ## 概要

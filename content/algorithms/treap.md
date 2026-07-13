@@ -1,8 +1,9 @@
 ---
-name: "トリープ(Treap)"
-category: "データ構造"
-complexity: "O(log n)(期待値)"
-summary: "各ノードにランダムな優先度を持たせ、二分探索木の順序とヒープの優先度を同時に満たすことで平衡を確率的に保証する。"
+name: トリープ(Treap)
+category: データ構造
+subcategory: 木構造
+complexity: O(log n)(期待値)
+summary: 各ノードにランダムな優先度を持たせ、二分探索木の順序とヒープの優先度を同時に満たすことで平衡を確率的に保証する。
 ---
 
 ## 概要

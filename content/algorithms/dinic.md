@@ -1,8 +1,9 @@
 ---
-name: "ディニッツ法"
-category: "グラフ"
-complexity: "O(V²E)"
-summary: "レベルグラフとブロッキングフローを使い、最大フローを高速に求める。"
+name: ディニッツ法
+category: グラフ
+subcategory: 最大流・マッチング
+complexity: O(V²E)
+summary: レベルグラフとブロッキングフローを使い、最大フローを高速に求める。
 ---
 
 ## 概要

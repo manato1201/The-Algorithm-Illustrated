@@ -1,8 +1,9 @@
 ---
-name: "計数ソート(カウンティングソート)"
-category: "ソート"
-complexity: "O(n + k)"
-summary: "値の出現回数を数えて並べる。値域が小さい整数データに強い非比較ソート。"
+name: 計数ソート(カウンティングソート)
+category: ソート
+subcategory: 非比較ベース
+complexity: O(n + k)
+summary: 値の出現回数を数えて並べる。値域が小さい整数データに強い非比較ソート。
 ---
 
 ## 概要

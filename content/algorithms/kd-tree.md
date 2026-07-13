@@ -1,8 +1,9 @@
 ---
-name: "kd木"
-category: "データ構造"
-complexity: "O(log n)(平衡時)"
-summary: "多次元空間を軸ごとに分割する木構造。最近傍探索や範囲検索に使う。"
+name: kd木
+category: データ構造
+subcategory: 空間分割構造
+complexity: O(log n)(平衡時)
+summary: 多次元空間を軸ごとに分割する木構造。最近傍探索や範囲検索に使う。
 ---
 
 ## 概要
