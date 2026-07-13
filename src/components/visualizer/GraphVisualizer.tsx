@@ -157,7 +157,9 @@ export function GraphVisualizer({ algorithmId }: GraphVisualizerProps) {
       if (distance !== undefined) {
         ctx.fillStyle = color;
         ctx.font = "10px var(--font-mono), monospace";
-        ctx.fillText(distance === null ? "∞" : String(distance), x, y + 26);
+        // 下寄りの頂点はラベルがcanvas下端からはみ出るため、その場合は上に描く(見切れ防止)。
+        const labelBelow = y + 26 <= height - 4;
+        ctx.fillText(distance === null ? "∞" : String(distance), x, labelBelow ? y + 26 : y - 22);
         ctx.font = "11px var(--font-mono), monospace";
       }
     }

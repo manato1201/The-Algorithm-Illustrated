@@ -1,4 +1,4 @@
-import { SHORTEST_PATH_EDGES, SHORTEST_PATH_NODES } from "./graph-visualizers";
+import { SHORTEST_PATH_EDGES, SHORTEST_PATH_NODES } from "./graph-visualizers.ts";
 
 export type DPCellState = "idle" | "comparing" | "pivot" | "settled";
 
