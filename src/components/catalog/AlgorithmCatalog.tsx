@@ -4,7 +4,10 @@ import { useMemo, useState } from "react";
 import Link from "next/link";
 import styles from "./AlgorithmCatalog.module.css";
 import { ComplexityBadge } from "@/components/hud/ComplexityBadge";
-import { CATEGORY_ORDER, SUBCATEGORIES_BY_CATEGORY } from "@/lib/algorithm-categories";
+import {
+  CATEGORY_ORDER,
+  SUBCATEGORIES_BY_CATEGORY,
+} from "@/lib/algorithm-categories";
 import type { AlgorithmMeta } from "@/lib/content/algorithms";
 
 type AlgorithmCatalogProps = {
@@ -24,10 +27,18 @@ export function AlgorithmCatalog({
 }: AlgorithmCatalogProps) {
   const [query, setQuery] = useState("");
   const [activeCategory, setActiveCategory] = useState<string | null>(null);
-  const [activeSubcategory, setActiveSubcategory] = useState<string | null>(null);
+  const [activeSubcategory, setActiveSubcategory] = useState<string | null>(
+    null,
+  );
+  const [visualizedOnly, setVisualizedOnly] = useState(false);
   const trimmedQuery = query.trim().toLowerCase();
   const isSearching = trimmedQuery.length > 0;
-  const isFiltering = isSearching || activeCategory !== null;
+  const isFiltering = isSearching || activeCategory !== null || visualizedOnly;
+
+  const visualizedCount = useMemo(
+    () => algorithms.reduce((count, a) => count + (a.hasVisualizer ? 1 : 0), 0),
+    [algorithms],
+  );
 
   const featured = algorithms.find((a) => a.id === featuredId) ?? algorithms[0];
 
@@ -44,7 +55,10 @@ export function AlgorithmCatalog({
     if (!activeCategory) return counts;
     for (const algorithm of algorithms) {
       if (algorithm.category !== activeCategory) continue;
-      counts.set(algorithm.subcategory, (counts.get(algorithm.subcategory) ?? 0) + 1);
+      counts.set(
+        algorithm.subcategory,
+        (counts.get(algorithm.subcategory) ?? 0) + 1,
+      );
     }
     return counts;
   }, [algorithms, activeCategory]);
@@ -55,32 +69,49 @@ export function AlgorithmCatalog({
   };
 
   const handleSubcategoryClick = (subcategory: string) => {
-    setActiveSubcategory((current) => (current === subcategory ? null : subcategory));
+    setActiveSubcategory((current) =>
+      current === subcategory ? null : subcategory,
+    );
   };
 
   const filteredResults = useMemo(() => {
     if (!isFiltering) return [];
     return algorithms.filter((algorithm) => {
       if (activeCategory && algorithm.category !== activeCategory) return false;
-      if (activeSubcategory && algorithm.subcategory !== activeSubcategory) return false;
+      if (activeSubcategory && algorithm.subcategory !== activeSubcategory)
+        return false;
+      if (visualizedOnly && !algorithm.hasVisualizer) return false;
       if (
         trimmedQuery &&
-        ![algorithm.name, algorithm.category, algorithm.subcategory, algorithm.summary].some(
-          (field) => field.toLowerCase().includes(trimmedQuery),
-        )
+        ![
+          algorithm.name,
+          algorithm.category,
+          algorithm.subcategory,
+          algorithm.summary,
+        ].some((field) => field.toLowerCase().includes(trimmedQuery))
       ) {
         return false;
       }
       return true;
     });
-  }, [algorithms, activeCategory, activeSubcategory, trimmedQuery, isFiltering]);
+  }, [
+    algorithms,
+    activeCategory,
+    activeSubcategory,
+    visualizedOnly,
+    trimmedQuery,
+    isFiltering,
+  ]);
 
   const filterLabelParts: string[] = [];
   if (activeCategory) {
     filterLabelParts.push(
-      activeSubcategory ? `${activeCategory} ・ ${activeSubcategory}` : activeCategory,
+      activeSubcategory
+        ? `${activeCategory} ・ ${activeSubcategory}`
+        : activeCategory,
     );
   }
+  if (visualizedOnly) filterLabelParts.push("可視化対応のみ");
   if (isSearching) filterLabelParts.push(`「${query}」`);
   const filterLabel = filterLabelParts.join(" ／ ");
 
@@ -134,7 +165,11 @@ export function AlgorithmCatalog({
           />
         </form>
 
-        <div className={styles.chipRow} role="group" aria-label="カテゴリで絞り込む">
+        <div
+          className={styles.chipRow}
+          role="group"
+          aria-label="カテゴリで絞り込む"
+        >
           <button
             type="button"
             className={`${styles.chip} ${activeCategory === null ? styles.chipActive : ""}`}
@@ -146,24 +181,30 @@ export function AlgorithmCatalog({
           >
             すべて
           </button>
-          {CATEGORY_ORDER.filter((category) => categoryCounts.has(category)).map(
-            (category) => (
-              <button
-                key={category}
-                type="button"
-                className={`${styles.chip} ${activeCategory === category ? styles.chipActive : ""}`}
-                aria-pressed={activeCategory === category}
-                onClick={() => handleCategoryClick(category)}
-              >
-                {category}
-                <span className={styles.chipCount}>{categoryCounts.get(category)}</span>
-              </button>
-            ),
-          )}
+          {CATEGORY_ORDER.filter((category) =>
+            categoryCounts.has(category),
+          ).map((category) => (
+            <button
+              key={category}
+              type="button"
+              className={`${styles.chip} ${activeCategory === category ? styles.chipActive : ""}`}
+              aria-pressed={activeCategory === category}
+              onClick={() => handleCategoryClick(category)}
+            >
+              {category}
+              <span className={styles.chipCount}>
+                {categoryCounts.get(category)}
+              </span>
+            </button>
+          ))}
         </div>
 
         {activeCategory ? (
-          <div className={styles.chipRow} role="group" aria-label="サブカテゴリで絞り込む">
+          <div
+            className={styles.chipRow}
+            role="group"
+            aria-label="サブカテゴリで絞り込む"
+          >
             {(SUBCATEGORIES_BY_CATEGORY[activeCategory] ?? [])
               .filter((subcategory) => subcategoryCounts.has(subcategory))
               .map((subcategory) => (
@@ -175,11 +216,30 @@ export function AlgorithmCatalog({
                   onClick={() => handleSubcategoryClick(subcategory)}
                 >
                   {subcategory}
-                  <span className={styles.chipCount}>{subcategoryCounts.get(subcategory)}</span>
+                  <span className={styles.chipCount}>
+                    {subcategoryCounts.get(subcategory)}
+                  </span>
                 </button>
               ))}
           </div>
         ) : null}
+
+        <div
+          className={styles.chipRow}
+          role="group"
+          aria-label="可視化対応で絞り込む"
+        >
+          <button
+            type="button"
+            className={`${styles.chip} ${styles.chipVisualized} ${visualizedOnly ? styles.chipActive : ""}`}
+            aria-pressed={visualizedOnly}
+            onClick={() => setVisualizedOnly((current) => !current)}
+          >
+            <span className={styles.chipVisualizedDot} aria-hidden="true" />
+            可視化対応のみ
+            <span className={styles.chipCount}>{visualizedCount}</span>
+          </button>
+        </div>
       </section>
 
       {isFiltering ? (
@@ -221,6 +281,7 @@ export function AlgorithmCatalog({
                   {featured.category} ・ {featured.subcategory}
                 </span>
                 <ComplexityBadge notation={featured.complexity} />
+                {featured.hasVisualizer ? <VisualizedBadge /> : null}
               </div>
               <h3 className={styles.featuredName}>{featured.name}</h3>
               <p className={styles.featuredDesc}>{featured.summary}</p>
@@ -268,8 +329,19 @@ function AlgorithmRow({
           </span>
         ) : null}
         <ComplexityBadge notation={algorithm.complexity} />
+        {algorithm.hasVisualizer ? <VisualizedBadge /> : null}
       </Link>
       <p className={styles.listSummary}>{algorithm.summary}</p>
     </li>
+  );
+}
+
+/** 可視化対応済みであることを示す小さなバッジ。ui-design.mdの「green=確定済み」の用途分離ルールに従う。 */
+function VisualizedBadge() {
+  return (
+    <span className={styles.visualizedBadge} title="このアルゴリズムは可視化対応済みです">
+      <span className={styles.visualizedDot} aria-hidden="true" />
+      可視化対応
+    </span>
   );
 }

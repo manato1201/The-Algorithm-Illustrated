@@ -2,6 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import matter from "gray-matter";
 import { marked } from "marked";
+import { hasVisualizer } from "@/lib/has-visualizer";
 
 const CONTENT_DIR = path.join(process.cwd(), "content", "algorithms");
 
@@ -15,6 +16,8 @@ export type AlgorithmFrontmatter = {
 
 export type AlgorithmMeta = AlgorithmFrontmatter & {
   id: string;
+  /** ビルド時に計算する。可視化コンポーネント本体は読み込まず真偽値のみをクライアントへ渡す。 */
+  hasVisualizer: boolean;
 };
 
 export type AlgorithmDetail = AlgorithmMeta & {
@@ -50,7 +53,7 @@ export function getAllAlgorithmsMeta(): AlgorithmMeta[] {
     .map((id) => {
       const parsed = readFrontmatter(id);
       if (!parsed) return null;
-      return { id, ...parsed.frontmatter };
+      return { id, ...parsed.frontmatter, hasVisualizer: hasVisualizer(id) };
     })
     .filter((meta): meta is AlgorithmMeta => meta !== null);
 }
@@ -62,6 +65,7 @@ export function getAlgorithmDetail(id: string): AlgorithmDetail | null {
   return {
     id,
     ...parsed.frontmatter,
+    hasVisualizer: hasVisualizer(id),
     bodyHtml: marked.parse(parsed.content, { async: false }) as string,
   };
 }
