@@ -364,6 +364,162 @@ export function aStarSteps(): GridFrame[] {
 }
 
 /**
+ * 貪欲最良優先探索(Greedy Best-First Search)のステップ列を生成する。
+ * A*探索と違い、スタートからの実コストgを一切追跡せず、ゴールまでの推定距離hだけで
+ * 次に展開するマスを選ぶ。最短経路を保証しないが、実装がシンプルで高速に探索できる。
+ */
+export function bestFirstSearchSteps(): GridFrame[] {
+  const grid = buildInitialGrid();
+  const frames: GridFrame[] = [{ cellStates: cloneGrid(grid), description: "初期状態(貪欲最良優先探索: hだけを見て進む)" }];
+  const parent = new Map<string, string>();
+  const visited = new Set<string>([key(START[0], START[1])]);
+  const queue: [number, number][] = [START];
+
+  let found = false;
+  while (queue.length > 0 && !found) {
+    queue.sort((a, b) => heuristic(...a) - heuristic(...b));
+    const [r, c] = queue.shift()!;
+    if (grid[r][c] !== "start" && grid[r][c] !== "goal") {
+      grid[r][c] = "visited";
+    }
+    frames.push({
+      cellStates: cloneGrid(grid),
+      description: `(${r + 1}, ${c + 1}) をh=${heuristic(r, c)}(ゴールまでの推定距離)で選択`,
+    });
+
+    if (r === GOAL[0] && c === GOAL[1]) {
+      found = true;
+      break;
+    }
+
+    const neighbors: [number, number][] = [
+      [r - 1, c],
+      [r + 1, c],
+      [r, c - 1],
+      [r, c + 1],
+    ];
+    for (const [nr, nc] of neighbors) {
+      if (!inBounds(nr, nc) || isWall(nr, nc) || visited.has(key(nr, nc))) continue;
+      visited.add(key(nr, nc));
+      parent.set(key(nr, nc), key(r, c));
+      if (grid[nr][nc] !== "goal") grid[nr][nc] = "frontier";
+      queue.push([nr, nc]);
+    }
+    frames.push({
+      cellStates: cloneGrid(grid),
+      description: `隣接マスをヒューリスティックのみで評価しキューに追加(キュー内 ${queue.length}件)`,
+    });
+  }
+
+  if (found) {
+    reconstructPath(grid, frames, parent);
+  }
+
+  frames.push({
+    cellStates: cloneGrid(grid),
+    description: found ? "探索完了(経路を発見。最短とは限らない)" : "探索完了(経路が見つかりませんでした)",
+  });
+
+  return frames;
+}
+
+/**
+ * 双方向探索のステップ列を生成する。スタートとゴールの双方から同時にBFSを1段階ずつ交互に進め、
+ * 双方の探索済み集合が最初に重なった地点(出会いの地点)を経由して経路を復元する。
+ * 単方向BFSが探索する頂点数が「半径rの円」1つに近似されるのに対し、双方向探索は
+ * 「半径r/2の円」2つ分で済むため、指数的に成長する探索空間では大幅な削減になる。
+ */
+export function bidirectionalSearchSteps(): GridFrame[] {
+  const grid = buildInitialGrid();
+  const frames: GridFrame[] = [
+    { cellStates: cloneGrid(grid), description: "初期状態(双方向探索: スタートとゴールから同時にBFS)" },
+  ];
+
+  const startKey = key(START[0], START[1]);
+  const goalKey = key(GOAL[0], GOAL[1]);
+  const visitedF = new Set<string>([startKey]);
+  const visitedB = new Set<string>([goalKey]);
+  const parentF = new Map<string, string>();
+  const parentB = new Map<string, string>();
+  let queueF: [number, number][] = [START];
+  let queueB: [number, number][] = [GOAL];
+  let meetKey: string | null = null;
+
+  const expand = (
+    queue: [number, number][],
+    visited: Set<string>,
+    otherVisited: Set<string>,
+    parent: Map<string, string>,
+    label: string,
+  ): [number, number][] => {
+    const nextQueue: [number, number][] = [];
+    for (const [r, c] of queue) {
+      const neighbors: [number, number][] = [
+        [r - 1, c],
+        [r + 1, c],
+        [r, c - 1],
+        [r, c + 1],
+      ];
+      for (const [nr, nc] of neighbors) {
+        const nk = key(nr, nc);
+        if (!inBounds(nr, nc) || isWall(nr, nc) || visited.has(nk)) continue;
+        visited.add(nk);
+        parent.set(nk, key(r, c));
+        if (grid[nr][nc] !== "start" && grid[nr][nc] !== "goal") grid[nr][nc] = "frontier";
+        nextQueue.push([nr, nc]);
+        if (otherVisited.has(nk) && !meetKey) meetKey = nk;
+      }
+    }
+    frames.push({
+      cellStates: cloneGrid(grid),
+      description: `${label}側から1段階拡張(新たに${nextQueue.length}マス)`,
+    });
+    return nextQueue;
+  };
+
+  while (queueF.length > 0 && queueB.length > 0 && !meetKey) {
+    queueF = expand(queueF, visitedF, visitedB, parentF, "スタート");
+    if (meetKey) break;
+    queueB = expand(queueB, visitedB, visitedF, parentB, "ゴール");
+  }
+
+  if (meetKey) {
+    const forwardPath: string[] = [];
+    let cur: string | undefined = meetKey;
+    while (cur && cur !== startKey) {
+      forwardPath.push(cur);
+      cur = parentF.get(cur);
+    }
+    forwardPath.push(startKey);
+    forwardPath.reverse();
+
+    const backwardPath: string[] = [];
+    cur = meetKey;
+    while (cur && cur !== goalKey) {
+      cur = parentB.get(cur);
+      if (cur) backwardPath.push(cur);
+    }
+
+    const fullPath = [...forwardPath, ...backwardPath];
+    for (const p of fullPath) {
+      const [r, c] = p.split(",").map(Number);
+      if (grid[r][c] !== "start" && grid[r][c] !== "goal") grid[r][c] = "path";
+    }
+    frames.push({
+      cellStates: cloneGrid(grid),
+      description: "両側の探索が出会い、経路を復元",
+    });
+  }
+
+  frames.push({
+    cellStates: cloneGrid(grid),
+    description: meetKey ? "探索完了(スタート側とゴール側が出会った)" : "探索完了(経路が見つかりませんでした)",
+  });
+
+  return frames;
+}
+
+/**
  * 反復深化深さ優先探索(IDDFS)のステップ列を生成する。深さ制限0から始め、
  * 制限付きDFSでゴールが見つからなければ制限を1つ増やしてやり直す、を繰り返す。
  * 同じ浅い部分を毎回再探索する無駄はあるものの、BFSのような「全頂点を記憶するメモリ」を
@@ -550,4 +706,6 @@ export const PATHFINDING_VISUALIZERS: Record<string, () => GridFrame[]> = {
   iddfs: iddfsSteps,
   "conways-game-of-life": conwaysGameOfLifeSteps,
   "langtons-ant": langtonsAntSteps,
+  "best-first-search": bestFirstSearchSteps,
+  "bidirectional-search": bidirectionalSearchSteps,
 };

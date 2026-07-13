@@ -309,6 +309,69 @@ export function exponentialSearchSteps(): SearchFrame[] {
   return frames;
 }
 
+/**
+ * ギャロッピング探索。指数探索と同一の手法(範囲を1,2,4,8...と倍々に広げて対象を跨ぐ区間を特定し、
+ * その区間だけ二分探索する)だが、「馬が大股で駆けていく」という名前の由来を意識した説明にしている。
+ */
+export function gallopingSearchSteps(): SearchFrame[] {
+  const array = SEARCH_ARRAY;
+  const target = SEARCH_TARGET;
+  const n = array.length;
+  const frames: SearchFrame[] = [
+    frame(array, {}, `初期状態(検索対象: ${target})`),
+  ];
+
+  if (array[0] === target) {
+    frames.push(frame(array, { 0: "settled" }, `値${target}を1番目で発見`));
+    return frames;
+  }
+
+  let bound = 1;
+  while (bound < n && array[bound] <= target) {
+    frames.push(
+      frame(
+        array,
+        { [bound]: "comparing" },
+        `ギャロップ: 範囲を2倍(${bound + 1}番目、値${array[bound]})に拡大しながら跨ぐ区間を探す`,
+      ),
+    );
+    bound *= 2;
+  }
+
+  let low = Math.floor(bound / 2);
+  let high = Math.min(bound, n - 1);
+  frames.push(
+    frame(
+      array,
+      { [low]: "pivot", [high]: "pivot" },
+      `対象を跨ぐ区間[${low + 1}, ${high + 1}]を特定、二分探索に切り替え`,
+    ),
+  );
+
+  while (low <= high) {
+    const mid = Math.floor((low + high) / 2);
+    frames.push(
+      frame(
+        array,
+        { [mid]: "pivot" },
+        `二分探索: ${mid + 1}番目(値${array[mid]})を検査`,
+      ),
+    );
+    if (array[mid] === target) {
+      frames.push(
+        frame(array, { [mid]: "settled" }, `値${target}を${mid + 1}番目で発見`),
+      );
+      return frames;
+    } else if (array[mid] < target) {
+      low = mid + 1;
+    } else {
+      high = mid - 1;
+    }
+  }
+  frames.push(frame(array, {}, `値${target}は見つかりませんでした`));
+  return frames;
+}
+
 /** フィボナッチ探索。二分探索と似ているが、除算ではなくフィボナッチ数の加減算だけで分割位置を求める。 */
 export function fibonacciSearchSteps(): SearchFrame[] {
   const array = SEARCH_ARRAY;
@@ -1228,6 +1291,7 @@ export const SEARCH_VISUALIZERS: Record<string, () => SearchFrame[]> = {
   "linear-search": linearSearchSteps,
   "binary-search": binarySearchSteps,
   "ternary-search": ternarySearchSteps,
+  "galloping-search": gallopingSearchSteps,
   "jump-search": jumpSearchSteps,
   "interpolation-search": interpolationSearchSteps,
   "exponential-search": exponentialSearchSteps,
