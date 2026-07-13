@@ -363,9 +363,191 @@ export function aStarSteps(): GridFrame[] {
   return frames;
 }
 
+/**
+ * 反復深化深さ優先探索(IDDFS)のステップ列を生成する。深さ制限0から始め、
+ * 制限付きDFSでゴールが見つからなければ制限を1つ増やしてやり直す、を繰り返す。
+ * 同じ浅い部分を毎回再探索する無駄はあるものの、BFSのような「全頂点を記憶するメモリ」を
+ * 使わずにDFSの省メモリ性を保ったまま、BFSと同じ「最短距離での発見」を保証できる
+ * (深さ優先探索とその都度の深さ制限の組み合わせが名前の由来)。
+ */
+export function iddfsSteps(): GridFrame[] {
+  const frames: GridFrame[] = [{ cellStates: cloneGrid(buildInitialGrid()), description: "反復深化深さ優先探索(IDDFS)を開始" }];
+  let found = false;
+  let finalGrid = buildInitialGrid();
+  let finalParent = new Map<string, string>();
+
+  for (let depthLimit = 0; !found && depthLimit <= MAZE_ROWS * MAZE_COLS; depthLimit++) {
+    const grid = buildInitialGrid();
+    const visited = new Set<string>();
+    const parent = new Map<string, string>();
+    frames.push({ cellStates: cloneGrid(grid), description: `深さ制限=${depthLimit}で深さ制限付きDFSを開始` });
+
+    const visit = (r: number, c: number, depth: number): boolean => {
+      visited.add(key(r, c));
+      if (grid[r][c] !== "start" && grid[r][c] !== "goal") grid[r][c] = "visited";
+      frames.push({ cellStates: cloneGrid(grid), description: `(${r + 1}, ${c + 1})を探索(深さ${depth}/${depthLimit})` });
+
+      if (r === GOAL[0] && c === GOAL[1]) return true;
+      if (depth >= depthLimit) return false;
+
+      const neighbors: [number, number][] = [
+        [r - 1, c],
+        [r + 1, c],
+        [r, c - 1],
+        [r, c + 1],
+      ];
+      for (const [nr, nc] of neighbors) {
+        if (!inBounds(nr, nc) || isWall(nr, nc) || visited.has(key(nr, nc))) continue;
+        parent.set(key(nr, nc), key(r, c));
+        if (visit(nr, nc, depth + 1)) return true;
+      }
+      return false;
+    };
+
+    found = visit(START[0], START[1], 0);
+    if (found) {
+      finalGrid = grid;
+      finalParent = parent;
+    } else {
+      frames.push({ cellStates: cloneGrid(grid), description: `深さ制限=${depthLimit}ではゴールに届かず。制限を1増やして最初からやり直す` });
+    }
+  }
+
+  if (found) {
+    reconstructPath(finalGrid, frames, finalParent);
+  }
+
+  frames.push({
+    cellStates: cloneGrid(finalGrid),
+    description: found ? "探索完了(最短経路を発見)" : "探索完了(経路が見つかりませんでした)",
+  });
+
+  return frames;
+}
+
+export const LIFE_ROWS = 12;
+export const LIFE_COLS = 12;
+export const LIFE_GENERATIONS = 8;
+/** グライダーパターン(4世代ごとに右下へ1マスずつ移動しながら形を保つ、最も有名な「移動する」パターン)。 */
+const LIFE_GLIDER: [number, number][] = [
+  [0, 1],
+  [1, 2],
+  [2, 0],
+  [2, 1],
+  [2, 2],
+];
+
+function buildLifeGrid(): GridCellState[][] {
+  const grid: GridCellState[][] = Array.from({ length: LIFE_ROWS }, () => Array<GridCellState>(LIFE_COLS).fill("idle"));
+  LIFE_GLIDER.forEach(([r, c]) => {
+    grid[r][c] = "visited";
+  });
+  return grid;
+}
+
+function lifeCountAliveNeighbors(grid: GridCellState[][], r: number, c: number): number {
+  let count = 0;
+  for (let dr = -1; dr <= 1; dr++) {
+    for (let dc = -1; dc <= 1; dc++) {
+      if (dr === 0 && dc === 0) continue;
+      const nr = r + dr;
+      const nc = c + dc;
+      if (nr >= 0 && nr < LIFE_ROWS && nc >= 0 && nc < LIFE_COLS && grid[nr][nc] === "visited") count++;
+    }
+  }
+  return count;
+}
+
+/**
+ * ライフゲーム(コンウェイのライフゲーム)のステップ列を生成する。各セルは生/死の2状態を持ち、
+ * 「生きたセルは隣接する生きたセルが2つか3つならそのまま生存、それ以外は死ぬ」
+ * 「死んだセルは隣接する生きたセルがちょうど3つなら誕生する」という単純な2つの規則だけを
+ * 全マスに同時適用し続けることで、静止パターン・振動パターン・グライダーのように移動する
+ * パターンなど、驚くほど複雑な振る舞いが自己組織的に生まれる。チューリング完全であることも
+ * 証明されている、セルオートマトンの最も有名な例。
+ */
+export function conwaysGameOfLifeSteps(): GridFrame[] {
+  let grid = buildLifeGrid();
+  const frames: GridFrame[] = [{ cellStates: cloneGrid(grid), description: "初期状態(グライダーパターン)。生きたセル=explored色" }];
+
+  for (let gen = 1; gen <= LIFE_GENERATIONS; gen++) {
+    const next: GridCellState[][] = grid.map((row) => [...row]);
+    for (let r = 0; r < LIFE_ROWS; r++) {
+      for (let c = 0; c < LIFE_COLS; c++) {
+        const alive = grid[r][c] === "visited";
+        const n = lifeCountAliveNeighbors(grid, r, c);
+        next[r][c] = (alive && (n === 2 || n === 3)) || (!alive && n === 3) ? "visited" : "idle";
+      }
+    }
+    grid = next;
+    frames.push({
+      cellStates: cloneGrid(grid),
+      description: `世代${gen}: 生存(隣接2〜3)・誕生(隣接3)のルールを全マスに同時適用`,
+    });
+  }
+
+  frames.push({ cellStates: cloneGrid(grid), description: `計算完了(${LIFE_GENERATIONS}世代経過)` });
+  return frames;
+}
+
+export const ANT_GRID_SIZE = 25;
+export const ANT_STEPS = 60;
+
+/**
+ * ラングトンのアリのステップ列を生成する。1匹のアリが「今いるマスが白なら右に90度回転して
+ * マスを黒に反転、黒なら左に90度回転して白に反転」した後に1マス前進する、というだけの
+ * 単純な規則に従う。最初は無秩序に見える軌跡を描くが、十分な時間が経つと
+ * 「ハイウェイ」と呼ばれる規則的な斜めのパターンへ必ず収束することが知られている
+ * ——単純な局所規則の繰り返しから予測困難な複雑さが生まれる、創発の代表例。
+ */
+export function langtonsAntSteps(): GridFrame[] {
+  const grid: GridCellState[][] = Array.from({ length: ANT_GRID_SIZE }, () => Array<GridCellState>(ANT_GRID_SIZE).fill("idle"));
+  let r = Math.floor(ANT_GRID_SIZE / 2);
+  let c = Math.floor(ANT_GRID_SIZE / 2);
+  let dir = 0;
+  const dr = [-1, 0, 1, 0];
+  const dc = [0, 1, 0, -1];
+
+  const withAnt = (): GridCellState[][] => {
+    const copy = cloneGrid(grid);
+    copy[r][c] = "frontier";
+    return copy;
+  };
+
+  const frames: GridFrame[] = [
+    { cellStates: withAnt(), description: `ラングトンのアリを開始。中央(${r + 1},${c + 1})から上向きでスタート` },
+  ];
+
+  for (let step = 1; step <= ANT_STEPS; step++) {
+    const isWhite = grid[r][c] === "idle";
+    if (isWhite) {
+      dir = (dir + 1) % 4;
+      grid[r][c] = "wall";
+    } else {
+      dir = (dir + 3) % 4;
+      grid[r][c] = "idle";
+    }
+    const nr = r + dr[dir];
+    const nc = c + dc[dir];
+    if (nr < 0 || nr >= ANT_GRID_SIZE || nc < 0 || nc >= ANT_GRID_SIZE) break;
+    r = nr;
+    c = nc;
+    frames.push({
+      cellStates: withAnt(),
+      description: `ステップ${step}: ${isWhite ? "白マスなので右に90度回転しマスを黒に反転" : "黒マスなので左に90度回転しマスを白に反転"}、1マス前進`,
+    });
+  }
+
+  frames.push({ cellStates: cloneGrid(grid), description: `計算完了(${ANT_STEPS}ステップ経過)` });
+  return frames;
+}
+
 export const PATHFINDING_VISUALIZERS: Record<string, () => GridFrame[]> = {
   bfs: bfsSteps,
   dfs: dfsSteps,
   dijkstra: dijkstraSteps,
   "a-star": aStarSteps,
+  iddfs: iddfsSteps,
+  "conways-game-of-life": conwaysGameOfLifeSteps,
+  "langtons-ant": langtonsAntSteps,
 };

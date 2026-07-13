@@ -783,6 +783,89 @@ export function simulatedAnnealingSteps(): SearchFrame[] {
   return frames;
 }
 
+export const TABU_SEARCH_LANDSCAPE = HILL_CLIMBING_LANDSCAPE;
+export const TABU_SEARCH_START = HILL_CLIMBING_START;
+export const TABU_SEARCH_TENURE = 1;
+
+/**
+ * タブーサーチ(禁断探索)のステップ列を生成する。山登り法・焼きなまし法と同じ地形・
+ * 同じ開始位置を使う。両隣のうち「直近訪問した位置(タブーリストに載っている位置)」への
+ * 移動を一定期間禁止し、それ以外で最も高い方へ必ず移動する——改善する保証はない
+ * (時には悪化する移動を強制されることもある)が、直前の位置に後戻りできないことで
+ * 山登り法なら停止してしまう局所最適(高さ12の山)を通り過ぎ、地形の奥にある大域最適
+ * (高さ15)まで到達できることがある。両隣とも移動禁止になった時点で探索を終了する。
+ */
+export function tabuSearchSteps(): SearchFrame[] {
+  const landscape = TABU_SEARCH_LANDSCAPE;
+  const tenure = TABU_SEARCH_TENURE;
+  let pos = TABU_SEARCH_START;
+  let best = pos;
+  const tabuList: number[] = [];
+
+  const frames: SearchFrame[] = [
+    frame(
+      landscape,
+      { [pos]: "pivot" },
+      `タブーサーチを開始。開始位置=${pos}(高さ${landscape[pos]})、タブー期間=${tenure}`,
+    ),
+  ];
+
+  for (;;) {
+    const candidates = [pos - 1, pos + 1].filter(
+      (p) => p >= 0 && p < landscape.length && !tabuList.includes(p),
+    );
+
+    if (candidates.length === 0) {
+      frames.push(
+        frame(
+          landscape,
+          { [pos]: "settled", ...Object.fromEntries(tabuList.map((t) => [t, "swapping" as StateColorKey])) },
+          `両隣とも移動禁止(タブー)または範囲外 → これ以上進めないので停止`,
+        ),
+      );
+      break;
+    }
+
+    const next = candidates.reduce((a, b) => (landscape[b] > landscape[a] ? b : a));
+    const delta = landscape[next] - landscape[pos];
+
+    frames.push(
+      frame(
+        landscape,
+        {
+          [pos]: "comparing",
+          [next]: "comparing",
+          ...Object.fromEntries(tabuList.map((t) => [t, "swapping" as StateColorKey])),
+        },
+        `位置${pos}(高さ${landscape[pos]})から位置${next}(高さ${landscape[next]})へ移動を検討 → Δ=${delta}${delta < 0 ? "(悪化するが、他に選べる非タブーの移動先がない)" : ""}`,
+      ),
+    );
+
+    tabuList.push(pos);
+    if (tabuList.length > tenure) tabuList.shift();
+    pos = next;
+    if (landscape[pos] > landscape[best]) best = pos;
+
+    frames.push(
+      frame(
+        landscape,
+        { [pos]: "pivot", [best]: "settled", ...Object.fromEntries(tabuList.map((t) => [t, "swapping" as StateColorKey])) },
+        `位置${pos}(高さ${landscape[pos]})に移動。タブーリスト=[${tabuList.join(",")}]`,
+      ),
+    );
+  }
+
+  frames.push(
+    frame(
+      landscape,
+      { [best]: "settled" },
+      `計算完了。これまでで最も高かった位置=${best}(高さ${landscape[best]})。地形全体の最大値は${Math.max(...landscape)}(位置${landscape.indexOf(Math.max(...landscape))})なので、${landscape[best] === Math.max(...landscape) ? "大域最適に到達できた" : "大域最適には届かなかった"}`,
+    ),
+  );
+
+  return frames;
+}
+
 export const GRADIENT_DESCENT_MIN_X = 3;
 export const GRADIENT_DESCENT_START_X = -2;
 export const GRADIENT_DESCENT_LEARNING_RATE = 0.3;
@@ -914,6 +997,67 @@ export function knnSteps(): SearchFrame[] {
   return frames;
 }
 
+export const MANACHER_TEXT = "babad";
+
+function manacherTransform(s: string): string {
+  return `^#${s.split("").join("#")}#$`;
+}
+
+/**
+ * マナカーのアルゴリズムのステップ列を生成する。文字の間に区切り記号(#)を挿入することで
+ * 奇数長・偶数長の palindrome を同じロジックで扱えるようにした上で、
+ * 「これまでに見つかった中で最も右まで届く回文の中心C・右端R」を覚えておき、
+ * 新しい中心iがRより内側にあれば、その鏡像位置の半径を初期値として使い回すことで
+ * 無駄な比較を省略する。この工夫により、素朴な中心展開法のO(n²)ではなく
+ * O(n)で文字列中の最長回文部分文字列を求められる。
+ */
+export function manacherSteps(): SearchFrame[] {
+  const s = MANACHER_TEXT;
+  const t = manacherTransform(s);
+  const n = t.length;
+  const P = new Array(n).fill(0);
+  let C = 0;
+  let R = 0;
+
+  const frames: SearchFrame[] = [
+    frame(P.slice(1, n - 1), {}, `マナカーのアルゴリズムを開始。文字列"${s}"を"${t}"に変換(#で区切ることで奇数/偶数長を統一的に扱う)`),
+  ];
+
+  for (let i = 1; i < n - 1; i++) {
+    const mirror = 2 * C - i;
+    if (i < R) P[i] = Math.min(R - i, P[mirror]);
+    while (t[i + P[i] + 1] === t[i - P[i] - 1]) P[i]++;
+    if (i + P[i] > R) {
+      C = i;
+      R = i + P[i];
+    }
+    frames.push(
+      frame(
+        P.slice(1, n - 1),
+        { [i - 1]: "pivot" },
+        `位置${i}(文字'${t[i]}')の回文半径P[${i}]=${P[i]}を確定(中心C=${C}, 右端R=${R})`,
+      ),
+    );
+  }
+
+  const maxLen = Math.max(...P);
+  const centerIndex = P.indexOf(maxLen);
+  const start = (centerIndex - maxLen - 1) / 2;
+  const longestPalindrome = s.slice(start, start + maxLen);
+
+  const finalHighlight: Partial<Record<number, StateColorKey>> = {};
+  finalHighlight[centerIndex - 1] = "settled";
+  frames.push(
+    frame(
+      P.slice(1, n - 1),
+      finalHighlight,
+      `計算完了。最長回文部分文字列は"${longestPalindrome}"(長さ${maxLen}、開始位置${start})`,
+    ),
+  );
+
+  return frames;
+}
+
 export const SEARCH_VISUALIZERS: Record<string, () => SearchFrame[]> = {
   "linear-search": linearSearchSteps,
   "binary-search": binarySearchSteps,
@@ -928,6 +1072,8 @@ export const SEARCH_VISUALIZERS: Record<string, () => SearchFrame[]> = {
   "bloom-filter": bloomFilterSteps,
   "hill-climbing": hillClimbingSteps,
   "simulated-annealing": simulatedAnnealingSteps,
+  "tabu-search": tabuSearchSteps,
   "gradient-descent": gradientDescentSteps,
   knn: knnSteps,
+  manacher: manacherSteps,
 };
