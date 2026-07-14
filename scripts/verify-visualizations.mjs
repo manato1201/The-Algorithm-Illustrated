@@ -31,6 +31,12 @@ import {
   MANACHER_TEXT,
   KNN_QUERY,
   KNN_K,
+  INTEGRATION_TRUE_VALUE,
+  eulersMethodSteps,
+  rungeKuttaMethodSteps,
+  trapezoidalRuleSteps,
+  simpsonsRuleSteps,
+  monteCarloIntegrationSteps,
 } from "../src/lib/search-visualizers.ts";
 import {
   PATHFINDING_VISUALIZERS,
@@ -69,6 +75,46 @@ import {
   PARTITION_PROBLEM_NUMBERS,
   FRACTIONAL_KNAPSACK_ITEMS,
   FRACTIONAL_KNAPSACK_CAPACITY,
+  POLLARDS_P_MINUS_1_N,
+  TONELLI_SHANKS_N,
+  TONELLI_SHANKS_P,
+  MONTGOMERY_A,
+  MONTGOMERY_B,
+  MONTGOMERY_N,
+  EC_SCALAR,
+  EC_BASE_POINT,
+  EC_A,
+  EC_P,
+  TOOM_COOK_X,
+  TOOM_COOK_Y,
+  CONVOLUTION_SIGNAL,
+  CONVOLUTION_KERNEL,
+  NEEDLEMAN_WUNSCH_A,
+  NEEDLEMAN_WUNSCH_B,
+  NEEDLEMAN_WUNSCH_MATCH,
+  NEEDLEMAN_WUNSCH_MISMATCH,
+  NEEDLEMAN_WUNSCH_GAP,
+  SMITH_WATERMAN_A,
+  SMITH_WATERMAN_B,
+  SMITH_WATERMAN_MATCH,
+  SMITH_WATERMAN_MISMATCH,
+  SMITH_WATERMAN_GAP,
+  NUSSINOV_RNA,
+  MSA_SEQUENCES,
+  VITERBI_STATES,
+  VITERBI_OBSERVATIONS,
+  VITERBI_START_PROB,
+  VITERBI_TRANS_PROB,
+  VITERBI_EMIT_PROB,
+  CKY_SENTENCE,
+  CRF_SENTENCE,
+  CRF_TAGS,
+  CRF_EMISSION_SCORE,
+  CRF_TRANSITION_SCORE,
+  CRF_START_SCORE,
+  OBST_FREQ,
+  PALINDROME_PARTITIONING_STRING,
+  BURST_BALLOONS_NUMS,
 } from "../src/lib/dp-visualizers.ts";
 import { TREE_VISUALIZERS } from "../src/lib/tree-visualizers.ts";
 import { STRING_VISUALIZERS, TEXT, PATTERN } from "../src/lib/string-visualizers.ts";
@@ -454,11 +500,27 @@ function bruteMinimax(values, depth, idx) {
 }
 {
   const refRoot = bruteMinimax(GAME_TREE_LEAF_VALUES, 0, 0);
-  for (const id of ["minimax", "alpha-beta-pruning"]) {
+  for (const id of ["minimax", "alpha-beta-pruning", "negamax", "iterative-deepening-minimax"]) {
     const frames = GRAPH_VISUALIZERS[id]();
+    checkWellFormed(id, frames);
     const lastDesc = frames[frames.length - 1].description;
     check(`${id}: 独立実装のbrute-force評価(根の値=${refRoot})と一致`, lastDesc.includes(String(refRoot)), lastDesc);
   }
+}
+
+// expectimax: 独立実装のbrute-force評価(MINノードを平均に読み替え)と一致
+function bruteExpectimax(values, depth, idx) {
+  if (depth === 3) return values[idx];
+  const left = bruteExpectimax(values, depth + 1, idx * 2);
+  const right = bruteExpectimax(values, depth + 1, idx * 2 + 1);
+  return depth % 2 === 0 ? Math.max(left, right) : (left + right) / 2;
+}
+{
+  const refRoot = bruteExpectimax(GAME_TREE_LEAF_VALUES, 0, 0);
+  const frames = GRAPH_VISUALIZERS["expectimax"]();
+  checkWellFormed("expectimax", frames);
+  const lastDesc = frames[frames.length - 1].description;
+  check(`expectimax: 独立実装のbrute-force評価(期待値=${refRoot})と一致`, lastDesc.includes(String(refRoot)), lastDesc);
 }
 
 // articulation-points / bridges-finding: 手動で設計した既知の関節点{C,D}・橋{C-D}と一致
@@ -637,6 +699,360 @@ function bruteLcsLength(a, b) {
     "fractional-knapsack: 品物構成が既知の教科書例(A:10/60, B:20/100, C:30/120, 容量50)と一致",
     FRACTIONAL_KNAPSACK_CAPACITY === 50 && FRACTIONAL_KNAPSACK_ITEMS.length === 3,
   );
+}
+
+// ===========================================================================
+// DP追加分 A: 数論・暗号7件(独立実装との突き合わせ)
+// ===========================================================================
+section("DP追加分A: 数論・暗号7件");
+
+{
+  const frames = DP_VISUALIZERS["fermat-primality-test"]();
+  checkWellFormed("fermat-primality-test", frames);
+}
+{
+  const n = POLLARDS_P_MINUS_1_N;
+  let factor = null;
+  for (let d = 2; d < n; d++) if (n % d === 0) { factor = d; break; }
+  const frames = DP_VISUALIZERS["pollards-p-minus-1"]();
+  const lastDesc = frames[frames.length - 1].description;
+  check(`pollards-p-minus-1: n=${n}の既知の約数(${factor})が報告される`, factor !== null && lastDesc.includes(String(factor)), lastDesc);
+}
+{
+  const p = TONELLI_SHANKS_P, n = TONELLI_SHANKS_N;
+  const frames = DP_VISUALIZERS["tonelli-shanks"]();
+  const lastDesc = frames[frames.length - 1].description;
+  const match = lastDesc.match(/x=(\d+)/);
+  const x = match ? parseInt(match[1], 10) : null;
+  check(`tonelli-shanks: x²≡n (mod p)を満たすxが見つかる`, x !== null && (x * x) % p === ((n % p) + p) % p, lastDesc);
+}
+{
+  const frames = DP_VISUALIZERS["montgomery-multiplication"]();
+  const expected = (MONTGOMERY_A * MONTGOMERY_B) % MONTGOMERY_N;
+  const lastDesc = frames[frames.length - 1].description;
+  check(`montgomery-multiplication: 通常計算(${expected})と一致`, lastDesc.includes(String(expected)), lastDesc);
+}
+{
+  const frames = DP_VISUALIZERS["elgamal-encryption"]();
+  const lastDesc = frames[frames.length - 1].description;
+  check("elgamal-encryption: 復号結果が元の平文と一致", /復号結果m'=(\d+)は元の平文m=\1と一致/.test(lastDesc), lastDesc);
+}
+{
+  function ecModInv(a, m) { a = ((a % m) + m) % m; for (let x = 1; x < m; x++) if ((a * x) % m === 1) return x; return 1; }
+  function ecAdd(P, Q, a, p) {
+    if (P === null) return Q;
+    if (Q === null) return P;
+    let lambda;
+    if (P.x === Q.x && P.y === Q.y) lambda = ((3 * P.x * P.x + a) * ecModInv(2 * P.y, p)) % p;
+    else { if (P.x === Q.x) return null; lambda = ((Q.y - P.y) * ecModInv(Q.x - P.x, p)) % p; }
+    lambda = ((lambda % p) + p) % p;
+    const xR = (((lambda * lambda - P.x - Q.x) % p) + p) % p;
+    const yR = (((lambda * (P.x - xR) - P.y) % p) + p) % p;
+    return { x: xR, y: yR };
+  }
+  let naive = null;
+  for (let i = 0; i < EC_SCALAR; i++) naive = ecAdd(naive, EC_BASE_POINT, EC_A, EC_P);
+  const frames = DP_VISUALIZERS["elliptic-curve-cryptography"]();
+  const lastDesc = frames[frames.length - 1].description;
+  check(`elliptic-curve-cryptography: 素朴な繰り返し加算(${naive.x},${naive.y})と一致`, lastDesc.includes(`(${naive.x}, ${naive.y})`), lastDesc);
+}
+{
+  const frames = DP_VISUALIZERS["toom-cook-multiplication"]();
+  const expected = TOOM_COOK_X * TOOM_COOK_Y;
+  const lastDesc = frames[frames.length - 1].description;
+  check(`toom-cook-multiplication: 素朴な乗算(${expected})と一致`, lastDesc.includes(String(expected)), lastDesc);
+}
+
+// ===========================================================================
+// DP追加分 B: 数値計算・線形代数12件
+// ===========================================================================
+section("DP追加分B: 数値計算・線形代数12件");
+
+{
+  const frames = DP_VISUALIZERS["gaussian-elimination"]();
+  const lastDesc = frames[frames.length - 1].description;
+  check("gaussian-elimination: 既知の解(x=2,y=3,z=-1)と一致", lastDesc.includes("2.000") && lastDesc.includes("3.000") && lastDesc.includes("-1.000"), lastDesc);
+}
+{
+  const frames = DP_VISUALIZERS["lu-decomposition"]();
+  const lastDesc = frames[frames.length - 1].description;
+  check("lu-decomposition: L×Uが元の行列と一致(検算OK)", lastDesc.includes("一致"), lastDesc);
+}
+{
+  const points = [{ x: 1, y: 2 }, { x: 2, y: 3 }, { x: 3, y: 5 }, { x: 4, y: 4 }, { x: 5, y: 6 }];
+  const n = points.length;
+  const sumX = points.reduce((s, p) => s + p.x, 0);
+  const sumY = points.reduce((s, p) => s + p.y, 0);
+  const sumXY = points.reduce((s, p) => s + p.x * p.y, 0);
+  const sumX2 = points.reduce((s, p) => s + p.x * p.x, 0);
+  const m = (n * sumXY - sumX * sumY) / (n * sumX2 - sumX * sumX);
+  const frames = DP_VISUALIZERS["least-squares"]();
+  const lastDesc = frames[frames.length - 1].description;
+  check(`least-squares: 独立計算の傾き(${m.toFixed(4)})と一致`, lastDesc.includes(m.toFixed(4)), lastDesc);
+}
+{
+  const frames = DP_VISUALIZERS["power-iteration"]();
+  const lastDesc = frames[frames.length - 1].description;
+  check("power-iteration: 既知の支配的固有値(3)に収束", lastDesc.includes("3"), lastDesc);
+}
+{
+  const outLen = CONVOLUTION_SIGNAL.length + CONVOLUTION_KERNEL.length - 1;
+  const expected = [];
+  for (let i = 0; i < outLen; i++) {
+    let sum = 0;
+    for (let k = 0; k < CONVOLUTION_KERNEL.length; k++) {
+      const si = i - k;
+      if (si >= 0 && si < CONVOLUTION_SIGNAL.length) sum += CONVOLUTION_SIGNAL[si] * CONVOLUTION_KERNEL[k];
+    }
+    expected.push(Number(sum.toFixed(3)));
+  }
+  const frames = DP_VISUALIZERS["discrete-convolution"]();
+  const lastDesc = frames[frames.length - 1].description;
+  check(`discrete-convolution: 独立実装の畳み込み([${expected.join(", ")}])と一致`, lastDesc.includes(`[${expected.join(", ")}]`), lastDesc);
+}
+{
+  const frames = DP_VISUALIZERS["qr-decomposition"]();
+  checkWellFormed("qr-decomposition", frames);
+}
+{
+  const frames = DP_VISUALIZERS["multivariate-newton-method"]();
+  const lastDesc = frames[frames.length - 1].description;
+  check("multivariate-newton-method: 既知の解√2≈1.41421に収束", lastDesc.includes("1.41421"), lastDesc);
+}
+{
+  const eulerFrames = eulersMethodSteps();
+  const rkFrames = rungeKuttaMethodSteps();
+  const eErr = parseFloat(eulerFrames[eulerFrames.length - 1].description.match(/誤差(\d+\.\d+)/)?.[1] ?? "NaN");
+  const rkErr = parseFloat(rkFrames[rkFrames.length - 1].description.match(/誤差(\d+\.\d+)/)?.[1] ?? "NaN");
+  check(`eulers-method/runge-kutta-method: RK4の誤差(${rkErr})がオイラー法の誤差(${eErr})より小さい`, rkErr < eErr, `euler=${eErr}, rk4=${rkErr}`);
+}
+{
+  const trapFrames = trapezoidalRuleSteps();
+  const simpFrames = simpsonsRuleSteps();
+  const trapErr = parseFloat(trapFrames[trapFrames.length - 1].description.match(/誤差(\d+\.\d+)/)?.[1] ?? "NaN");
+  const simpErr = parseFloat(simpFrames[simpFrames.length - 1].description.match(/誤差(\d+\.\d+)/)?.[1] ?? "NaN");
+  check(`trapezoidal-rule/simpsons-rule: シンプソンの公式の誤差(${simpErr})が台形則の誤差(${trapErr})より小さい(真の値=${INTEGRATION_TRUE_VALUE.toFixed(4)})`, simpErr < trapErr, `trap=${trapErr}, simpson=${simpErr}`);
+}
+{
+  const frames = monteCarloIntegrationSteps();
+  const lastDesc = frames[frames.length - 1].description;
+  const match = lastDesc.match(/推定値=(\d+\.\d+)/);
+  const est = match ? parseFloat(match[1]) : null;
+  check(`monte-carlo-integration: 推定値が真の値(${INTEGRATION_TRUE_VALUE.toFixed(4)})に近い`, est !== null && Math.abs(est - INTEGRATION_TRUE_VALUE) < 15, lastDesc);
+}
+
+// ===========================================================================
+// DP追加分 C: 配列アラインメント4件
+// ===========================================================================
+section("DP追加分C: 配列アラインメント4件");
+
+function nwScore(a, b, match, mismatch, gap) {
+  const n = a.length, m = b.length;
+  const dp = Array.from({ length: n + 1 }, () => new Array(m + 1).fill(0));
+  for (let i = 0; i <= n; i++) dp[i][0] = i * gap;
+  for (let j = 0; j <= m; j++) dp[0][j] = j * gap;
+  for (let i = 1; i <= n; i++) for (let j = 1; j <= m; j++) {
+    const diag = dp[i - 1][j - 1] + (a[i - 1] === b[j - 1] ? match : mismatch);
+    dp[i][j] = Math.max(diag, dp[i - 1][j] + gap, dp[i][j - 1] + gap);
+  }
+  return dp[n][m];
+}
+{
+  const expected = nwScore(NEEDLEMAN_WUNSCH_A, NEEDLEMAN_WUNSCH_B, NEEDLEMAN_WUNSCH_MATCH, NEEDLEMAN_WUNSCH_MISMATCH, NEEDLEMAN_WUNSCH_GAP);
+  const frames = DP_VISUALIZERS["needleman-wunsch"]();
+  const lastDesc = frames[frames.length - 1].description;
+  check(`needleman-wunsch: 独立実装のスコア(${expected})と一致`, lastDesc.includes(`スコアは${expected}`), lastDesc);
+}
+function swScore(a, b, match, mismatch, gap) {
+  const n = a.length, m = b.length;
+  const dp = Array.from({ length: n + 1 }, () => new Array(m + 1).fill(0));
+  let best = 0;
+  for (let i = 1; i <= n; i++) for (let j = 1; j <= m; j++) {
+    const diag = dp[i - 1][j - 1] + (a[i - 1] === b[j - 1] ? match : mismatch);
+    dp[i][j] = Math.max(0, diag, dp[i - 1][j] + gap, dp[i][j - 1] + gap);
+    if (dp[i][j] > best) best = dp[i][j];
+  }
+  return best;
+}
+{
+  const expected = swScore(SMITH_WATERMAN_A, SMITH_WATERMAN_B, SMITH_WATERMAN_MATCH, SMITH_WATERMAN_MISMATCH, SMITH_WATERMAN_GAP);
+  const frames = DP_VISUALIZERS["smith-waterman"]();
+  const lastDesc = frames[frames.length - 1].description;
+  check(`smith-waterman: 独立実装のスコア(${expected})と一致`, lastDesc.includes(`最高スコア${expected}`), lastDesc);
+}
+function canPair(x, y) { return (x === "G" && y === "C") || (x === "C" && y === "G") || (x === "A" && y === "U") || (x === "U" && y === "A"); }
+function nussinovMax(rna) {
+  const n = rna.length;
+  const dp = Array.from({ length: n }, () => new Array(n).fill(0));
+  for (let length = 2; length <= n; length++) {
+    for (let i = 0; i <= n - length; i++) {
+      const j = i + length - 1;
+      let best = dp[i + 1] ? dp[i + 1][j] : 0;
+      for (let k = i + 1; k <= j; k++) {
+        if (canPair(rna[i], rna[k])) {
+          const inner = k > i + 1 ? dp[i + 1][k - 1] : 0;
+          const outer = k < j ? dp[k + 1][j] : 0;
+          best = Math.max(best, inner + 1 + outer);
+        }
+      }
+      dp[i][j] = best;
+    }
+  }
+  return dp[0][n - 1];
+}
+{
+  const expected = nussinovMax(NUSSINOV_RNA);
+  const frames = DP_VISUALIZERS["nussinov-algorithm"]();
+  const lastDesc = frames[frames.length - 1].description;
+  check(`nussinov-algorithm: 独立実装の最大塩基対数(${expected})と一致`, lastDesc.includes(`最大塩基対数は${expected}`), lastDesc);
+}
+{
+  const frames = DP_VISUALIZERS["multiple-sequence-alignment"]();
+  const lastDesc = frames[frames.length - 1].description;
+  check("multiple-sequence-alignment: 配列1と配列3の両方が結果に含まれる", lastDesc.includes(MSA_SEQUENCES[0]) && lastDesc.includes(MSA_SEQUENCES[2]), lastDesc);
+}
+
+// ===========================================================================
+// DP追加分 D: 系列タグ付け4件
+// ===========================================================================
+section("DP追加分D: 系列タグ付け4件");
+
+function bruteForceViterbi() {
+  const states = VITERBI_STATES, obs = VITERBI_OBSERVATIONS, n = states.length, t = obs.length;
+  let bestProb = -1, bestSeq = null;
+  function rec(seq) {
+    if (seq.length === t) {
+      let prob = VITERBI_START_PROB[states[seq[0]]] * VITERBI_EMIT_PROB[states[seq[0]]][obs[0]];
+      for (let i = 1; i < t; i++) prob *= VITERBI_TRANS_PROB[states[seq[i - 1]]][states[seq[i]]] * VITERBI_EMIT_PROB[states[seq[i]]][obs[i]];
+      if (prob > bestProb) { bestProb = prob; bestSeq = [...seq]; }
+      return;
+    }
+    for (let s = 0; s < n; s++) { seq.push(s); rec(seq); seq.pop(); }
+  }
+  rec([]);
+  return { bestProb, bestSeq: bestSeq.map((i) => states[i]) };
+}
+{
+  const { bestProb, bestSeq } = bruteForceViterbi();
+  const frames = DP_VISUALIZERS["viterbi-algorithm"]();
+  const lastDesc = frames[frames.length - 1].description;
+  check(`viterbi-algorithm: brute-force最尤状態列(${bestSeq.join(",")}, prob=${bestProb.toFixed(5)})と一致`, lastDesc.includes(bestSeq.join(", ")) && lastDesc.includes(bestProb.toFixed(5)), lastDesc);
+}
+function bruteForceTotalProb() {
+  const states = VITERBI_STATES, obs = VITERBI_OBSERVATIONS, n = states.length, t = obs.length;
+  let total = 0;
+  function rec(seq) {
+    if (seq.length === t) {
+      let prob = VITERBI_START_PROB[states[seq[0]]] * VITERBI_EMIT_PROB[states[seq[0]]][obs[0]];
+      for (let i = 1; i < t; i++) prob *= VITERBI_TRANS_PROB[states[seq[i - 1]]][states[seq[i]]] * VITERBI_EMIT_PROB[states[seq[i]]][obs[i]];
+      total += prob;
+      return;
+    }
+    for (let s = 0; s < n; s++) { seq.push(s); rec(seq); seq.pop(); }
+  }
+  rec([]);
+  return total;
+}
+{
+  const expected = bruteForceTotalProb();
+  const frames = DP_VISUALIZERS["forward-backward-algorithm"]();
+  const lastDesc = frames[frames.length - 1].description;
+  check(`forward-backward-algorithm: brute-force全経路確率の総和(${expected.toFixed(5)})と一致`, lastDesc.includes(expected.toFixed(5)), lastDesc);
+}
+{
+  const frames = DP_VISUALIZERS["cky-algorithm"]();
+  const lastDesc = frames[frames.length - 1].description;
+  check(`cky-algorithm: 文"${CKY_SENTENCE.join(" ")}"が文法に適合すると判定`, lastDesc.includes("文法に適合する"), lastDesc);
+}
+function bruteForceCRF() {
+  const words = CRF_SENTENCE, tags = CRF_TAGS, n = tags.length, t = words.length;
+  let best = -Infinity, bestSeq = null;
+  function rec(seq) {
+    if (seq.length === t) {
+      let score = CRF_START_SCORE[tags[seq[0]]] + CRF_EMISSION_SCORE[words[0]][tags[seq[0]]];
+      for (let i = 1; i < t; i++) score += CRF_TRANSITION_SCORE[tags[seq[i - 1]]][tags[seq[i]]] + CRF_EMISSION_SCORE[words[i]][tags[seq[i]]];
+      if (score > best) { best = score; bestSeq = [...seq]; }
+      return;
+    }
+    for (let s = 0; s < n; s++) { seq.push(s); rec(seq); seq.pop(); }
+  }
+  rec([]);
+  return { best, bestSeq: bestSeq.map((i) => tags[i]) };
+}
+{
+  const { best, bestSeq } = bruteForceCRF();
+  const frames = DP_VISUALIZERS["conditional-random-field"]();
+  const lastDesc = frames[frames.length - 1].description;
+  check(`conditional-random-field: brute-force最良タグ列(${bestSeq.join(",")}, score=${best.toFixed(3)})と一致`, lastDesc.includes(bestSeq.join(", ")) && lastDesc.includes(best.toFixed(3)), lastDesc);
+}
+
+// ===========================================================================
+// DP追加分 E: 区間・ナップサックDP3件
+// ===========================================================================
+section("DP追加分E: 区間・ナップサックDP3件");
+
+function obstCost(freq) {
+  const n = freq.length;
+  const prefixSum = [0];
+  for (const f of freq) prefixSum.push(prefixSum[prefixSum.length - 1] + f);
+  const dp = Array.from({ length: n }, () => new Array(n).fill(0));
+  for (let i = 0; i < n; i++) dp[i][i] = freq[i];
+  for (let length = 2; length <= n; length++) {
+    for (let i = 0; i <= n - length; i++) {
+      const j = i + length - 1;
+      const rangeSum = prefixSum[j + 1] - prefixSum[i];
+      let best = Infinity;
+      for (let r = i; r <= j; r++) {
+        const left = r > i ? dp[i][r - 1] : 0;
+        const right = r < j ? dp[r + 1][j] : 0;
+        best = Math.min(best, left + right + rangeSum);
+      }
+      dp[i][j] = best;
+    }
+  }
+  return dp[0][n - 1];
+}
+{
+  const expected = obstCost(OBST_FREQ);
+  const frames = DP_VISUALIZERS["optimal-binary-search-tree"]();
+  const lastDesc = frames[frames.length - 1].description;
+  check(`optimal-binary-search-tree: 独立実装の最小コスト(${expected})と一致`, lastDesc.includes(`コストは${expected}`), lastDesc);
+}
+function minCutsBruteForce(s) {
+  const n = s.length;
+  function isPal(str) { return str === [...str].reverse().join(""); }
+  const cuts = new Array(n).fill(Infinity);
+  for (let i = 0; i < n; i++) {
+    if (isPal(s.slice(0, i + 1))) { cuts[i] = 0; continue; }
+    for (let k = 0; k < i; k++) if (isPal(s.slice(k + 1, i + 1))) cuts[i] = Math.min(cuts[i], cuts[k] + 1);
+  }
+  return cuts[n - 1];
+}
+{
+  const expected = minCutsBruteForce(PALINDROME_PARTITIONING_STRING);
+  const frames = DP_VISUALIZERS["palindrome-partitioning"]();
+  const lastDesc = frames[frames.length - 1].description;
+  check(`palindrome-partitioning: brute-force最小カット数(${expected})と一致`, lastDesc.includes(`最小カット数は${expected}`), lastDesc);
+}
+function burstBalloonsMax(numsIn) {
+  const nums = [1, ...numsIn, 1];
+  const n = nums.length;
+  const dp = Array.from({ length: n }, () => new Array(n).fill(0));
+  for (let length = 2; length < n; length++) {
+    for (let i = 0; i < n - length; i++) {
+      const j = i + length;
+      let best = 0;
+      for (let k = i + 1; k < j; k++) best = Math.max(best, dp[i][k] + dp[k][j] + nums[i] * nums[k] * nums[j]);
+      dp[i][j] = best;
+    }
+  }
+  return dp[0][n - 1];
+}
+{
+  const expected = burstBalloonsMax(BURST_BALLOONS_NUMS);
+  const frames = DP_VISUALIZERS["burst-balloons-dp"]();
+  const lastDesc = frames[frames.length - 1].description;
+  check(`burst-balloons-dp: 独立実装の最大コイン(${expected}、既知のLeetCode解167)と一致`, lastDesc.includes(`最大コインは${expected}`), lastDesc);
 }
 
 // ===========================================================================
