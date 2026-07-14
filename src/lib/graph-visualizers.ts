@@ -5108,6 +5108,794 @@ export function bridgesFindingSteps(): GraphFrame[] {
   return frames;
 }
 
+export const STABLE_MARRIAGE_MEN = ["M1", "M2", "M3"];
+export const STABLE_MARRIAGE_WOMEN = ["W1", "W2", "W3"];
+export const STABLE_MARRIAGE_MEN_PREFS: Record<string, string[]> = {
+  M1: ["W1", "W2", "W3"],
+  M2: ["W2", "W1", "W3"],
+  M3: ["W1", "W2", "W3"],
+};
+export const STABLE_MARRIAGE_WOMEN_PREFS: Record<string, string[]> = {
+  W1: ["M2", "M1", "M3"],
+  W2: ["M1", "M2", "M3"],
+  W3: ["M1", "M2", "M3"],
+};
+export const STABLE_MARRIAGE_NODES: GraphNode[] = [
+  ...STABLE_MARRIAGE_MEN.map((id, i) => ({ id, label: id, x: 0.22, y: 0.2 + i * 0.3 })),
+  ...STABLE_MARRIAGE_WOMEN.map((id, i) => ({ id, label: id, x: 0.78, y: 0.2 + i * 0.3 })),
+];
+export const STABLE_MARRIAGE_EDGES: GraphEdge[] = STABLE_MARRIAGE_MEN.flatMap((m) =>
+  STABLE_MARRIAGE_WOMEN.map((w) => ({ id: `${m}-${w}`, from: m, to: w, weight: 1 })),
+);
+
+/**
+ * Gale-Shapleyアルゴリズム(安定結婚問題)のステップ列を生成する。全員が相手の希望順位を
+ * 持つ状態から、「男性側がまだプロポーズしていない中で最も好みの女性に順にプロポーズし、
+ * 女性側はプロポーズされた相手と現在の婚約者を比較して、より好みの方だけを受け入れる」
+ * ことを繰り返す——この単純な手続きだけで、誰も「今の相手より現在の状況を裏切りたくなる
+ * ペア(不安定なペア)」が存在しない安定マッチングに必ず到達することが数学的に保証されている。
+ */
+export function stableMarriageProblemSteps(): GraphFrame[] {
+  const men = STABLE_MARRIAGE_MEN;
+  const women = STABLE_MARRIAGE_WOMEN;
+  const nodes = STABLE_MARRIAGE_NODES;
+  const edges = STABLE_MARRIAGE_EDGES;
+  const nodeStates = initNodeStates(nodes, "idle");
+  const edgeStates = initEdgeStates(edges, "idle");
+  const edgeId = (m: string, w: string) => `${m}-${w}`;
+
+  const nextProposalIndex = new Map<string, number>(men.map((m) => [m, 0]));
+  const engagement = new Map<string, string | null>(women.map((w) => [w, null]));
+  const freeMen = [...men];
+
+  const frames: GraphFrame[] = [
+    {
+      nodeStates: { ...nodeStates },
+      edgeStates: { ...edgeStates },
+      distances: {},
+      description: "Gale-Shapleyアルゴリズムを開始。全ての男性が未婚(フリー)の状態から始める",
+    },
+  ];
+
+  while (freeMen.length > 0) {
+    const m = freeMen[0];
+    const idx = nextProposalIndex.get(m)!;
+    const w = STABLE_MARRIAGE_MEN_PREFS[m][idx];
+    nextProposalIndex.set(m, idx + 1);
+    edgeStates[edgeId(m, w)] = "checking";
+    frames.push({
+      nodeStates: { ...nodeStates },
+      edgeStates: { ...edgeStates },
+      distances: {},
+      description: `${m}が最も希望順位の高い未プロポーズの相手${w}にプロポーズ`,
+    });
+
+    const currentPartner = engagement.get(w);
+    if (currentPartner === null) {
+      engagement.set(w, m);
+      freeMen.shift();
+      edgeStates[edgeId(m, w)] = "tree";
+      nodeStates[m] = "settled";
+      nodeStates[w] = "settled";
+      frames.push({
+        nodeStates: { ...nodeStates },
+        edgeStates: { ...edgeStates },
+        distances: {},
+        description: `${w}は未婚だったので${m}のプロポーズを受け入れ、婚約`,
+      });
+    } else {
+      const partner = currentPartner!;
+      const wPrefs = STABLE_MARRIAGE_WOMEN_PREFS[w];
+      const prefersNew = wPrefs.indexOf(m) < wPrefs.indexOf(partner);
+      if (prefersNew) {
+        edgeStates[edgeId(partner, w)] = "rejected";
+        engagement.set(w, m);
+        freeMen.shift();
+        freeMen.push(partner);
+        edgeStates[edgeId(m, w)] = "tree";
+        nodeStates[partner] = "idle";
+        frames.push({
+          nodeStates: { ...nodeStates },
+          edgeStates: { ...edgeStates },
+          distances: {},
+          description: `${w}は現在の婚約者${partner}より${m}を好むため、乗り換えて${m}と婚約(${partner}はフリーに戻る)`,
+        });
+      } else {
+        edgeStates[edgeId(m, w)] = "rejected";
+        frames.push({
+          nodeStates: { ...nodeStates },
+          edgeStates: { ...edgeStates },
+          distances: {},
+          description: `${w}は現在の婚約者${partner}の方を好むため、${m}のプロポーズを拒否`,
+        });
+      }
+    }
+  }
+
+  const pairs = women.map((w) => `${engagement.get(w)}-${w}`).join(", ");
+  frames.push({
+    nodeStates: initNodeStates(nodes, "settled"),
+    edgeStates: { ...edgeStates },
+    distances: {},
+    description: `計算完了。安定マッチング: ${pairs}(どのペアも「お互いに今の相手より好み合っている」状況が存在しない)`,
+  });
+
+  return frames;
+}
+
+/**
+ * Push-Relabel法(プレフロー・プッシュ法)による最大流のステップ列を生成する。
+ * Ford-Fulkerson系アルゴリズムが「増加パスを1本ずつ見つけて全体に流す」のに対し、
+ * Push-Relabel法は各頂点に「高さ(height)」を割り当て、height[u] > height[v]+1となる
+ * 隣接辺があれば局所的に流量を押し出す(push)、押し出せる辺がなければ自分の高さを
+ * 上げる(relabel)、という2つの局所操作だけを繰り返す——大域的な経路探索なしに
+ * 局所的な操作の繰り返しだけで最大流に到達できる点が既存のFord-Fulkerson系と対照的。
+ */
+export function pushRelabelMaxFlowSteps(): GraphFrame[] {
+  const nodes = FLOW_NODES;
+  const edges = FLOW_EDGES;
+  const n = nodes.length;
+  const capacity = new Map<string, number>();
+  edges.forEach((e) => capacity.set(e.id, e.weight));
+  const reverseId = new Map<string, string>();
+  const flow = new Map<string, number>();
+  edges.forEach((e) => {
+    flow.set(e.id, 0);
+    const revId = `${e.to}-${e.from}-rev`;
+    reverseId.set(e.id, revId);
+  });
+
+  const adjacency = new Map<string, { to: string; edgeId: string; isReverse: boolean }[]>();
+  nodes.forEach((node) => adjacency.set(node.id, []));
+  edges.forEach((e) => {
+    adjacency.get(e.from)!.push({ to: e.to, edgeId: e.id, isReverse: false });
+    adjacency.get(e.to)!.push({ to: e.from, edgeId: e.id, isReverse: true });
+  });
+
+  const residual = (edgeId: string, isReverse: boolean): number =>
+    isReverse ? flow.get(edgeId)! : capacity.get(edgeId)! - flow.get(edgeId)!;
+
+  const height = new Map<string, number>(nodes.map((node) => [node.id, node.id === FLOW_SOURCE ? n : 0]));
+  const excess = new Map<string, number>(nodes.map((node) => [node.id, 0]));
+
+  const nodeStates = initNodeStates(nodes, "idle");
+  const edgeStates = initEdgeStates(edges, "idle");
+  const edgeLabels = (): Record<string, string> =>
+    Object.fromEntries(edges.map((e) => [e.id, `${flow.get(e.id)}/${capacity.get(e.id)}`]));
+  const heightDisplay = (): Record<string, number | null> =>
+    Object.fromEntries(nodes.map((node) => [node.id, height.get(node.id)!]));
+
+  const frames: GraphFrame[] = [
+    {
+      nodeStates: { ...nodeStates },
+      edgeStates: { ...edgeStates },
+      distances: heightDisplay(),
+      edgeLabels: edgeLabels(),
+      description: `Push-Relabel法を開始。始点Sの高さをn=${n}(頂点数)に設定し、Sから出る全ての辺を容量いっぱいまで流す(前処理)`,
+    },
+  ];
+
+  for (const e of edges.filter((e2) => e2.from === FLOW_SOURCE)) {
+    flow.set(e.id, capacity.get(e.id)!);
+    excess.set(e.to, excess.get(e.to)! + capacity.get(e.id)!);
+    excess.set(FLOW_SOURCE, excess.get(FLOW_SOURCE)! - capacity.get(e.id)!);
+    edgeStates[e.id] = "tree";
+  }
+  frames.push({
+    nodeStates: { ...nodeStates },
+    edgeStates: { ...edgeStates },
+    distances: heightDisplay(),
+    edgeLabels: edgeLabels(),
+    description: "前処理完了。Sから出る全ての辺が容量いっぱいまで流れ、隣接頂点に余剰(excess)が生じた",
+  });
+
+  let guard = 0;
+  while (guard++ < 200) {
+    const active = nodes.find((node) => node.id !== FLOW_SOURCE && node.id !== FLOW_SINK && excess.get(node.id)! > 0);
+    if (!active) break;
+    const u = active.id;
+    nodeStates[u] = "visited";
+    let pushed = false;
+    for (const link of adjacency.get(u)!) {
+      const res = residual(link.edgeId, link.isReverse);
+      if (res > 0 && height.get(u)! === height.get(link.to)! + 1) {
+        const amount = Math.min(excess.get(u)!, res);
+        if (link.isReverse) flow.set(link.edgeId, flow.get(link.edgeId)! - amount);
+        else flow.set(link.edgeId, flow.get(link.edgeId)! + amount);
+        excess.set(u, excess.get(u)! - amount);
+        excess.set(link.to, excess.get(link.to)! + amount);
+        edgeStates[link.edgeId] = "tree";
+        frames.push({
+          nodeStates: { ...nodeStates },
+          edgeStates: { ...edgeStates },
+          distances: heightDisplay(),
+          edgeLabels: edgeLabels(),
+          description: `push: ${u}(高さ${height.get(u)})→${link.to}(高さ${height.get(link.to)})へ${amount}を押し出す`,
+        });
+        pushed = true;
+        break;
+      }
+    }
+    if (!pushed) {
+      const minNeighborHeight = Math.min(
+        ...adjacency.get(u)!.filter((link) => residual(link.edgeId, link.isReverse) > 0).map((link) => height.get(link.to)!),
+      );
+      height.set(u, minNeighborHeight + 1);
+      frames.push({
+        nodeStates: { ...nodeStates },
+        edgeStates: { ...edgeStates },
+        distances: heightDisplay(),
+        edgeLabels: edgeLabels(),
+        description: `relabel: ${u}から押し出せる辺がないため、高さを${height.get(u)}に引き上げる`,
+      });
+    }
+  }
+
+  const maxFlow = edges.filter((e) => e.from === FLOW_SOURCE).reduce((sum, e) => sum + flow.get(e.id)!, 0);
+  frames.push({
+    nodeStates: initNodeStates(nodes, "settled"),
+    edgeStates: { ...edgeStates },
+    distances: heightDisplay(),
+    edgeLabels: edgeLabels(),
+    description: `計算完了。最大流=${maxFlow}(Edmonds-Karp法・Dinic法・Ford-Fulkerson法と同じ既知の最大流23と一致)`,
+  });
+
+  return frames;
+}
+
+export const HIERHOLZER_NODES: GraphNode[] = circleLayout(["A", "B", "C", "D", "E"]);
+/**
+ * 頂点Cを共有する2つの三角形{A,B,C}・{C,D,E}からなる無向グラフ(「8の字」型)。
+ * 次数はA=2,B=2,C=4,D=2,E=2と全て偶数なので、オイラーの定理によりオイラー閉路が必ず存在する。
+ */
+export const HIERHOLZER_EDGES: GraphEdge[] = [
+  { id: "AB", from: "A", to: "B", weight: 1 },
+  { id: "BC", from: "B", to: "C", weight: 1 },
+  { id: "CA", from: "C", to: "A", weight: 1 },
+  { id: "CD", from: "C", to: "D", weight: 1 },
+  { id: "DE", from: "D", to: "E", weight: 1 },
+  { id: "EC", from: "E", to: "C", weight: 1 },
+];
+
+/**
+ * ヒールホルツァーのアルゴリズムのステップ列を生成する。全頂点の次数が偶数であるという
+ * 条件(オイラーの定理)を満たすグラフに対し、まず適当にスタートから戻ってくる閉路を1つ見つけ、
+ * その閉路上に未使用の辺を持つ頂点があれば、そこからさらに部分閉路を見つけて元の閉路に
+ * 挿入する、という操作を辺が尽きるまで繰り返すことで、全ての辺をちょうど1回ずつ通る
+ * オイラー閉路を効率よく(辺の本数に比例する時間で)構築する。
+ */
+export function hierholzerAlgorithmSteps(): GraphFrame[] {
+  const nodes = HIERHOLZER_NODES;
+  const edges = HIERHOLZER_EDGES;
+  const nodeStates = initNodeStates(nodes, "idle");
+  const edgeStates = initEdgeStates(edges, "idle");
+  const used = new Set<string>();
+
+  const adjacency = new Map<string, { to: string; edgeId: string }[]>();
+  nodes.forEach((node) => adjacency.set(node.id, []));
+  edges.forEach((e) => {
+    adjacency.get(e.from)!.push({ to: e.to, edgeId: e.id });
+    adjacency.get(e.to)!.push({ to: e.from, edgeId: e.id });
+  });
+
+  const frames: GraphFrame[] = [
+    {
+      nodeStates: { ...nodeStates },
+      edgeStates: { ...edgeStates },
+      distances: {},
+      description: "ヒールホルツァーのアルゴリズムを開始。全頂点の次数が偶数なのでオイラー閉路が存在する",
+    },
+  ];
+
+  let circuit: string[] = ["A"];
+  let insertPos = 0;
+  while (insertPos < circuit.length) {
+    const v = circuit[insertPos];
+    const unusedEdge = adjacency.get(v)!.find((link) => !used.has(link.edgeId));
+    if (unusedEdge) {
+      used.add(unusedEdge.edgeId);
+      edgeStates[unusedEdge.edgeId] = "tree";
+      nodeStates[v] = "visited";
+      const subCircuit: string[] = [v];
+      let cur = unusedEdge.to;
+      subCircuit.push(cur);
+      while (cur !== v) {
+        const next = adjacency.get(cur)!.find((link) => !used.has(link.edgeId));
+        if (!next) break;
+        used.add(next.edgeId);
+        edgeStates[next.edgeId] = "tree";
+        cur = next.to;
+        subCircuit.push(cur);
+      }
+      circuit = [...circuit.slice(0, insertPos), ...subCircuit, ...circuit.slice(insertPos + 1)];
+      frames.push({
+        nodeStates: { ...nodeStates },
+        edgeStates: { ...edgeStates },
+        distances: {},
+        description: `頂点${v}から部分閉路 ${subCircuit.join("→")} を見つけ、現在の経路に挿入: ${circuit.join("→")}`,
+      });
+    } else {
+      insertPos++;
+    }
+  }
+
+  frames.push({
+    nodeStates: initNodeStates(nodes, "settled"),
+    edgeStates: { ...edgeStates },
+    distances: {},
+    description: `計算完了。オイラー閉路: ${circuit.join("→")}(全${edges.length}辺をちょうど1回ずつ通る)`,
+  });
+
+  return frames;
+}
+
+export const TWO_SAT_VARIABLES = ["x1", "x2", "x3"];
+/** (x1∨x2)∧(¬x1∨x3)∧(¬x2∨¬x3)という充足可能な2-CNF論理式。含意グラフのSCC分解で充足可能性を判定する。 */
+export const TWO_SAT_CLAUSES: [string, string][] = [
+  ["x1", "x2"],
+  ["!x1", "x3"],
+  ["!x2", "!x3"],
+];
+
+function twoSatNegate(lit: string): string {
+  return lit.startsWith("!") ? lit.slice(1) : `!${lit}`;
+}
+
+export const TWO_SAT_NODES: GraphNode[] = circleLayout(["x1", "!x1", "x2", "!x2", "x3", "!x3"]);
+export const TWO_SAT_EDGES: GraphEdge[] = TWO_SAT_CLAUSES.flatMap(([a, b], i) => [
+  { id: `c${i}a`, from: twoSatNegate(a), to: b, weight: 1 },
+  { id: `c${i}b`, from: twoSatNegate(b), to: a, weight: 1 },
+]);
+
+/**
+ * 2-SAT問題(2-CNF論理式の充足可能性判定)のステップ列を生成する。各節(¬a∨b)を
+ * 「aならばb」「bでないならaでない」という2本の含意(implication)に変換して有向グラフ
+ * (含意グラフ)を作る——変数xとその否定¬xが同じ強連結成分(SCC)に含まれてしまう変数が
+ * 1つでもあれば、x=真としてもx=偽としても矛盾するため充足不可能、逆に全変数でxと¬xが
+ * 別のSCCに属していれば充足可能で、Tarjanの強連結成分分解1回で判定できる。
+ */
+export function twoSatSteps(): GraphFrame[] {
+  const nodes = TWO_SAT_NODES;
+  const edges = TWO_SAT_EDGES;
+  const nodeStates = initNodeStates(nodes, "idle");
+  const edgeStates = initEdgeStates(edges, "idle");
+
+  const frames: GraphFrame[] = [
+    {
+      nodeStates: { ...nodeStates },
+      edgeStates: { ...edgeStates },
+      distances: {},
+      description: `2-SATを開始。各節から含意グラフを構築し、Tarjanの強連結成分分解でxと¬xが同じSCCに入らないかを調べる`,
+    },
+  ];
+
+  let index = 0;
+  const indices = new Map<string, number>();
+  const lowlinks = new Map<string, number>();
+  const onStack = new Set<string>();
+  const stack: string[] = [];
+  const sccOf = new Map<string, number>();
+  let sccCount = 0;
+  const outgoing = (id: string) => edges.filter((e) => e.from === id);
+
+  const strongconnect = (v: string) => {
+    indices.set(v, index);
+    lowlinks.set(v, index);
+    index++;
+    stack.push(v);
+    onStack.add(v);
+    nodeStates[v] = "visited";
+    frames.push({
+      nodeStates: { ...nodeStates },
+      edgeStates: { ...edgeStates },
+      distances: {},
+      description: `頂点${v}を訪問(発見時刻=${indices.get(v)})`,
+    });
+    for (const edge of outgoing(v)) {
+      const w = edge.to;
+      if (!indices.has(w)) {
+        edgeStates[edge.id] = "tree";
+        strongconnect(w);
+        lowlinks.set(v, Math.min(lowlinks.get(v)!, lowlinks.get(w)!));
+      } else if (onStack.has(w)) {
+        lowlinks.set(v, Math.min(lowlinks.get(v)!, indices.get(w)!));
+      }
+    }
+    if (lowlinks.get(v) === indices.get(v)) {
+      const component: string[] = [];
+      let w: string;
+      do {
+        w = stack.pop()!;
+        onStack.delete(w);
+        sccOf.set(w, sccCount);
+        nodeStates[w] = "settled";
+        component.push(w);
+      } while (w !== v);
+      sccCount++;
+      frames.push({
+        nodeStates: { ...nodeStates },
+        edgeStates: { ...edgeStates },
+        distances: {},
+        description: `SCC#${sccCount - 1}を確定: {${component.join(",")}}`,
+      });
+    }
+  };
+
+  for (const node of nodes) {
+    if (!indices.has(node.id)) strongconnect(node.id);
+  }
+
+  const variables = TWO_SAT_VARIABLES;
+  const satisfiable = variables.every((v) => sccOf.get(v) !== sccOf.get(`!${v}`));
+  const assignment = variables.map((v) => `${v}=${sccOf.get(v)! > sccOf.get(`!${v}`)! ? "真" : "偽"}`);
+
+  frames.push({
+    nodeStates: { ...nodeStates },
+    edgeStates: { ...edgeStates },
+    distances: {},
+    description: satisfiable
+      ? `計算完了。全変数でxと¬xが別のSCCに属するため充足可能。1つの解: ${assignment.join(", ")}`
+      : "計算完了。あるxで x と ¬x が同じSCCに属するため充足不可能",
+  });
+
+  return frames;
+}
+
+export const TEXTRANK_SENTENCES = ["A", "B", "C", "D"];
+/** TextRankはPageRankと同じ反復計算だが、頂点=文、辺の重み=文同士の類似度という設定が異なる。 */
+export const TEXTRANK_SIMILARITY: Record<string, number> = {
+  AB: 0.6,
+  AC: 0.2,
+  BC: 0.5,
+  BD: 0.1,
+  CD: 0.7,
+};
+export const TEXTRANK_NODES: GraphNode[] = circleLayout(TEXTRANK_SENTENCES);
+export const TEXTRANK_EDGES: GraphEdge[] = Object.entries(TEXTRANK_SIMILARITY).map(([key, w]) => ({
+  id: key,
+  from: key[0],
+  to: key[1],
+  weight: w,
+}));
+export const TEXTRANK_ITERATIONS = 8;
+export const TEXTRANK_DAMPING = 0.85;
+
+/**
+ * TextRankのステップ列を生成する。PageRankが「リンクする/される」という有向関係を使うのに対し、
+ * TextRankは文同士の類似度(無向・重み付き)を「辺」とみなし、同じべき乗法の反復更新を適用する——
+ * 「他の重要な文と強く似ている文ほど重要」という、Webページのリンク構造をテキスト要約に
+ * 転用した発想。上位スコアの文を抽出すれば、そのまま抽出型自動要約になる。
+ */
+export function textrankSteps(): GraphFrame[] {
+  const nodes = TEXTRANK_NODES;
+  const sentences = TEXTRANK_SENTENCES;
+  const n = sentences.length;
+  const d = TEXTRANK_DAMPING;
+
+  const weight = (a: string, b: string): number => TEXTRANK_SIMILARITY[`${a}${b}`] ?? TEXTRANK_SIMILARITY[`${b}${a}`] ?? 0;
+  const weightedDegree = new Map<string, number>(
+    sentences.map((s) => [s, sentences.filter((t) => t !== s).reduce((sum, t) => sum + weight(s, t), 0)]),
+  );
+
+  let score = new Map<string, number>(sentences.map((s) => [s, 1 / n]));
+  const nodeStates = initNodeStates(nodes, "idle");
+  const edgeStates = initEdgeStates(TEXTRANK_EDGES, "idle");
+  const scoreDisplay = (): Record<string, number | null> =>
+    Object.fromEntries(sentences.map((s) => [s, Number(score.get(s)!.toFixed(4))]));
+
+  const frames: GraphFrame[] = [
+    {
+      nodeStates: { ...nodeStates },
+      edgeStates: { ...edgeStates },
+      distances: scoreDisplay(),
+      description: `TextRankを開始。文${sentences.join(",")}のスコアを均等(1/${n})に初期化し、文同士の類似度を辺の重みとして反復更新する`,
+    },
+  ];
+
+  for (let iter = 1; iter <= TEXTRANK_ITERATIONS; iter++) {
+    const next = new Map<string, number>();
+    sentences.forEach((s) => {
+      const inSum = sentences
+        .filter((t) => t !== s)
+        .reduce((sum, t) => sum + (weight(s, t) / weightedDegree.get(t)!) * score.get(t)!, 0);
+      next.set(s, (1 - d) / n + d * inSum);
+    });
+    score = next;
+    frames.push({
+      nodeStates: { ...nodeStates },
+      edgeStates: { ...edgeStates },
+      distances: scoreDisplay(),
+      description: `[反復${iter}] 各文のスコア = (1-d)/N + d×Σ(類似する文のスコア×類似度の重み/その文の総類似度)`,
+    });
+  }
+
+  const ranked = [...score.entries()].sort((a, b) => b[1] - a[1]);
+  frames.push({
+    nodeStates: initNodeStates(nodes, "settled"),
+    edgeStates: { ...edgeStates },
+    distances: scoreDisplay(),
+    description: `計算完了。要約に採用する順位: ${ranked.map(([s, r]) => `${s}(${r.toFixed(4)})`).join(" > ")}`,
+  });
+
+  return frames;
+}
+
+export const REGISTER_INTERFERENCE_NODES: GraphNode[] = circleLayout(["a", "b", "c", "d", "e"]);
+/** 5つの一時変数の生存区間が重なる干渉グラフ。彩色数(クリーク数)は3。 */
+export const REGISTER_INTERFERENCE_EDGES: GraphEdge[] = [
+  { id: "ab", from: "a", to: "b", weight: 1 },
+  { id: "ac", from: "a", to: "c", weight: 1 },
+  { id: "bc", from: "b", to: "c", weight: 1 },
+  { id: "cd", from: "c", to: "d", weight: 1 },
+  { id: "ce", from: "c", to: "e", weight: 1 },
+  { id: "de", from: "d", to: "e", weight: 1 },
+];
+
+/**
+ * グラフ彩色によるレジスタ割り当てのステップ列を生成する。プログラム中の一時変数を頂点、
+ * 「同時に生存している(生存区間が重なる)変数のペア」を辺とする干渉グラフを作ると、
+ * レジスタ割り当て問題は「隣接する頂点が同じ色にならないように、できるだけ少ない色数で
+ * 全頂点を彩色する」グラフ彩色問題そのものになる——次数の高い頂点から貪欲に、既に彩色済みの
+ * 隣接頂点が使っていない最小の色を割り当てるWelsh-Powellの貪欲彩色法で近似的に解く。
+ */
+export function registerAllocationGraphColoringSteps(): GraphFrame[] {
+  const nodes = REGISTER_INTERFERENCE_NODES;
+  const edges = REGISTER_INTERFERENCE_EDGES;
+  const nodeStates = initNodeStates(nodes, "idle");
+  const edgeStates = initEdgeStates(edges, "tree");
+  const colorOf = new Map<string, number>();
+  const colorNames = ["R1", "R2", "R3", "R4"];
+
+  const neighbors = new Map<string, string[]>();
+  nodes.forEach((node) => neighbors.set(node.id, []));
+  edges.forEach((e) => {
+    neighbors.get(e.from)!.push(e.to);
+    neighbors.get(e.to)!.push(e.from);
+  });
+
+  const order = [...nodes].sort((a, b) => neighbors.get(b.id)!.length - neighbors.get(a.id)!.length);
+  const colorDisplay = (): Record<string, number | null> =>
+    Object.fromEntries(nodes.map((n2) => [n2.id, colorOf.has(n2.id) ? colorOf.get(n2.id)! : null]));
+
+  const frames: GraphFrame[] = [
+    {
+      nodeStates: { ...nodeStates },
+      edgeStates: { ...edgeStates },
+      distances: colorDisplay(),
+      description: `グラフ彩色によるレジスタ割り当てを開始。次数の高い頂点(変数)から順に、隣接する頂点が使っていない最小のレジスタ番号を貪欲に割り当てる`,
+    },
+  ];
+
+  for (const node of order) {
+    const usedColors = new Set(neighbors.get(node.id)!.map((nb) => colorOf.get(nb)).filter((c) => c !== undefined) as number[]);
+    let color = 0;
+    while (usedColors.has(color)) color++;
+    colorOf.set(node.id, color);
+    nodeStates[node.id] = "settled";
+    frames.push({
+      nodeStates: { ...nodeStates },
+      edgeStates: { ...edgeStates },
+      distances: colorDisplay(),
+      description: `変数${node.id}(次数${neighbors.get(node.id)!.length}): 隣接する変数が使用中の色{${[...usedColors].map((c) => colorNames[c]).join(",") || "なし"}}を避け、${colorNames[color]}を割り当て`,
+    });
+  }
+
+  const colorsUsed = new Set(colorOf.values()).size;
+  frames.push({
+    nodeStates: { ...nodeStates },
+    edgeStates: { ...edgeStates },
+    distances: colorDisplay(),
+    description: `計算完了。${colorsUsed}色(レジスタ)で全変数を彩色できた(このグラフの彩色数の下限であるクリークサイズ3と一致)`,
+  });
+
+  return frames;
+}
+
+export const DE_BRUIJN_READS = ["ATGCA", "TGCAT", "GCATG"];
+export const DE_BRUIJN_K = 4;
+
+const DE_BRUIJN_KMER_LIST: string[] = (() => {
+  const kmers = new Set<string>();
+  for (const read of DE_BRUIJN_READS) {
+    for (let i = 0; i + DE_BRUIJN_K <= read.length; i++) kmers.add(read.slice(i, i + DE_BRUIJN_K));
+  }
+  return [...kmers];
+})();
+const DE_BRUIJN_VERTICES: string[] = (() => {
+  const prefixSet = new Set<string>();
+  DE_BRUIJN_KMER_LIST.forEach((km) => {
+    prefixSet.add(km.slice(0, -1));
+    prefixSet.add(km.slice(1));
+  });
+  return [...prefixSet];
+})();
+export const DE_BRUIJN_NODES: GraphNode[] = circleLayout(DE_BRUIJN_VERTICES);
+export const DE_BRUIJN_EDGES: GraphEdge[] = DE_BRUIJN_KMER_LIST.map((km, i) => ({
+  id: `e${i}`,
+  from: km.slice(0, -1),
+  to: km.slice(1),
+  weight: 1,
+}));
+
+/**
+ * de Bruijnグラフによるゲノムアセンブリのステップ列を生成する。各リード(短い配列断片)を
+ * 長さkの部分文字列(k-mer)に分解し、各k-merの「先頭k-1文字」を頂点、「末尾k-1文字」への
+ * 遷移を辺とするグラフを構築する——このグラフ上でオイラー路(全ての辺をちょうど1回通る経路、
+ * ヒールホルツァーのアルゴリズムで求まる)を見つけることが、元のゲノム配列の復元に対応する。
+ */
+export function deBruijnGraphAssemblySteps(): GraphFrame[] {
+  const k = DE_BRUIJN_K;
+  const kmerList = DE_BRUIJN_KMER_LIST;
+  const vertices = DE_BRUIJN_VERTICES;
+  const nodes = DE_BRUIJN_NODES;
+  const edges = DE_BRUIJN_EDGES;
+
+  const nodeStates = initNodeStates(nodes, "idle");
+  const edgeStates = initEdgeStates(edges, "idle");
+
+  const frames: GraphFrame[] = [
+    {
+      nodeStates: { ...nodeStates },
+      edgeStates: { ...edgeStates },
+      distances: {},
+      description: `de Bruijnグラフによるゲノムアセンブリを開始。${DE_BRUIJN_READS.length}本のリードをk=${k}のk-merに分解し、頂点=長さ${k - 1}の接頭辞/接尾辞、辺=k-merとするグラフを構築する`,
+    },
+  ];
+
+  kmerList.forEach((km, i) => {
+    edgeStates[`e${i}`] = "tree";
+    nodeStates[km.slice(0, -1)] = "visited";
+    nodeStates[km.slice(1)] = "visited";
+    frames.push({
+      nodeStates: { ...nodeStates },
+      edgeStates: { ...edgeStates },
+      distances: {},
+      description: `k-mer"${km}"から辺 "${km.slice(0, -1)}"→"${km.slice(1)}" を追加`,
+    });
+  });
+
+  const inDeg = new Map<string, number>(vertices.map((v) => [v, 0]));
+  const outDeg = new Map<string, number>(vertices.map((v) => [v, 0]));
+  edges.forEach((e) => {
+    outDeg.set(e.from, outDeg.get(e.from)! + 1);
+    inDeg.set(e.to, inDeg.get(e.to)! + 1);
+  });
+  const balanced = vertices.every((v) => inDeg.get(v) === outDeg.get(v));
+
+  frames.push({
+    nodeStates: initNodeStates(nodes, "settled"),
+    edgeStates: { ...edgeStates },
+    distances: {},
+    description: `計算完了。${vertices.length}頂点・${edges.length}辺のde Bruijnグラフが完成。全頂点で入次数=出次数(${balanced ? "一致" : "不一致"})なのでオイラー閉路が存在し、元のゲノム配列を復元できる`,
+  });
+
+  return frames;
+}
+
+export const SUFFIX_AUTOMATON_STRING = "abcbc";
+
+type SuffixAutomatonState = { len: number; link: number; transitions: Map<string, number> };
+
+function buildSuffixAutomaton(s: string): SuffixAutomatonState[] {
+  const states: SuffixAutomatonState[] = [{ len: 0, link: -1, transitions: new Map() }];
+  let last = 0;
+  for (const ch of s) {
+    const cur = states.length;
+    states.push({ len: states[last].len + 1, link: -1, transitions: new Map() });
+    let p = last;
+    while (p !== -1 && !states[p].transitions.has(ch)) {
+      states[p].transitions.set(ch, cur);
+      p = states[p].link;
+    }
+    if (p === -1) {
+      states[cur].link = 0;
+    } else {
+      const q = states[p].transitions.get(ch)!;
+      if (states[p].len + 1 === states[q].len) {
+        states[cur].link = q;
+      } else {
+        const clone = states.length;
+        states.push({ len: states[p].len + 1, link: states[q].link, transitions: new Map(states[q].transitions) });
+        while (p !== -1 && states[p].transitions.get(ch) === q) {
+          states[p].transitions.set(ch, clone);
+          p = states[p].link;
+        }
+        states[q].link = clone;
+        states[cur].link = clone;
+      }
+    }
+    last = cur;
+  }
+  return states;
+}
+
+const SUFFIX_AUTOMATON_FINAL_STATES = buildSuffixAutomaton(SUFFIX_AUTOMATON_STRING);
+export const SUFFIX_AUTOMATON_NODES: GraphNode[] = circleLayout(
+  SUFFIX_AUTOMATON_FINAL_STATES.map((_, i) => `q${i}`),
+);
+export const SUFFIX_AUTOMATON_EDGES: GraphEdge[] = SUFFIX_AUTOMATON_FINAL_STATES.flatMap((st, i) =>
+  [...st.transitions.entries()].map(([ch, to]) => ({ id: `q${i}-${ch}-q${to}`, from: `q${i}`, to: `q${to}`, weight: 1 })),
+);
+
+/**
+ * 接尾辞オートマトン(suffix automaton)の構築ステップ列を生成する。文字列の全ての
+ * 部分文字列を(接尾辞木より少ない)最大2n-1状態のDFAとして表現するデータ構造——
+ * 1文字ずつ末尾に追加しながら、既存の状態を複製・分岐させる(クローン)ことで、
+ * 「新しい文字を追加しても、これまでのどの部分文字列も正しく認識できる」という
+ * 不変条件を保ったままオートマトンをオンラインに(1文字ずつ)構築していく。
+ */
+export function suffixAutomatonSteps(): GraphFrame[] {
+  const s = SUFFIX_AUTOMATON_STRING;
+  const nodes = SUFFIX_AUTOMATON_NODES;
+  const edges = SUFFIX_AUTOMATON_EDGES;
+  const nodeStates = initNodeStates(nodes, "idle");
+  const edgeStates = initEdgeStates(edges, "idle");
+
+  const frames: GraphFrame[] = [
+    {
+      nodeStates: { ...nodeStates },
+      edgeStates: { ...edgeStates },
+      distances: {},
+      description: `接尾辞オートマトンの構築を開始。文字列"${s}"の全ての部分文字列を認識するDFAを1文字ずつオンラインに構築する`,
+    },
+  ];
+
+  const states: SuffixAutomatonState[] = [{ len: 0, link: -1, transitions: new Map() }];
+  let last = 0;
+  let stepIndex = 0;
+
+  for (const ch of s) {
+    const cur = states.length;
+    states.push({ len: states[last].len + 1, link: -1, transitions: new Map() });
+    nodeStates[`q${cur}`] = "visited";
+    let p = last;
+    while (p !== -1 && !states[p].transitions.has(ch)) {
+      states[p].transitions.set(ch, cur);
+      edgeStates[`q${p}-${ch}-q${cur}`] = "tree";
+      p = states[p].link;
+    }
+    if (p === -1) {
+      states[cur].link = 0;
+    } else {
+      const q = states[p].transitions.get(ch)!;
+      if (states[p].len + 1 === states[q].len) {
+        states[cur].link = q;
+      } else {
+        const clone = states.length;
+        states.push({ len: states[p].len + 1, link: states[q].link, transitions: new Map(states[q].transitions) });
+        nodeStates[`q${clone}`] = "visited";
+        states[q].transitions.forEach((to, c2) => {
+          edgeStates[`q${clone}-${c2}-q${to}`] = "tree";
+        });
+        while (p !== -1 && states[p].transitions.get(ch) === q) {
+          states[p].transitions.set(ch, clone);
+          edgeStates[`q${p}-${ch}-q${clone}`] = "tree";
+          p = states[p].link;
+        }
+        states[q].link = clone;
+        states[cur].link = clone;
+      }
+    }
+    last = cur;
+    stepIndex++;
+    frames.push({
+      nodeStates: { ...nodeStates },
+      edgeStates: { ...edgeStates },
+      distances: {},
+      description: `文字'${ch}'を追加(${stepIndex}/${s.length}文字目)。現在の状態数=${states.length}`,
+    });
+  }
+
+  frames.push({
+    nodeStates: initNodeStates(nodes, "settled"),
+    edgeStates: { ...edgeStates },
+    distances: {},
+    description: `計算完了。文字列"${s}"の接尾辞オートマトンが完成(状態数=${states.length}、全ての部分文字列を認識できる)`,
+  });
+
+  return frames;
+}
+
 export const GRAPH_DATASETS: Record<string, GraphDataset> = {
   "bellman-ford": {
     nodes: SHORTEST_PATH_NODES,
@@ -5155,6 +5943,21 @@ export const GRAPH_DATASETS: Record<string, GraphDataset> = {
   "reverse-delete-algorithm": { nodes: MST_NODES, edges: MST_EDGES, directed: false },
   "articulation-points": { nodes: BRIDGE_NODES, edges: BRIDGE_EDGES, directed: false },
   "bridges-finding": { nodes: BRIDGE_NODES, edges: BRIDGE_EDGES, directed: false },
+  negamax: { nodes: GAME_TREE_NODES, edges: GAME_TREE_EDGES, directed: true },
+  expectimax: { nodes: GAME_TREE_NODES, edges: GAME_TREE_EDGES, directed: true },
+  "iterative-deepening-minimax": { nodes: GAME_TREE_NODES, edges: GAME_TREE_EDGES, directed: true },
+  "stable-marriage-problem": { nodes: STABLE_MARRIAGE_NODES, edges: STABLE_MARRIAGE_EDGES, directed: false },
+  "push-relabel-max-flow": { nodes: FLOW_NODES, edges: FLOW_EDGES, directed: true },
+  "hierholzer-algorithm": { nodes: HIERHOLZER_NODES, edges: HIERHOLZER_EDGES, directed: false },
+  "two-sat": { nodes: TWO_SAT_NODES, edges: TWO_SAT_EDGES, directed: true },
+  textrank: { nodes: TEXTRANK_NODES, edges: TEXTRANK_EDGES, directed: false },
+  "register-allocation-graph-coloring": {
+    nodes: REGISTER_INTERFERENCE_NODES,
+    edges: REGISTER_INTERFERENCE_EDGES,
+    directed: false,
+  },
+  "de-bruijn-graph-assembly": { nodes: DE_BRUIJN_NODES, edges: DE_BRUIJN_EDGES, directed: true },
+  "suffix-automaton": { nodes: SUFFIX_AUTOMATON_NODES, edges: SUFFIX_AUTOMATON_EDGES, directed: true },
 };
 
 export const GRAPH_VISUALIZERS: Record<string, () => GraphFrame[]> = {
@@ -5199,4 +6002,12 @@ export const GRAPH_VISUALIZERS: Record<string, () => GraphFrame[]> = {
   negamax: negamaxSteps,
   expectimax: expectimaxSteps,
   "iterative-deepening-minimax": iterativeDeepeningMinimaxSteps,
+  "stable-marriage-problem": stableMarriageProblemSteps,
+  "push-relabel-max-flow": pushRelabelMaxFlowSteps,
+  "hierholzer-algorithm": hierholzerAlgorithmSteps,
+  "two-sat": twoSatSteps,
+  textrank: textrankSteps,
+  "register-allocation-graph-coloring": registerAllocationGraphColoringSteps,
+  "de-bruijn-graph-assembly": deBruijnGraphAssemblySteps,
+  "suffix-automaton": suffixAutomatonSteps,
 };

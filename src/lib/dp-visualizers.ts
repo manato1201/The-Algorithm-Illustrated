@@ -3690,6 +3690,144 @@ export function burstBalloonsDpSteps(): DPFrame[] {
   return frames;
 }
 
+export const HUNGARIAN_COST_MATRIX: number[][] = [
+  [4, 1, 3],
+  [2, 0, 5],
+  [3, 2, 2],
+];
+
+function hungarianFindMatching(zero: boolean[][], n: number): { matchRow: number[]; matchCol: number[] } {
+  const matchCol = new Array<number>(n).fill(-1);
+  const matchRow = new Array<number>(n).fill(-1);
+  const tryAugment = (row: number, visited: boolean[]): boolean => {
+    for (let col = 0; col < n; col++) {
+      if (zero[row][col] && !visited[col]) {
+        visited[col] = true;
+        if (matchCol[col] === -1 || tryAugment(matchCol[col], visited)) {
+          matchCol[col] = row;
+          matchRow[row] = col;
+          return true;
+        }
+      }
+    }
+    return false;
+  };
+  for (let row = 0; row < n; row++) {
+    tryAugment(row, new Array<boolean>(n).fill(false));
+  }
+  return { matchRow, matchCol };
+}
+
+function hungarianMinCover(
+  zero: boolean[][],
+  matchRow: number[],
+  matchCol: number[],
+  n: number,
+): { coveredRows: boolean[]; coveredCols: boolean[] } {
+  const visitedRows = new Array<boolean>(n).fill(false);
+  const visitedCols = new Array<boolean>(n).fill(false);
+  const queue: number[] = [];
+  for (let row = 0; row < n; row++) {
+    if (matchRow[row] === -1) {
+      visitedRows[row] = true;
+      queue.push(row);
+    }
+  }
+  let qi = 0;
+  while (qi < queue.length) {
+    const row = queue[qi++];
+    for (let col = 0; col < n; col++) {
+      if (zero[row][col] && !visitedCols[col]) {
+        visitedCols[col] = true;
+        const nextRow = matchCol[col];
+        if (nextRow !== -1 && !visitedRows[nextRow]) {
+          visitedRows[nextRow] = true;
+          queue.push(nextRow);
+        }
+      }
+    }
+  }
+  const coveredRows = visitedRows.map((v) => !v);
+  const coveredCols = [...visitedCols];
+  return { coveredRows, coveredCols };
+}
+
+/**
+ * ハンガリアン法(Kuhn-Munkres法)による割当問題のステップ列を生成する。n人の作業者と
+ * n個の仕事のコスト行列から、総コストが最小になる完全マッチングを求める——各行・各列から
+ * 最小値を引く「行/列簡約」を行うと、コストが0のマス目に完全マッチングが見つかることが
+ * 多いが、見つからない場合は「0のマス目を最小本数の直線(行または列)で覆い、覆われて
+ * いない最小値を、覆われていないマスから引いて二重に覆われたマスに足す」という調整を、
+ * 直線の本数がnになるまで繰り返す(ケーニッヒの定理により、最大マッチング数と
+ * 最小直線被覆数は二部グラフで一致することを利用する)。
+ */
+export function hungarianAlgorithmSteps(): DPFrame[] {
+  const original = HUNGARIAN_COST_MATRIX;
+  const n = original.length;
+  const mat = original.map((row) => [...row]);
+
+  const frames: DPFrame[] = [];
+  const state: DPCellState[][] = Array.from({ length: n }, () => new Array(n).fill("idle" as DPCellState));
+  const snapshot = (description: string): DPFrame => ({
+    table: mat.map((row, r) => row.map((value, c) => ({ value, state: state[r][c] }))),
+    description,
+  });
+
+  frames.push(snapshot(`ハンガリアン法を開始。コスト行列から総コスト最小の完全マッチングを求める`));
+
+  for (let r = 0; r < n; r++) {
+    const rowMin = Math.min(...mat[r]);
+    for (let c = 0; c < n; c++) mat[r][c] -= rowMin;
+    for (let c = 0; c < n; c++) state[r][c] = "pivot";
+    frames.push(snapshot(`${r + 1}行目から行最小値${rowMin}を引く(行簡約)`));
+    for (let c = 0; c < n; c++) state[r][c] = "settled";
+  }
+
+  for (let c = 0; c < n; c++) {
+    const colMin = Math.min(...mat.map((row) => row[c]));
+    for (let r = 0; r < n; r++) mat[r][c] -= colMin;
+    for (let r = 0; r < n; r++) state[r][c] = "pivot";
+    frames.push(snapshot(`${c + 1}列目から列最小値${colMin}を引く(列簡約)`));
+    for (let r = 0; r < n; r++) state[r][c] = "settled";
+  }
+
+  let guard = 0;
+  let matchRow: number[] = [];
+  while (guard++ < 20) {
+    const zero = mat.map((row) => row.map((v) => v === 0));
+    const matching = hungarianFindMatching(zero, n);
+    matchRow = matching.matchRow;
+    const matchedCount = matchRow.filter((c) => c !== -1).length;
+    if (matchedCount === n) {
+      frames.push(snapshot(`0のマス目だけで完全マッチングが見つかった(${matchedCount}組)`));
+      break;
+    }
+    const { coveredRows, coveredCols } = hungarianMinCover(zero, matchRow, matching.matchCol, n);
+    let minUncovered = Infinity;
+    for (let r = 0; r < n; r++) {
+      for (let c = 0; c < n; c++) {
+        if (!coveredRows[r] && !coveredCols[c]) minUncovered = Math.min(minUncovered, mat[r][c]);
+      }
+    }
+    for (let r = 0; r < n; r++) {
+      for (let c = 0; c < n; c++) {
+        if (!coveredRows[r] && !coveredCols[c]) mat[r][c] -= minUncovered;
+        else if (coveredRows[r] && coveredCols[c]) mat[r][c] += minUncovered;
+      }
+    }
+    frames.push(
+      snapshot(
+        `完全マッチングが0だけで見つからないため調整: 覆われていない最小値${minUncovered}を、覆われていないマスから引き、二重に覆われたマスに足す`,
+      ),
+    );
+  }
+
+  const totalCost = matchRow.reduce((sum, c, r) => sum + original[r][c], 0);
+  const assignment = matchRow.map((c, r) => `行${r + 1}→列${c + 1}`).join(", ");
+  frames.push(snapshot(`計算完了。最適割当: ${assignment}(総コスト=${totalCost})`));
+  return frames;
+}
+
 export type LRUOperation = { type: "put" | "get"; key: number; value?: number };
 export const LRU_CAPACITY = 3;
 export const LRU_OPERATIONS: LRUOperation[] = [
@@ -5676,6 +5814,12 @@ export const DP_TABLE_META: Record<string, DPTableMeta> = {
     rowHeaders: [1, ...BURST_BALLOONS_NUMS, 1].map((v) => String(v)),
     colHeaders: [1, ...BURST_BALLOONS_NUMS, 1].map((v) => String(v)),
   },
+  "hungarian-algorithm": {
+    chips: HUNGARIAN_COST_MATRIX.map((row, i) => `作業者${i + 1}: [${row.join(", ")}]`),
+    cornerLabel: "作業者 \\ 仕事",
+    rowHeaders: HUNGARIAN_COST_MATRIX.map((_, i) => `作業者${i + 1}`),
+    colHeaders: HUNGARIAN_COST_MATRIX[0].map((_, i) => `仕事${i + 1}`),
+  },
 };
 
 export const DP_VISUALIZERS: Record<string, () => DPFrame[]> = {
@@ -5748,4 +5892,5 @@ export const DP_VISUALIZERS: Record<string, () => DPFrame[]> = {
   "optimal-binary-search-tree": optimalBinarySearchTreeSteps,
   "palindrome-partitioning": palindromePartitioningSteps,
   "burst-balloons-dp": burstBalloonsDpSteps,
+  "hungarian-algorithm": hungarianAlgorithmSteps,
 };
