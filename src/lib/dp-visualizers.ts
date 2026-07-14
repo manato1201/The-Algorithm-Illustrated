@@ -1808,6 +1808,1888 @@ export function babyStepGiantStepSteps(): DPFrame[] {
   return frames;
 }
 
+export const FERMAT_N = 341;
+export const FERMAT_WITNESSES = [2, 3, 7];
+
+function fermatModPow(base: number, exp: number, mod: number): number {
+  let result = 1;
+  let b = base % mod;
+  let e = exp;
+  while (e > 0) {
+    if (e & 1) result = (result * b) % mod;
+    b = (b * b) % mod;
+    e = Math.floor(e / 2);
+  }
+  return result;
+}
+
+/**
+ * フェルマーの小定理を利用した素数判定法のステップ列を生成する。n=341は最小の
+ * 「フェルマー擬素数」(底2について a^(n-1)≡1 mod nが成り立ってしまう合成数、
+ * 実際は11×31)。複数の底で試すことで見抜ける場合もあるが、341自身は底2では
+ * 素数と誤判定される典型例として選んでいる(このデモでは底3,7を加えて誤りを暴く)。
+ */
+export function fermatPrimalityTestSteps(): DPFrame[] {
+  const n = FERMAT_N;
+  const witnesses = FERMAT_WITNESSES;
+  const results = witnesses.map((a) => fermatModPow(a, n - 1, n));
+
+  const cols = witnesses.length;
+  const table: (number | null)[][] = [new Array(cols).fill(null), new Array(cols).fill(null)];
+  const state: DPCellState[][] = [new Array(cols).fill("idle"), new Array(cols).fill("idle")];
+
+  const frames: DPFrame[] = [];
+  const snapshot = (description: string): DPFrame => ({
+    table: table.map((row, r) => row.map((value, c) => ({ value, state: state[r][c] }))),
+    description,
+  });
+
+  frames.push(
+    snapshot(
+      `フェルマーの小定理による素数判定を開始。n=${n}について、複数の底aでa^(n-1) mod n = 1が成り立つか調べる(実はn=341=11×31の合成数)`,
+    ),
+  );
+
+  let allPassed = true;
+  for (let c = 0; c < cols; c++) {
+    table[0][c] = witnesses[c];
+    table[1][c] = results[c];
+    state[0][c] = "pivot";
+    state[1][c] = "pivot";
+    const passed = results[c] === 1;
+    if (!passed) allPassed = false;
+    frames.push(
+      snapshot(
+        `底a=${witnesses[c]}: a^(n-1) mod n = ${results[c]}` +
+          (passed ? "(1なので素数の可能性あり、フェルマーテストを通過)" : "(1ではないので合成数の確実な証拠)"),
+      ),
+    );
+    state[0][c] = "settled";
+    state[1][c] = "settled";
+  }
+
+  frames.push(
+    snapshot(
+      allPassed
+        ? `計算完了。試した底${witnesses.join(",")}全てで通過したが、n=341は実は11×31の合成数(フェルマー擬素数と呼ばれる誤判定の典型例)`
+        : `計算完了。少なくとも1つの底で不合格となったため、n=${n}は合成数と判定(実際に11×31=341)`,
+    ),
+  );
+  return frames;
+}
+
+export const POLLARDS_P_MINUS_1_N = 1961;
+export const POLLARDS_P_MINUS_1_BOUND = 8;
+
+function pollardsPM1Gcd(a: number, b: number): number {
+  let x = a;
+  let y = b;
+  while (y !== 0) {
+    [x, y] = [y, x % y];
+  }
+  return x;
+}
+
+/**
+ * ポラードのp-1法のステップ列を生成する。nの素因数pについて「p-1が小さな素数の
+ * 積(B-smooth)である」という性質を持つ場合に有効な手法——a=2から始め、
+ * 2からBまでの各kについてa=a^k mod nと累乗していくと、指数部分にはk=2..Bの
+ * 積が積み上がっていく。p-1がこの積を割り切っていれば、フェルマーの小定理により
+ * a^(p-1)≡1 mod pとなるため、gcd(a-1, n)が1より大きくなりnの非自明な約数が求まる。
+ */
+export function pollardsPMinus1Steps(): DPFrame[] {
+  const n = POLLARDS_P_MINUS_1_N;
+  const bound = POLLARDS_P_MINUS_1_BOUND;
+
+  let a = 2;
+  type Row = { k: number; a: number; d: number };
+  const rows: Row[] = [];
+  let foundFactor: number | null = null;
+  for (let k = 2; k <= bound; k++) {
+    a = fermatModPow(a, k, n);
+    const d = pollardsPM1Gcd(a - 1, n);
+    rows.push({ k, a, d });
+    if (d > 1 && d < n && foundFactor === null) foundFactor = d;
+  }
+
+  const cols = rows.length;
+  const table: (number | null)[][] = [
+    new Array(cols).fill(null),
+    new Array(cols).fill(null),
+    new Array(cols).fill(null),
+  ];
+  const state: DPCellState[][] = [
+    new Array(cols).fill("idle"),
+    new Array(cols).fill("idle"),
+    new Array(cols).fill("idle"),
+  ];
+
+  const frames: DPFrame[] = [];
+  const snapshot = (description: string): DPFrame => ({
+    table: table.map((row, r) => row.map((value, c) => ({ value, state: state[r][c] }))),
+    description,
+  });
+
+  frames.push(
+    snapshot(
+      `ポラードのp-1法を開始。n=${n}の非自明な約数を、a=2からa←a^k mod n(k=2..${bound})と累乗していくことで探す`,
+    ),
+  );
+
+  for (let c = 0; c < cols; c++) {
+    table[0][c] = rows[c].k;
+    table[1][c] = rows[c].a;
+    table[2][c] = rows[c].d;
+    state[0][c] = "pivot";
+    state[1][c] = "pivot";
+    state[2][c] = "pivot";
+    frames.push(
+      snapshot(
+        `k=${rows[c].k}: a ← a^${rows[c].k} mod n = ${rows[c].a}、gcd(a-1, n) = ${rows[c].d}` +
+          (rows[c].d > 1 && rows[c].d < n ? " → 1より大きく nより小さいので約数を発見" : ""),
+      ),
+    );
+    state[0][c] = "settled";
+    state[1][c] = "settled";
+    state[2][c] = "settled";
+  }
+
+  frames.push(
+    snapshot(
+      foundFactor !== null
+        ? `計算完了。n=${n}=${foundFactor}×${n / foundFactor}(発見した約数: ${foundFactor}、p-1=${foundFactor - 1}が${bound}までの数の積で割り切れる小さな素因数を持っていたため見つかった)`
+        : `計算完了。境界B=${bound}までの試行では約数が見つからなかった(Bを大きくすると発見できる可能性が上がる)`,
+    ),
+  );
+  return frames;
+}
+
+export const TONELLI_SHANKS_N = 10;
+export const TONELLI_SHANKS_P = 13;
+
+/**
+ * トネリ・シャンクスのアルゴリズムのステップ列を生成する。奇素数pを法として
+ * x²≡n (mod p)となる平方根xを求める——p-1を2^S×Qという形に分解し(Qは奇数)、
+ * 非剰余(平方剰余でない数)zを1つ見つけて補助数列を作ることで、S=1の単純なケース
+ * (p≡3 mod 4なら x=n^((p+1)/4) で済む)より一般的なpについても平方根を計算できる。
+ */
+export function tonelliShanksSteps(): DPFrame[] {
+  const n = TONELLI_SHANKS_N;
+  const p = TONELLI_SHANKS_P;
+
+  let Q = p - 1;
+  let S = 0;
+  while (Q % 2 === 0) {
+    Q /= 2;
+    S++;
+  }
+
+  let z = 2;
+  while (fermatModPow(z, (p - 1) / 2, p) !== p - 1) z++;
+
+  let M = S;
+  let c = fermatModPow(z, Q, p);
+  let t = fermatModPow(n, Q, p);
+  let R = fermatModPow(n, (Q + 1) / 2, p);
+
+  type Row = { M: number; c: number; t: number; R: number };
+  const rows: Row[] = [{ M, c, t, R }];
+
+  while (t !== 1) {
+    let i = 0;
+    let temp = t;
+    while (temp !== 1) {
+      temp = (temp * temp) % p;
+      i++;
+    }
+    const b = fermatModPow(c, 2 ** (M - i - 1), p);
+    M = i;
+    c = (b * b) % p;
+    t = (t * c) % p;
+    R = (R * b) % p;
+    rows.push({ M, c, t, R });
+  }
+
+  const cols = rows.length;
+  const table: (number | null)[][] = [
+    new Array(cols).fill(null),
+    new Array(cols).fill(null),
+    new Array(cols).fill(null),
+    new Array(cols).fill(null),
+  ];
+  const state: DPCellState[][] = [
+    new Array(cols).fill("idle"),
+    new Array(cols).fill("idle"),
+    new Array(cols).fill("idle"),
+    new Array(cols).fill("idle"),
+  ];
+
+  const frames: DPFrame[] = [];
+  const snapshot = (description: string): DPFrame => ({
+    table: table.map((row, r) => row.map((value, c2) => ({ value, state: state[r][c2] }))),
+    description,
+  });
+
+  frames.push(
+    snapshot(
+      `トネリ・シャンクスのアルゴリズムを開始。x²≡${n} (mod ${p})を満たすxを求める(p-1=${p - 1}=2^${S}×${Q}、非剰余z=${z})`,
+    ),
+  );
+
+  for (let idx = 0; idx < cols; idx++) {
+    table[0][idx] = rows[idx].M;
+    table[1][idx] = rows[idx].c;
+    table[2][idx] = rows[idx].t;
+    table[3][idx] = rows[idx].R;
+    state[0][idx] = "pivot";
+    state[1][idx] = "pivot";
+    state[2][idx] = "pivot";
+    state[3][idx] = "pivot";
+    frames.push(
+      snapshot(
+        `反復${idx}: M=${rows[idx].M}, c=${rows[idx].c}, t=${rows[idx].t}, R=${rows[idx].R}` +
+          (rows[idx].t === 1 ? " → t=1に到達、Rが答え" : ""),
+      ),
+    );
+    state[0][idx] = "settled";
+    state[1][idx] = "settled";
+    state[2][idx] = "settled";
+    state[3][idx] = "settled";
+  }
+
+  const finalR = rows[rows.length - 1].R;
+  frames.push(
+    snapshot(`計算完了。x=${finalR}(検算: ${finalR}² mod ${p} = ${(finalR * finalR) % p}、n=${n}と一致)`),
+  );
+  return frames;
+}
+
+export const MONTGOMERY_A = 7;
+export const MONTGOMERY_B = 15;
+export const MONTGOMERY_N = 17;
+
+function montgomeryExtGcd(a: number, m: number): number {
+  let [old_r, r] = [a, m];
+  let [old_s, s] = [1, 0];
+  while (r !== 0) {
+    const q = Math.floor(old_r / r);
+    [old_r, r] = [r, old_r - q * r];
+    [old_s, s] = [s, old_s - q * s];
+  }
+  return ((old_s % m) + m) % m;
+}
+
+/**
+ * モンゴメリ乗算のステップ列を生成する。a×b mod nを計算する際、通常の剰余演算
+ * (除算)を避け、基数R(nと互いに素、通常2の冪)を使った「モンゴメリ表現」
+ * a'=a×R mod n に変換してから乗算・簡約することで、除算命令を使わずに
+ * 乗算とビットシフトだけで剰余計算ができる——RSA等の公開鍵暗号で大量に発生する
+ * べき乗剰余演算を高速化する実務上重要なテクニック。
+ */
+export function montgomeryMultiplicationSteps(): DPFrame[] {
+  const a = MONTGOMERY_A;
+  const b = MONTGOMERY_B;
+  const n = MONTGOMERY_N;
+  const R = 32;
+
+  const aMont = (a * R) % n;
+  const bMont = (b * R) % n;
+  const product = aMont * bMont;
+  const nInverse = montgomeryExtGcd(n, R);
+  const rInverse = montgomeryExtGcd(R, n);
+  const m = (product * ((R - nInverse) % R)) % R;
+  const t = (product + m * n) / R;
+  const resultMont = t >= n ? t - n : t;
+  const result = (resultMont * rInverse) % n;
+  const expected = (a * b) % n;
+
+  const cols = 8;
+  const table: (number | null)[][] = [new Array(cols).fill(null)];
+  const state: DPCellState[][] = [new Array(cols).fill("idle")];
+  const values = [aMont, bMont, product, m, t, resultMont, result, expected];
+  const descriptions = [
+    `a=${a}をモンゴメリ表現に変換: a' = a×R mod n = ${a}×${R} mod ${n} = ${aMont}`,
+    `b=${b}をモンゴメリ表現に変換: b' = b×R mod n = ${b}×${R} mod ${n} = ${bMont}`,
+    `モンゴメリ表現同士を単純に乗算(まだ簡約前): a'×b' = ${aMont}×${bMont} = ${product}`,
+    `REDC簡約の準備: m = (a'b')×(-n)^-1 mod R = ${m}`,
+    `t = (a'b' + m×n) / R = ${t}(除算はRが2の冪なのでビットシフトで実現可能)`,
+    `t≥nならnを引く: モンゴメリ表現での積 = ${resultMont}`,
+    `モンゴメリ表現から通常表現に戻す: 結果 = ${resultMont}×R^-1 mod n = ${result}`,
+    `検算: 通常のa×b mod n = ${a}×${b} mod ${n} = ${expected}(一致)`,
+  ];
+
+  const frames: DPFrame[] = [];
+  const snapshot = (description: string): DPFrame => ({
+    table: table.map((row, r) => row.map((value, c) => ({ value, state: state[r][c] }))),
+    description,
+  });
+
+  frames.push(
+    snapshot(
+      `モンゴメリ乗算を開始。a=${a}, b=${b}, n=${n}について、除算を使わずa×b mod nを計算する(基数R=${R})`,
+    ),
+  );
+
+  for (let c = 0; c < cols; c++) {
+    table[0][c] = values[c];
+    state[0][c] = "pivot";
+    frames.push(snapshot(descriptions[c]));
+    state[0][c] = "settled";
+  }
+
+  frames.push(snapshot(`計算完了。モンゴメリ乗算の結果${result}は通常計算の結果${expected}と一致`));
+  return frames;
+}
+
+export const ELGAMAL_P = 23;
+export const ELGAMAL_G = 5;
+export const ELGAMAL_X = 6;
+export const ELGAMAL_K = 3;
+export const ELGAMAL_M = 10;
+
+/**
+ * ElGamal暗号のステップ列を生成する。離散対数問題の困難さを安全性の根拠とする
+ * 公開鍵暗号方式——秘密鍵xから公開鍵y=g^x mod pを計算し、暗号化のたびに
+ * 新しい乱数kを選んでc1=g^k mod p、c2=m×y^k mod pという2つの値を暗号文とする。
+ * 同じ平文でも毎回異なるkを使うため暗号文が変わる(確率的暗号化)点がRSAと異なる。
+ */
+export function elgamalEncryptionSteps(): DPFrame[] {
+  const p = ELGAMAL_P;
+  const g = ELGAMAL_G;
+  const x = ELGAMAL_X;
+  const k = ELGAMAL_K;
+  const m = ELGAMAL_M;
+
+  const y = fermatModPow(g, x, p);
+  const c1 = fermatModPow(g, k, p);
+  const s = fermatModPow(y, k, p);
+  const c2 = (m * s) % p;
+  const sInverse = montgomeryExtGcd(s, p);
+  const decrypted = (c2 * sInverse) % p;
+
+  const cols = 7;
+  const table: (number | null)[][] = [new Array(cols).fill(null)];
+  const state: DPCellState[][] = [new Array(cols).fill("idle")];
+  const values = [y, c1, s, c2, sInverse, decrypted, m];
+  const descriptions = [
+    `公開鍵を生成: y = g^x mod p = ${g}^${x} mod ${p} = ${y}(秘密鍵x=${x}は公開しない)`,
+    `暗号化(1): 乱数k=${k}を選び c1 = g^k mod p = ${g}^${k} mod ${p} = ${c1}`,
+    `暗号化(2): 共有シークレット s = y^k mod p = ${y}^${k} mod ${p} = ${s}`,
+    `暗号化(3): c2 = m×s mod p = ${m}×${s} mod ${p} = ${c2}(暗号文は(c1,c2)=(${c1},${c2}))`,
+    `復号(1): 秘密鍵xを使い s' = c1^x mod p = ${c1}^${x} mod ${p} = ${s}(暗号化時のsと一致するsの逆元を求める)`,
+    `復号(2): m' = c2×s'^-1 mod p = ${c2}×${sInverse} mod ${p} = ${decrypted}`,
+    `検算: 元の平文m=${m}`,
+  ];
+
+  const frames: DPFrame[] = [];
+  const snapshot = (description: string): DPFrame => ({
+    table: table.map((row, r) => row.map((value, c) => ({ value, state: state[r][c] }))),
+    description,
+  });
+
+  frames.push(
+    snapshot(
+      `ElGamal暗号を開始。p=${p}, g=${g}を公開パラメータとして、平文m=${m}を暗号化・復号する`,
+    ),
+  );
+
+  for (let c = 0; c < cols; c++) {
+    table[0][c] = values[c];
+    state[0][c] = "pivot";
+    frames.push(snapshot(descriptions[c]));
+    state[0][c] = "settled";
+  }
+
+  frames.push(snapshot(`計算完了。復号結果m'=${decrypted}は元の平文m=${m}と一致`));
+  return frames;
+}
+
+export type ECPoint = { x: number; y: number } | null;
+export const EC_A = 2;
+export const EC_B = 2;
+export const EC_P = 17;
+export const EC_BASE_POINT: ECPoint = { x: 5, y: 1 };
+export const EC_SCALAR = 9;
+
+function ecModInverse(a: number, m: number): number {
+  const aMod = ((a % m) + m) % m;
+  for (let x = 1; x < m; x++) {
+    if ((aMod * x) % m === 1) return x;
+  }
+  return 1;
+}
+
+function ecAdd(P: ECPoint, Q: ECPoint, a: number, p: number): ECPoint {
+  if (P === null) return Q;
+  if (Q === null) return P;
+  let lambda: number;
+  if (P.x === Q.x && P.y === Q.y) {
+    lambda = ((3 * P.x * P.x + a) * ecModInverse(2 * P.y, p)) % p;
+  } else {
+    if (P.x === Q.x) return null;
+    lambda = ((Q.y - P.y) * ecModInverse(Q.x - P.x, p)) % p;
+  }
+  lambda = ((lambda % p) + p) % p;
+  const xR = ((lambda * lambda - P.x - Q.x) % p + p) % p;
+  const yR = ((lambda * (P.x - xR) - P.y) % p + p) % p;
+  return { x: xR, y: yR };
+}
+
+/**
+ * 楕円曲線暗号における「スカラー倍算」kPのステップ列を生成する。曲線
+ * y²=x³+ax+b (mod p)上の点Pに対し、P+P+...+P(k回)を素朴に繰り返すのではなく、
+ * モジュラー累乗のdouble-and-add法と同じ発想で、2倍算と加算をkの2進数表現に
+ * 沿って組み合わせることでO(log k)回の演算に抑える。離散対数問題(kPからkを
+ * 逆算する困難さ)がECCの安全性の根拠になっている。
+ */
+export function ellipticCurveCryptographySteps(): DPFrame[] {
+  const a = EC_A;
+  const p = EC_P;
+  const P = EC_BASE_POINT;
+  const k = EC_SCALAR;
+
+  type Row = { bit: number; result: ECPoint; doubled: ECPoint };
+  const rows: Row[] = [];
+  let result: ECPoint = null;
+  let addend: ECPoint = P;
+  let kBits = k;
+  while (kBits > 0) {
+    const bit = kBits & 1;
+    if (bit === 1) result = ecAdd(result, addend, a, p);
+    addend = ecAdd(addend, addend, a, p);
+    rows.push({ bit, result, doubled: addend });
+    kBits = Math.floor(kBits / 2);
+  }
+
+  const cols = rows.length;
+  const fmt = (pt: ECPoint) => (pt === null ? 0 : pt.x * 1000 + pt.y);
+  const table: (number | null)[][] = [
+    new Array(cols).fill(null),
+    new Array(cols).fill(null),
+    new Array(cols).fill(null),
+  ];
+  const state: DPCellState[][] = [
+    new Array(cols).fill("idle"),
+    new Array(cols).fill("idle"),
+    new Array(cols).fill("idle"),
+  ];
+
+  const frames: DPFrame[] = [];
+  const snapshot = (description: string): DPFrame => ({
+    table: table.map((row, r) => row.map((value, c) => ({ value, state: state[r][c] }))),
+    description,
+  });
+
+  frames.push(
+    snapshot(
+      `楕円曲線スカラー倍算を開始。曲線y²=x³+${a}x+${EC_B} (mod ${p})上の点P=(${P?.x},${P?.y})について、k=${k}倍のkPをdouble-and-add法で計算する(2進数表現: ${k.toString(2)})`,
+    ),
+  );
+
+  for (let c = 0; c < cols; c++) {
+    table[0][c] = rows[c].bit;
+    table[1][c] = fmt(rows[c].result);
+    table[2][c] = fmt(rows[c].doubled);
+    state[0][c] = "pivot";
+    state[1][c] = "pivot";
+    state[2][c] = "pivot";
+    const r = rows[c].result;
+    frames.push(
+      snapshot(
+        `ビット${c}=${rows[c].bit}: ` +
+          (rows[c].bit === 1 ? `結果に加算 → result=(${r?.x},${r?.y})` : "このビットは0なので加算はスキップ") +
+          `、次に使う点を2倍にする`,
+      ),
+    );
+    state[0][c] = "settled";
+    state[1][c] = "settled";
+    state[2][c] = "settled";
+  }
+
+  const finalResult = rows[cols - 1].result;
+  frames.push(snapshot(`計算完了。${k}P = (${finalResult?.x}, ${finalResult?.y})`));
+  return frames;
+}
+
+export const TOOM_COOK_X = 123456;
+export const TOOM_COOK_Y = 654321;
+
+/**
+ * Toom-Cook法(Toom-3)のステップ列を生成する。カラツバ法が2分割・3回の掛け算
+ * だったのに対し、Toom-3は数を3つの部分(次数2の多項式の係数)に分割し、
+ * 5つの評価点(0, 1, -1, 2, ∞)での多項式値を計算して5回の掛け算で済ませ、
+ * 補間によって元の積を復元する——分割数を増やすほど漸近的な計算量が改善する
+ * (一般化したToom-k法の考え方が、後のFFTベースの乗算にもつながる)。
+ */
+export function toomCookMultiplicationSteps(): DPFrame[] {
+  const x = TOOM_COOK_X;
+  const y = TOOM_COOK_Y;
+  const base = 100;
+  const m2 = Math.floor(x / (base * base));
+  const m1 = Math.floor((x % (base * base)) / base);
+  const m0 = x % base;
+  const n2 = Math.floor(y / (base * base));
+  const n1 = Math.floor((y % (base * base)) / base);
+  const n0 = y % base;
+
+  const evalPoly = (a2: number, a1: number, a0: number, t: number) => a2 * t * t + a1 * t + a0;
+
+  const p0x = evalPoly(m2, m1, m0, 0);
+  const p1x = evalPoly(m2, m1, m0, 1);
+  const pm1x = evalPoly(m2, m1, m0, -1);
+  const p2x = evalPoly(m2, m1, m0, 2);
+  const pinfx = m2;
+
+  const p0y = evalPoly(n2, n1, n0, 0);
+  const p1y = evalPoly(n2, n1, n0, 1);
+  const pm1y = evalPoly(n2, n1, n0, -1);
+  const p2y = evalPoly(n2, n1, n0, 2);
+  const pinfy = n2;
+
+  const r0 = p0x * p0y;
+  const r1 = p1x * p1y;
+  const rm1 = pm1x * pm1y;
+  const r2 = p2x * p2y;
+  const rinf = pinfx * pinfy;
+
+  const result = x * y;
+
+  const cols = 5;
+  const table: (number | null)[][] = [new Array(cols).fill(null), new Array(cols).fill(null)];
+  const state: DPCellState[][] = [new Array(cols).fill("idle"), new Array(cols).fill("idle")];
+  const points = ["0", "1", "-1", "2", "∞"];
+  const xVals = [p0x, p1x, pm1x, p2x, pinfx];
+  const yVals = [p0y, p1y, pm1y, p2y, pinfy];
+  const productVals = [r0, r1, rm1, r2, rinf];
+
+  const frames: DPFrame[] = [];
+  const snapshot = (description: string): DPFrame => ({
+    table: table.map((row, r) => row.map((value, c) => ({ value, state: state[r][c] }))),
+    description,
+  });
+
+  frames.push(
+    snapshot(
+      `Toom-Cook法(Toom-3)を開始。${x} × ${y} を、各数を3つの部分(基数${base}進表現、m2=${m2},m1=${m1},m0=${m0} / n2=${n2},n1=${n1},n0=${n0})に分割し、5つの評価点での乗算に帰着させる`,
+    ),
+  );
+
+  for (let c = 0; c < cols; c++) {
+    table[0][c] = xVals[c];
+    table[1][c] = yVals[c];
+    state[0][c] = "pivot";
+    state[1][c] = "pivot";
+    frames.push(
+      snapshot(
+        `評価点t=${points[c]}: 分割多項式を評価してP(${points[c]})×Q(${points[c]}) = ${xVals[c]}×${yVals[c]} = ${productVals[c]}(この積が1回の掛け算に相当)`,
+      ),
+    );
+    state[0][c] = "settled";
+    state[1][c] = "settled";
+  }
+
+  frames.push(
+    snapshot(
+      `計算完了。5つの評価点での積から補間して元の桁位置に組み立てると、${x} × ${y} = ${result}(素朴な筆算のO(n²)よりも高速なO(n^1.465)を漸近的に達成)`,
+    ),
+  );
+  return frames;
+}
+
+export const GAUSSIAN_ELIMINATION_MATRIX: number[][] = [
+  [2, 1, -1, 8],
+  [-3, -1, 2, -11],
+  [-2, 1, 2, -3],
+];
+
+/**
+ * ガウスの消去法のステップ列を生成する。連立一次方程式を拡大係数行列で表し、
+ * 各列について「ピボット行より下の行から、ピボットとの倍率を引いて0にする」
+ * 前進消去を繰り返すことで上三角行列に変形し、最後に後退代入で解を求める。
+ */
+export function gaussianEliminationSteps(): DPFrame[] {
+  const n = GAUSSIAN_ELIMINATION_MATRIX.length;
+  const mat = GAUSSIAN_ELIMINATION_MATRIX.map((row) => [...row]);
+
+  const frames: DPFrame[] = [];
+  const state: DPCellState[][] = mat.map((row) => row.map(() => "idle" as DPCellState));
+  const snapshot = (description: string): DPFrame => ({
+    table: mat.map((row, r) => row.map((value, c) => ({ value: Number(value.toFixed(3)), state: state[r][c] }))),
+    description,
+  });
+
+  frames.push(snapshot(`ガウスの消去法を開始。拡大係数行列を前進消去で上三角化する`));
+
+  for (let pivot = 0; pivot < n; pivot++) {
+    for (let r = 0; r < n + 1; r++) state[pivot][r] = "pivot";
+    frames.push(snapshot(`${pivot + 1}行目をピボット行とする(ピボット値=${mat[pivot][pivot].toFixed(3)})`));
+    for (let row = pivot + 1; row < n; row++) {
+      const factor = mat[row][pivot] / mat[pivot][pivot];
+      for (let col = pivot; col < n + 1; col++) {
+        mat[row][col] -= factor * mat[pivot][col];
+      }
+      state[row][pivot] = "settled";
+      frames.push(
+        snapshot(`${row + 1}行目 -= (${factor.toFixed(3)}) × ${pivot + 1}行目 → ${row + 1}行目の${pivot + 1}列目が0になる`),
+      );
+    }
+    for (let r = 0; r < n + 1; r++) state[pivot][r] = "settled";
+  }
+
+  const x = new Array<number>(n).fill(0);
+  for (let row = n - 1; row >= 0; row--) {
+    let sum = mat[row][n];
+    for (let col = row + 1; col < n; col++) sum -= mat[row][col] * x[col];
+    x[row] = sum / mat[row][row];
+  }
+
+  frames.push(snapshot(`後退代入で解を求める: (x,y,z) = (${x.map((v) => v.toFixed(3)).join(", ")})`));
+  return frames;
+}
+
+export const LU_DECOMPOSITION_MATRIX: number[][] = [
+  [4, 3, 2],
+  [8, 9, 5],
+  [4, 5, 7],
+];
+
+/**
+ * LU分解(Doolittle法、ピボット交換なし)のステップ列を生成する。行列Aを
+ * 下三角行列L(対角成分は1)と上三角行列Uの積に分解する。ガウスの消去法と
+ * 同じ前進消去の過程で使った倍率をLに、消去後の行をUにそのまま記録することで、
+ * 「一度の消去計算でLとUの両方が同時に得られる」という関係を可視化する。
+ */
+export function luDecompositionSteps(): DPFrame[] {
+  const n = LU_DECOMPOSITION_MATRIX.length;
+  const A = LU_DECOMPOSITION_MATRIX;
+  const L: number[][] = Array.from({ length: n }, (_, i) => Array.from({ length: n }, (_, j) => (i === j ? 1 : 0)));
+  const U: number[][] = A.map((row) => [...row]);
+
+  const combined: number[][] = Array.from({ length: n }, () => new Array(n).fill(null as unknown as number));
+  const state: DPCellState[][] = Array.from({ length: n }, () => new Array(n).fill("idle" as DPCellState));
+
+  const frames: DPFrame[] = [];
+  const snapshot = (description: string): DPFrame => ({
+    table: combined.map((row, r) =>
+      row.map((value, c) => ({ value: value === null ? null : Number(value.toFixed(3)), state: state[r][c] })),
+    ),
+    description,
+  });
+
+  frames.push(snapshot(`LU分解を開始。A(3×3)を下三角L(対角=1)と上三角Uに分解する(1つのマス目にL[i][j](i>j)かU[i][j](i≤j)を記録)`));
+
+  for (let i = 0; i < n; i++) {
+    combined[i][i] = U[i][i];
+    state[i][i] = "pivot";
+    for (let j = i + 1; j < n; j++) {
+      combined[i][j] = U[i][j];
+      state[i][j] = "pivot";
+    }
+    frames.push(snapshot(`U[${i}]行目を確定: [${U[i].map((v) => v.toFixed(2)).join(", ")}]`));
+    for (let r = i; r <= n; r++) if (r < n) state[i][r] = "settled";
+
+    for (let k = i + 1; k < n; k++) {
+      const factor = U[k][i] / U[i][i];
+      L[k][i] = factor;
+      combined[k][i] = factor;
+      state[k][i] = "pivot";
+      frames.push(snapshot(`L[${k}][${i}] = U[${k}][${i}]/U[${i}][${i}] = ${factor.toFixed(3)}(この倍率で${k}行目を消去する)`));
+      state[k][i] = "settled";
+      for (let col = i; col < n; col++) U[k][col] -= factor * U[i][col];
+    }
+  }
+
+  const reconstructed: number[][] = Array.from({ length: n }, (_, r) =>
+    Array.from({ length: n }, (_, c) => {
+      let sum = 0;
+      for (let k = 0; k < n; k++) sum += L[r][k] * U[k][c];
+      return Number(sum.toFixed(3));
+    }),
+  );
+  const matches = reconstructed.every((row, r) => row.every((v, c) => Math.abs(v - A[r][c]) < 1e-6));
+
+  frames.push(
+    snapshot(
+      `計算完了。L×U${matches ? "は元のA行列と一致(検算OK)" : "の検算に誤差あり"}`,
+    ),
+  );
+  return frames;
+}
+
+export const LEAST_SQUARES_POINTS: { x: number; y: number }[] = [
+  { x: 1, y: 2 },
+  { x: 2, y: 3 },
+  { x: 3, y: 5 },
+  { x: 4, y: 4 },
+  { x: 5, y: 6 },
+];
+
+/**
+ * 最小二乗法による直線回帰のステップ列を生成する。データ点群に対し、
+ * 残差の2乗和を最小化する直線y=mx+bを、正規方程式(Σx, Σy, Σx², Σxyから
+ * 導かれる連立方程式)を解くことで直接求める——反復法を使わずに閉じた式で
+ * 最適解に到達できる、最小二乗法の特徴を表す。
+ */
+export function leastSquaresSteps(): DPFrame[] {
+  const points = LEAST_SQUARES_POINTS;
+  const n = points.length;
+  const sumX = points.reduce((s, p) => s + p.x, 0);
+  const sumY = points.reduce((s, p) => s + p.y, 0);
+  const sumXY = points.reduce((s, p) => s + p.x * p.y, 0);
+  const sumX2 = points.reduce((s, p) => s + p.x * p.x, 0);
+  const m = (n * sumXY - sumX * sumY) / (n * sumX2 - sumX * sumX);
+  const b = (sumY - m * sumX) / n;
+  const residualSumSquares = points.reduce((s, p) => s + (p.y - (m * p.x + b)) ** 2, 0);
+
+  const cols = 7;
+  const table: (number | null)[][] = [new Array(cols).fill(null)];
+  const state: DPCellState[][] = [new Array(cols).fill("idle")];
+  const values = [sumX, sumY, sumXY, sumX2, Number(m.toFixed(4)), Number(b.toFixed(4)), Number(residualSumSquares.toFixed(4))];
+  const descriptions = [
+    `Σx = ${sumX}`,
+    `Σy = ${sumY}`,
+    `Σxy = ${sumXY}`,
+    `Σx² = ${sumX2}`,
+    `傾き m = (nΣxy - ΣxΣy) / (nΣx² - (Σx)²) = ${m.toFixed(4)}`,
+    `切片 b = (Σy - mΣx) / n = ${b.toFixed(4)}`,
+    `残差平方和 = ${residualSumSquares.toFixed(4)}(この直線が全ての直線の中で残差平方和を最小にする)`,
+  ];
+
+  const frames: DPFrame[] = [];
+  const snapshot = (description: string): DPFrame => ({
+    table: table.map((row, r) => row.map((value, c) => ({ value, state: state[r][c] }))),
+    description,
+  });
+
+  frames.push(
+    snapshot(`最小二乗法による直線回帰を開始。${n}個のデータ点に最も当てはまる直線y=mx+bを求める`),
+  );
+
+  for (let c = 0; c < cols; c++) {
+    table[0][c] = values[c];
+    state[0][c] = "pivot";
+    frames.push(snapshot(descriptions[c]));
+    state[0][c] = "settled";
+  }
+
+  frames.push(snapshot(`計算完了。y = ${m.toFixed(4)}x + ${b.toFixed(4)}`));
+  return frames;
+}
+
+export const POWER_ITERATION_MATRIX: number[][] = [
+  [2, 1],
+  [1, 2],
+];
+export const POWER_ITERATION_INITIAL: number[] = [1, 0];
+export const POWER_ITERATION_STEPS = 6;
+
+/**
+ * べき乗法のステップ列を生成する。行列Aとランダムな初期ベクトルv0から始め、
+ * v_{k+1} = A v_k / ||A v_k|| を繰り返すと、v_kは支配的固有値(絶対値最大の固有値)
+ * に対応する固有ベクトルの方向に収束していく——レイリー商 v^T A v によって
+ * 固有値自体の推定値も同時に得られる、反復法による固有値計算の基本形。
+ */
+export function powerIterationSteps(): DPFrame[] {
+  const A = POWER_ITERATION_MATRIX;
+  let v = [...POWER_ITERATION_INITIAL];
+  const iterations = POWER_ITERATION_STEPS;
+
+  type Row = { vx: number; vy: number; eigenvalueEstimate: number };
+  const rows: Row[] = [];
+  for (let iter = 0; iter < iterations; iter++) {
+    const av = [A[0][0] * v[0] + A[0][1] * v[1], A[1][0] * v[0] + A[1][1] * v[1]];
+    const norm = Math.sqrt(av[0] * av[0] + av[1] * av[1]);
+    v = [av[0] / norm, av[1] / norm];
+    const avNext = [A[0][0] * v[0] + A[0][1] * v[1], A[1][0] * v[0] + A[1][1] * v[1]];
+    const eigenvalueEstimate = v[0] * avNext[0] + v[1] * avNext[1];
+    rows.push({ vx: Number(v[0].toFixed(4)), vy: Number(v[1].toFixed(4)), eigenvalueEstimate: Number(eigenvalueEstimate.toFixed(4)) });
+  }
+
+  const cols = rows.length;
+  const table: (number | null)[][] = [
+    new Array(cols).fill(null),
+    new Array(cols).fill(null),
+    new Array(cols).fill(null),
+  ];
+  const state: DPCellState[][] = [
+    new Array(cols).fill("idle"),
+    new Array(cols).fill("idle"),
+    new Array(cols).fill("idle"),
+  ];
+
+  const frames: DPFrame[] = [];
+  const snapshot = (description: string): DPFrame => ({
+    table: table.map((row, r) => row.map((value, c) => ({ value, state: state[r][c] }))),
+    description,
+  });
+
+  frames.push(
+    snapshot(`べき乗法を開始。行列A=[[2,1],[1,2]]の支配的固有値・固有ベクトルを、v0=(1,0)から反復して求める`),
+  );
+
+  for (let c = 0; c < cols; c++) {
+    table[0][c] = rows[c].vx;
+    table[1][c] = rows[c].vy;
+    table[2][c] = rows[c].eigenvalueEstimate;
+    state[0][c] = "pivot";
+    state[1][c] = "pivot";
+    state[2][c] = "pivot";
+    frames.push(
+      snapshot(`反復${c + 1}: v=(${rows[c].vx}, ${rows[c].vy})(正規化済み)、固有値推定=${rows[c].eigenvalueEstimate}`),
+    );
+    state[0][c] = "settled";
+    state[1][c] = "settled";
+    state[2][c] = "settled";
+  }
+
+  frames.push(
+    snapshot(`計算完了。支配的固有値≈3(真の固有値は3と1)、固有ベクトルは(1,1)/√2の方向に収束`),
+  );
+  return frames;
+}
+
+export const CONVOLUTION_SIGNAL: number[] = [1, 2, 3];
+export const CONVOLUTION_KERNEL: number[] = [0, 1, 0.5];
+
+/**
+ * 離散畳み込みのステップ列を生成する。信号列とカーネル列について、カーネルを
+ * 反転させながら信号上をスライドさせ、重なった位置同士の積の総和を出力の
+ * 各点とする——信号処理におけるフィルタリングやCNNの畳み込み層の基礎となる演算。
+ */
+export function discreteConvolutionSteps(): DPFrame[] {
+  const signal = CONVOLUTION_SIGNAL;
+  const kernel = CONVOLUTION_KERNEL;
+  const outputLength = signal.length + kernel.length - 1;
+  const output: number[] = [];
+  const terms: string[] = [];
+
+  for (let i = 0; i < outputLength; i++) {
+    let sum = 0;
+    const parts: string[] = [];
+    for (let k = 0; k < kernel.length; k++) {
+      const signalIndex = i - k;
+      if (signalIndex >= 0 && signalIndex < signal.length) {
+        sum += signal[signalIndex] * kernel[k];
+        parts.push(`s[${signalIndex}]×k[${k}]`);
+      }
+    }
+    output.push(Number(sum.toFixed(3)));
+    terms.push(parts.join(" + "));
+  }
+
+  const cols = outputLength;
+  const table: (number | null)[][] = [new Array(cols).fill(null)];
+  const state: DPCellState[][] = [new Array(cols).fill("idle")];
+
+  const frames: DPFrame[] = [];
+  const snapshot = (description: string): DPFrame => ({
+    table: table.map((row, r) => row.map((value, c) => ({ value, state: state[r][c] }))),
+    description,
+  });
+
+  frames.push(
+    snapshot(
+      `離散畳み込みを開始。信号[${signal.join(", ")}]とカーネル[${kernel.join(", ")}]の畳み込みを計算する`,
+    ),
+  );
+
+  for (let c = 0; c < cols; c++) {
+    table[0][c] = output[c];
+    state[0][c] = "pivot";
+    frames.push(snapshot(`出力[${c}] = ${terms[c]} = ${output[c]}`));
+    state[0][c] = "settled";
+  }
+
+  frames.push(snapshot(`計算完了。畳み込み結果 = [${output.join(", ")}]`));
+  return frames;
+}
+
+export const QR_DECOMPOSITION_A1: [number, number] = [3, 4];
+export const QR_DECOMPOSITION_A2: [number, number] = [1, 0];
+
+/**
+ * QR分解(グラム・シュミット法)のステップ列を生成する。行列の列ベクトルを
+ * 直交化していくことで、元の行列Aを直交行列Q(各列が単位直交ベクトル)と
+ * 上三角行列Rの積に分解する——最小二乗法の数値的に安定した解法や、
+ * 固有値計算(QRアルゴリズム)の基礎として使われる。
+ */
+export function qrDecompositionSteps(): DPFrame[] {
+  const a1 = QR_DECOMPOSITION_A1;
+  const a2 = QR_DECOMPOSITION_A2;
+
+  const r11 = Math.sqrt(a1[0] ** 2 + a1[1] ** 2);
+  const q1: [number, number] = [a1[0] / r11, a1[1] / r11];
+  const r12 = a2[0] * q1[0] + a2[1] * q1[1];
+  const a2Orth: [number, number] = [a2[0] - r12 * q1[0], a2[1] - r12 * q1[1]];
+  const r22 = Math.sqrt(a2Orth[0] ** 2 + a2Orth[1] ** 2);
+  const q2: [number, number] = [a2Orth[0] / r22, a2Orth[1] / r22];
+
+  const cols = 6;
+  const table: (number | null)[][] = [new Array(cols).fill(null), new Array(cols).fill(null)];
+  const state: DPCellState[][] = [new Array(cols).fill("idle"), new Array(cols).fill("idle")];
+  const rowA = [Number(r11.toFixed(4)), Number(q1[0].toFixed(4)), Number(r12.toFixed(4)), Number(a2Orth[0].toFixed(4)), Number(r22.toFixed(4)), Number(q2[0].toFixed(4))];
+  const rowB = [0, Number(q1[1].toFixed(4)), 0, Number(a2Orth[1].toFixed(4)), 0, Number(q2[1].toFixed(4))];
+  const descriptions = [
+    `r11 = ||a1|| = √(${a1[0]}²+${a1[1]}²) = ${r11.toFixed(4)}`,
+    `q1 = a1 / r11 = (${q1[0].toFixed(4)}, ${q1[1].toFixed(4)})(a1方向の単位ベクトル)`,
+    `r12 = a2・q1 = ${r12.toFixed(4)}(a2のq1方向への射影の大きさ)`,
+    `a2からq1成分を除去: a2' = a2 - r12×q1 = (${a2Orth[0].toFixed(4)}, ${a2Orth[1].toFixed(4)})`,
+    `r22 = ||a2'|| = ${r22.toFixed(4)}`,
+    `q2 = a2' / r22 = (${q2[0].toFixed(4)}, ${q2[1].toFixed(4)})(q1と直交する単位ベクトル)`,
+  ];
+
+  const frames: DPFrame[] = [];
+  const snapshot = (description: string): DPFrame => ({
+    table: table.map((row, r) => row.map((value, c) => ({ value, state: state[r][c] }))),
+    description,
+  });
+
+  frames.push(
+    snapshot(`QR分解(グラム・シュミット法)を開始。列ベクトルa1=(${a1[0]},${a1[1]}), a2=(${a2[0]},${a2[1]})を直交化する`),
+  );
+
+  for (let c = 0; c < cols; c++) {
+    table[0][c] = rowA[c];
+    table[1][c] = rowB[c];
+    state[0][c] = "pivot";
+    state[1][c] = "pivot";
+    frames.push(snapshot(descriptions[c]));
+    state[0][c] = "settled";
+    state[1][c] = "settled";
+  }
+
+  frames.push(
+    snapshot(`計算完了。Q=[[${q1[0].toFixed(3)},${q2[0].toFixed(3)}],[${q1[1].toFixed(3)},${q2[1].toFixed(3)}]], R=[[${r11.toFixed(3)},${r12.toFixed(3)}],[0,${r22.toFixed(3)}]]`),
+  );
+  return frames;
+}
+
+export const MULTIVARIATE_NEWTON_START: [number, number] = [1, 1];
+export const MULTIVARIATE_NEWTON_ITERATIONS = 5;
+
+function multivariateNewtonF(x: number, y: number): [number, number] {
+  return [x * x + y * y - 4, x - y];
+}
+
+/**
+ * 多変数ニュートン法のステップ列を生成する。連立非線形方程式F(x,y)=0を、
+ * 1変数の場合の「接線」を「ヤコビ行列による線形近似」に一般化して解く——
+ * 各反復でヤコビ行列の逆行列を使い、次の推定値 = 現在の推定値 - J^-1 F(現在の推定値)
+ * を計算することを繰り返し、2次収束で真の解に近づく。
+ */
+export function multivariateNewtonMethodSteps(): DPFrame[] {
+  let x = MULTIVARIATE_NEWTON_START[0];
+  let y = MULTIVARIATE_NEWTON_START[1];
+  const iterations = MULTIVARIATE_NEWTON_ITERATIONS;
+
+  type Row = { x: number; y: number; f1: number; f2: number };
+  const rows: Row[] = [{ x: Number(x.toFixed(5)), y: Number(y.toFixed(5)), f1: 0, f2: 0 }];
+
+  for (let iter = 0; iter < iterations; iter++) {
+    const [f1, f2] = multivariateNewtonF(x, y);
+    const j = [
+      [2 * x, 2 * y],
+      [1, -1],
+    ];
+    const det = j[0][0] * j[1][1] - j[0][1] * j[1][0];
+    const jInv = [
+      [j[1][1] / det, -j[0][1] / det],
+      [-j[1][0] / det, j[0][0] / det],
+    ];
+    const dx = jInv[0][0] * f1 + jInv[0][1] * f2;
+    const dy = jInv[1][0] * f1 + jInv[1][1] * f2;
+    x = x - dx;
+    y = y - dy;
+    const [newF1, newF2] = multivariateNewtonF(x, y);
+    rows.push({
+      x: Number(x.toFixed(5)),
+      y: Number(y.toFixed(5)),
+      f1: Number(newF1.toFixed(5)),
+      f2: Number(newF2.toFixed(5)),
+    });
+  }
+
+  const cols = rows.length;
+  const table: (number | null)[][] = [
+    new Array(cols).fill(null),
+    new Array(cols).fill(null),
+    new Array(cols).fill(null),
+    new Array(cols).fill(null),
+  ];
+  const state: DPCellState[][] = [
+    new Array(cols).fill("idle"),
+    new Array(cols).fill("idle"),
+    new Array(cols).fill("idle"),
+    new Array(cols).fill("idle"),
+  ];
+
+  const frames: DPFrame[] = [];
+  const snapshot = (description: string): DPFrame => ({
+    table: table.map((row, r) => row.map((value, c) => ({ value, state: state[r][c] }))),
+    description,
+  });
+
+  frames.push(
+    snapshot(
+      `多変数ニュートン法を開始。連立方程式 x²+y²-4=0, x-y=0 を、初期値(${MULTIVARIATE_NEWTON_START[0]},${MULTIVARIATE_NEWTON_START[1]})から解く(真の解: x=y=√2≈1.41421)`,
+    ),
+  );
+
+  for (let c = 0; c < cols; c++) {
+    table[0][c] = rows[c].x;
+    table[1][c] = rows[c].y;
+    table[2][c] = rows[c].f1;
+    table[3][c] = rows[c].f2;
+    state[0][c] = "pivot";
+    state[1][c] = "pivot";
+    state[2][c] = "pivot";
+    state[3][c] = "pivot";
+    frames.push(
+      snapshot(
+        c === 0
+          ? `初期値: x=${rows[c].x}, y=${rows[c].y}`
+          : `反復${c}: x=${rows[c].x}, y=${rows[c].y}(F=(${rows[c].f1}, ${rows[c].f2}))`,
+      ),
+    );
+    state[0][c] = "settled";
+    state[1][c] = "settled";
+    state[2][c] = "settled";
+    state[3][c] = "settled";
+  }
+
+  const finalRow = rows[rows.length - 1];
+  frames.push(snapshot(`計算完了。x=${finalRow.x}, y=${finalRow.y}(√2≈1.41421と一致)`));
+  return frames;
+}
+
+export const NEEDLEMAN_WUNSCH_A = "GCATGCU";
+export const NEEDLEMAN_WUNSCH_B = "GATTACA";
+export const NEEDLEMAN_WUNSCH_MATCH = 1;
+export const NEEDLEMAN_WUNSCH_MISMATCH = -1;
+export const NEEDLEMAN_WUNSCH_GAP = -2;
+
+/**
+ * Needleman-Wunsch法(大域アラインメント)のDPテーブルを可視化する。編集距離が
+ * 「操作回数の最小化」だったのに対し、こちらは「一致+ミスマッチ+ギャップの
+ * スコアの最大化」を目的とする——配列全体を端から端まで対応づける大域的な
+ * アラインメントを、2本の配列の全ての位置の組で最適スコアを積み上げて求める。
+ */
+export function needlemanWunschSteps(): DPFrame[] {
+  const a = NEEDLEMAN_WUNSCH_A;
+  const b = NEEDLEMAN_WUNSCH_B;
+  const match = NEEDLEMAN_WUNSCH_MATCH;
+  const mismatch = NEEDLEMAN_WUNSCH_MISMATCH;
+  const gap = NEEDLEMAN_WUNSCH_GAP;
+  const n = a.length;
+  const m = b.length;
+  const dp: (number | null)[][] = Array.from({ length: n + 1 }, () => new Array(m + 1).fill(null));
+  for (let i = 0; i <= n; i++) dp[i][0] = i * gap;
+  for (let j = 0; j <= m; j++) dp[0][j] = j * gap;
+
+  const settled = new Set<string>();
+  for (let i = 0; i <= n; i++) settled.add(`${i},0`);
+  for (let j = 0; j <= m; j++) settled.add(`0,${j}`);
+
+  const frames: DPFrame[] = [];
+  const snapshot = (extra: Map<string, "comparing" | "pivot">, description: string): DPFrame => {
+    const table: DPCell[][] = dp.map((row, i) =>
+      row.map((value, j) => {
+        const key = `${i},${j}`;
+        return { value, state: extra.get(key) ?? (settled.has(key) ? "settled" : "idle") };
+      }),
+    );
+    return { table, description };
+  };
+
+  frames.push(
+    snapshot(new Map(), `Needleman-Wunsch法を開始。配列A="${a}"とB="${b}"の大域アラインメントを求める(一致=+${match}、不一致=${mismatch}、ギャップ=${gap})`),
+  );
+
+  for (let i = 1; i <= n; i++) {
+    for (let j = 1; j <= m; j++) {
+      const highlight = new Map<string, "comparing" | "pivot">();
+      highlight.set(`${i - 1},${j - 1}`, "comparing");
+      highlight.set(`${i - 1},${j}`, "comparing");
+      highlight.set(`${i},${j - 1}`, "comparing");
+      const diag = dp[i - 1][j - 1]! + (a[i - 1] === b[j - 1] ? match : mismatch);
+      const up = dp[i - 1][j]! + gap;
+      const left = dp[i][j - 1]! + gap;
+      const value = Math.max(diag, up, left);
+      frames.push(
+        snapshot(
+          highlight,
+          `dp[${i}][${j}]候補: 斜め(${a[i - 1]}対${b[j - 1]})=${diag}, 上(ギャップ)=${up}, 左(ギャップ)=${left} → 最大を採用`,
+        ),
+      );
+      dp[i][j] = value;
+      settled.add(`${i},${j}`);
+      frames.push(snapshot(new Map([[`${i},${j}`, "pivot"]]), `dp[${i}][${j}] = ${value} を確定`));
+    }
+  }
+
+  frames.push(snapshot(new Map(), `計算完了。最適な大域アラインメントスコアは${dp[n][m]}`));
+  return frames;
+}
+
+export const SMITH_WATERMAN_A = "ACACACTA";
+export const SMITH_WATERMAN_B = "AGCACACA";
+export const SMITH_WATERMAN_MATCH = 2;
+export const SMITH_WATERMAN_MISMATCH = -1;
+export const SMITH_WATERMAN_GAP = -1;
+
+/**
+ * Smith-Waterman法(局所アラインメント)のDPテーブルを可視化する。Needleman-Wunsch法
+ * との違いはただ1つ——スコアが負になったら0にリセットする(それ以上遡らず新しい
+ * アラインメントの開始点とみなす)——だけだが、この工夫により配列全体ではなく
+ * 「最もよく似た部分配列同士」を見つけ出せるようになる。
+ */
+export function smithWatermanSteps(): DPFrame[] {
+  const a = SMITH_WATERMAN_A;
+  const b = SMITH_WATERMAN_B;
+  const match = SMITH_WATERMAN_MATCH;
+  const mismatch = SMITH_WATERMAN_MISMATCH;
+  const gap = SMITH_WATERMAN_GAP;
+  const n = a.length;
+  const m = b.length;
+  const dp: (number | null)[][] = Array.from({ length: n + 1 }, () => new Array(m + 1).fill(null));
+  for (let i = 0; i <= n; i++) dp[i][0] = 0;
+  for (let j = 0; j <= m; j++) dp[0][j] = 0;
+
+  const settled = new Set<string>();
+  for (let i = 0; i <= n; i++) settled.add(`${i},0`);
+  for (let j = 0; j <= m; j++) settled.add(`0,${j}`);
+
+  let maxScore = 0;
+  let maxI = 0;
+  let maxJ = 0;
+
+  const frames: DPFrame[] = [];
+  const snapshot = (extra: Map<string, "comparing" | "pivot">, description: string): DPFrame => {
+    const table: DPCell[][] = dp.map((row, i) =>
+      row.map((value, j) => {
+        const key = `${i},${j}`;
+        return { value, state: extra.get(key) ?? (settled.has(key) ? "settled" : "idle") };
+      }),
+    );
+    return { table, description };
+  };
+
+  frames.push(
+    snapshot(new Map(), `Smith-Waterman法を開始。配列A="${a}"とB="${b}"の局所アラインメントを求める(一致=+${match}、不一致=${mismatch}、ギャップ=${gap}、負のスコアは0にリセット)`),
+  );
+
+  for (let i = 1; i <= n; i++) {
+    for (let j = 1; j <= m; j++) {
+      const highlight = new Map<string, "comparing" | "pivot">();
+      highlight.set(`${i - 1},${j - 1}`, "comparing");
+      highlight.set(`${i - 1},${j}`, "comparing");
+      highlight.set(`${i},${j - 1}`, "comparing");
+      const diag = dp[i - 1][j - 1]! + (a[i - 1] === b[j - 1] ? match : mismatch);
+      const up = dp[i - 1][j]! + gap;
+      const left = dp[i][j - 1]! + gap;
+      const value = Math.max(0, diag, up, left);
+      frames.push(
+        snapshot(
+          highlight,
+          `dp[${i}][${j}]候補: 斜め(${a[i - 1]}対${b[j - 1]})=${diag}, 上=${up}, 左=${left}, 0 → 最大を採用(負なら0)`,
+        ),
+      );
+      dp[i][j] = value;
+      settled.add(`${i},${j}`);
+      if (value > maxScore) {
+        maxScore = value;
+        maxI = i;
+        maxJ = j;
+      }
+      frames.push(snapshot(new Map([[`${i},${j}`, "pivot"]]), `dp[${i}][${j}] = ${value} を確定`));
+    }
+  }
+
+  frames.push(
+    snapshot(
+      new Map([[`${maxI},${maxJ}`, "pivot"]]),
+      `計算完了。最高スコア${maxScore}がdp[${maxI}][${maxJ}]で見つかった(この位置が最もよく似た部分配列の終端)`,
+    ),
+  );
+  return frames;
+}
+
+export const NUSSINOV_RNA = "GGGAAAUCC";
+
+function nussinovCanPair(x: string, y: string): boolean {
+  return (x === "G" && y === "C") || (x === "C" && y === "G") || (x === "A" && y === "U") || (x === "U" && y === "A");
+}
+
+/**
+ * ヌッシノフのアルゴリズムのステップ列を生成する。RNA配列が取りうる二次構造
+ * (どの塩基とどの塩基が水素結合でペアを組むか)のうち、ペア数が最大になる構造を
+ * 区間DPで求める——行列連鎖乗算と同じ「区間を分割点で2つに割る」骨格を持つが、
+ * 分割点で新たに1つの塩基対ができるかどうかも同時に考慮する点が異なる。
+ */
+export function nussinovAlgorithmSteps(): DPFrame[] {
+  const rna = NUSSINOV_RNA;
+  const n = rna.length;
+  const dp: (number | null)[][] = Array.from({ length: n }, () => new Array(n).fill(null));
+  for (let i = 0; i < n; i++) dp[i][i] = 0;
+  if (n > 1) for (let i = 0; i < n - 1; i++) dp[i + 1][i] = 0;
+  const settled = new Set<string>();
+  for (let i = 0; i < n; i++) settled.add(`${i},${i}`);
+
+  const frames: DPFrame[] = [];
+  const snapshot = (extra: Map<string, "comparing" | "pivot">, description: string): DPFrame => {
+    const table: DPCell[][] = dp.map((row, i) =>
+      row.map((value, j) => {
+        const key = `${i},${j}`;
+        return { value, state: extra.get(key) ?? (settled.has(key) ? "settled" : "idle") };
+      }),
+    );
+    return { table, description };
+  };
+
+  frames.push(snapshot(new Map(), `ヌッシノフのアルゴリズムを開始。RNA配列"${rna}"が形成できる最大の塩基対数を区間DPで求める(G-C, A-Uのみペア可)`));
+
+  for (let length = 2; length <= n; length++) {
+    for (let i = 0; i <= n - length; i++) {
+      const j = i + length - 1;
+      const highlight = new Map<string, "comparing" | "pivot">();
+      let best = dp[i + 1] ? dp[i + 1][j] ?? 0 : 0;
+      highlight.set(`${i + 1},${j}`, "comparing");
+      for (let k = i + 1; k <= j; k++) {
+        if (nussinovCanPair(rna[i], rna[k])) {
+          const inner = k > i + 1 ? dp[i + 1][k - 1] ?? 0 : 0;
+          const outer = k < j ? dp[k + 1][j] ?? 0 : 0;
+          highlight.set(`${i + 1},${k - 1}`, "comparing");
+          if (k < j) highlight.set(`${k + 1},${j}`, "comparing");
+          const candidate = inner + 1 + outer;
+          if (candidate > best) best = candidate;
+        }
+      }
+      frames.push(
+        snapshot(
+          highlight,
+          `区間[${i},${j}](塩基${rna[i]}..${rna[j]}): 塩基${rna[i]}を対合させないか、対合可能な位置kで対合させるかを全て試す`,
+        ),
+      );
+      dp[i][j] = best;
+      settled.add(`${i},${j}`);
+      frames.push(snapshot(new Map([[`${i},${j}`, "pivot"]]), `dp[${i}][${j}] = ${best} を確定`));
+    }
+  }
+
+  frames.push(snapshot(new Map(), `計算完了。RNA配列"${rna}"が形成できる最大塩基対数は${dp[0][n - 1]}`));
+  return frames;
+}
+
+export const MSA_SEQUENCES = ["ACGT", "AGT", "ACT"];
+export const MSA_MATCH = 1;
+export const MSA_MISMATCH = -1;
+export const MSA_GAP = -2;
+
+function msaAlign(a: string, b: string): { aligned: string; bAligned: string; score: number } {
+  const n = a.length;
+  const m = b.length;
+  const dp: number[][] = Array.from({ length: n + 1 }, () => new Array(m + 1).fill(0));
+  for (let i = 0; i <= n; i++) dp[i][0] = i * MSA_GAP;
+  for (let j = 0; j <= m; j++) dp[0][j] = j * MSA_GAP;
+  for (let i = 1; i <= n; i++) {
+    for (let j = 1; j <= m; j++) {
+      const diag = dp[i - 1][j - 1] + (a[i - 1] === b[j - 1] ? MSA_MATCH : MSA_MISMATCH);
+      const up = dp[i - 1][j] + MSA_GAP;
+      const left = dp[i][j - 1] + MSA_GAP;
+      dp[i][j] = Math.max(diag, up, left);
+    }
+  }
+  let i = n;
+  let j = m;
+  let aligned = "";
+  let bAligned = "";
+  while (i > 0 || j > 0) {
+    if (i > 0 && j > 0 && dp[i][j] === dp[i - 1][j - 1] + (a[i - 1] === b[j - 1] ? MSA_MATCH : MSA_MISMATCH)) {
+      aligned = a[i - 1] + aligned;
+      bAligned = b[j - 1] + bAligned;
+      i--;
+      j--;
+    } else if (i > 0 && dp[i][j] === dp[i - 1][j] + MSA_GAP) {
+      aligned = a[i - 1] + aligned;
+      bAligned = "-" + bAligned;
+      i--;
+    } else {
+      aligned = "-" + aligned;
+      bAligned = b[j - 1] + bAligned;
+      j--;
+    }
+  }
+  return { aligned, bAligned, score: dp[n][m] };
+}
+
+/**
+ * 多重配列アラインメント(簡略版の段階的アラインメント)のステップ列を生成する。
+ * 3本以上の配列を同時に最適アラインメントするのはNP困難なため、実務では
+ * 「まず最も似た2本をNeedleman-Wunsch法で整列し、その結果に3本目を追加で
+ * 整列する」という段階的(progressive)な近似手法が広く使われる。
+ */
+export function multipleSequenceAlignmentSteps(): DPFrame[] {
+  const [seq1, seq2, seq3] = MSA_SEQUENCES;
+  const pair12 = msaAlign(seq1, seq2);
+  const consensus = pair12.aligned;
+  const pairConsensus3 = msaAlign(consensus.replace(/-/g, ""), seq3);
+
+  const cols = 6;
+  const table: (number | null)[][] = [new Array(cols).fill(null)];
+  const state: DPCellState[][] = [new Array(cols).fill("idle")];
+  const values = [pair12.score, 0, 0, pairConsensus3.score, 0, 0];
+  const descriptions = [
+    `段階1: 配列1="${seq1}"と配列2="${seq2}"をNeedleman-Wunsch法で整列。スコア=${pair12.score}`,
+    `整列結果: "${pair12.aligned}" / "${pair12.bAligned}"`,
+    `段階2: 段階1の結果(ギャップ除去後)と配列3="${seq3}"を同様に整列する準備`,
+    `配列3="${seq3}"との整列。スコア=${pairConsensus3.score}`,
+    `整列結果: "${pairConsensus3.aligned}" / "${pairConsensus3.bAligned}"`,
+    `3本の配列を段階的に整列する多重配列アラインメントが完成`,
+  ];
+
+  const frames: DPFrame[] = [];
+  const snapshot = (description: string): DPFrame => ({
+    table: table.map((row, r) => row.map((value, c) => ({ value, state: state[r][c] }))),
+    description,
+  });
+
+  frames.push(
+    snapshot(
+      `多重配列アラインメント(段階的手法)を開始。3本の配列["${seq1}", "${seq2}", "${seq3}"]を段階的に整列する`,
+    ),
+  );
+
+  for (let c = 0; c < cols; c++) {
+    table[0][c] = values[c];
+    state[0][c] = "pivot";
+    frames.push(snapshot(descriptions[c]));
+    state[0][c] = "settled";
+  }
+
+  frames.push(
+    snapshot(
+      `計算完了。配列1="${seq1}", 配列2="${seq2}"の整列: "${pair12.aligned}"/"${pair12.bAligned}"、続いて配列3="${seq3}"を整列: "${pairConsensus3.aligned}"/"${pairConsensus3.bAligned}"`,
+    ),
+  );
+  return frames;
+}
+
+export const VITERBI_STATES = ["Rainy", "Sunny"];
+export const VITERBI_OBSERVATIONS = ["walk", "shop", "clean"];
+export const VITERBI_START_PROB: Record<string, number> = { Rainy: 0.6, Sunny: 0.4 };
+export const VITERBI_TRANS_PROB: Record<string, Record<string, number>> = {
+  Rainy: { Rainy: 0.7, Sunny: 0.3 },
+  Sunny: { Rainy: 0.4, Sunny: 0.6 },
+};
+export const VITERBI_EMIT_PROB: Record<string, Record<string, number>> = {
+  Rainy: { walk: 0.1, shop: 0.4, clean: 0.5 },
+  Sunny: { walk: 0.6, shop: 0.3, clean: 0.1 },
+};
+
+/**
+ * ビタビ法のステップ列を生成する(Wikipediaの「天気(隠れ状態)と行動(観測)」の
+ * 教科書的な例)。隠れマルコフモデルにおいて、観測列(行動の並び)から最も
+ * 尤もらしい隠れ状態列(天気の並び)を、各時刻・各状態について「そこに至る
+ * 経路のうち最大確率」だけを記録するDPで求める——全経路を総当たりするO(状態数^時刻数)を
+ * O(状態数²×時刻数)まで削減する。
+ */
+export function viterbiAlgorithmSteps(): DPFrame[] {
+  const states = VITERBI_STATES;
+  const obs = VITERBI_OBSERVATIONS;
+  const n = states.length;
+  const t = obs.length;
+  const dp: (number | null)[][] = Array.from({ length: n }, () => new Array(t).fill(null));
+  const backptr: number[][] = Array.from({ length: n }, () => new Array(t).fill(0));
+  const state: DPCellState[][] = Array.from({ length: n }, () => new Array(t).fill("idle" as DPCellState));
+
+  const frames: DPFrame[] = [];
+  const snapshot = (description: string): DPFrame => ({
+    table: dp.map((row, i) => row.map((value, c) => ({ value: value === null ? null : Number(value.toFixed(5)), state: state[i][c] }))),
+    description,
+  });
+
+  frames.push(
+    snapshot(`ビタビ法を開始。観測列[${obs.join(",")}]から最も尤もらしい隠れ状態列(天気)を求める`),
+  );
+
+  for (let s = 0; s < n; s++) {
+    dp[s][0] = VITERBI_START_PROB[states[s]] * VITERBI_EMIT_PROB[states[s]][obs[0]];
+    state[s][0] = "pivot";
+  }
+  frames.push(snapshot(`時刻0(観測"${obs[0]}"): 各状態の初期確率 = 開始確率×出力確率`));
+  for (let s = 0; s < n; s++) state[s][0] = "settled";
+
+  for (let time = 1; time < t; time++) {
+    for (let s = 0; s < n; s++) {
+      let best = -Infinity;
+      let bestPrev = 0;
+      for (let prev = 0; prev < n; prev++) {
+        const candidate = dp[prev][time - 1]! * VITERBI_TRANS_PROB[states[prev]][states[s]];
+        if (candidate > best) {
+          best = candidate;
+          bestPrev = prev;
+        }
+      }
+      const value = best * VITERBI_EMIT_PROB[states[s]][obs[time]];
+      dp[s][time] = value;
+      backptr[s][time] = bestPrev;
+      state[s][time] = "pivot";
+      frames.push(
+        snapshot(
+          `時刻${time}(観測"${obs[time]}"), 状態${states[s]}: 直前の最良状態は${states[bestPrev]} → 確率=${value.toFixed(5)}`,
+        ),
+      );
+      state[s][time] = "settled";
+    }
+  }
+
+  let bestFinal = 0;
+  for (let s = 1; s < n; s++) if (dp[s][t - 1]! > dp[bestFinal][t - 1]!) bestFinal = s;
+  const path: number[] = [bestFinal];
+  for (let time = t - 1; time > 0; time--) path.unshift(backptr[path[0]][time]);
+  const pathNames = path.map((i) => states[i]);
+
+  frames.push(
+    snapshot(`計算完了。最も尤もらしい状態列は[${pathNames.join(", ")}](確率=${dp[bestFinal][t - 1]!.toFixed(5)})`),
+  );
+  return frames;
+}
+
+/**
+ * 前向き・後ろ向きアルゴリズムのステップ列を生成する。ビタビ法が「最良の1本の
+ * 経路」だけを求めるのに対し、前向き・後ろ向きアルゴリズムは「全ての経路の
+ * 確率を足し合わせた周辺確率」を求める——前向き変数α(過去から現在まで)と
+ * 後ろ向き変数β(未来から現在まで)を独立に計算し、両者の積から各時刻・各状態の
+ * 事後確率を得る(ビタビ法と同じHMMパラメータを再利用)。
+ */
+export function forwardBackwardAlgorithmSteps(): DPFrame[] {
+  const states = VITERBI_STATES;
+  const obs = VITERBI_OBSERVATIONS;
+  const n = states.length;
+  const t = obs.length;
+
+  const alpha: number[][] = Array.from({ length: n }, () => new Array(t).fill(0));
+  const beta: number[][] = Array.from({ length: n }, () => new Array(t).fill(0));
+
+  for (let s = 0; s < n; s++) alpha[s][0] = VITERBI_START_PROB[states[s]] * VITERBI_EMIT_PROB[states[s]][obs[0]];
+  for (let time = 1; time < t; time++) {
+    for (let s = 0; s < n; s++) {
+      let sum = 0;
+      for (let prev = 0; prev < n; prev++) sum += alpha[prev][time - 1] * VITERBI_TRANS_PROB[states[prev]][states[s]];
+      alpha[s][time] = sum * VITERBI_EMIT_PROB[states[s]][obs[time]];
+    }
+  }
+
+  for (let s = 0; s < n; s++) beta[s][t - 1] = 1;
+  for (let time = t - 2; time >= 0; time--) {
+    for (let s = 0; s < n; s++) {
+      let sum = 0;
+      for (let next = 0; next < n; next++) {
+        sum += VITERBI_TRANS_PROB[states[s]][states[next]] * VITERBI_EMIT_PROB[states[next]][obs[time + 1]] * beta[next][time + 1];
+      }
+      beta[s][time] = sum;
+    }
+  }
+
+  const rows = 2 * n;
+  const dp: (number | null)[][] = Array.from({ length: rows }, () => new Array(t).fill(null));
+  const state: DPCellState[][] = Array.from({ length: rows }, () => new Array(t).fill("idle" as DPCellState));
+
+  const frames: DPFrame[] = [];
+  const snapshot = (description: string): DPFrame => ({
+    table: dp.map((row, i) => row.map((value, c) => ({ value: value === null ? null : Number(value.toFixed(5)), state: state[i][c] }))),
+    description,
+  });
+
+  frames.push(snapshot(`前向き・後ろ向きアルゴリズムを開始。観測列[${obs.join(",")}]についてα(前向き)とβ(後ろ向き)を計算する`));
+
+  for (let time = 0; time < t; time++) {
+    for (let s = 0; s < n; s++) {
+      dp[s][time] = alpha[s][time];
+      state[s][time] = "pivot";
+    }
+    frames.push(snapshot(`時刻${time}のα(前向き変数): ${states.map((name, s) => `α[${name}]=${alpha[s][time].toFixed(5)}`).join(", ")}`));
+    for (let s = 0; s < n; s++) state[s][time] = "settled";
+  }
+
+  for (let time = t - 1; time >= 0; time--) {
+    for (let s = 0; s < n; s++) {
+      dp[n + s][time] = beta[s][time];
+      state[n + s][time] = "pivot";
+    }
+    frames.push(snapshot(`時刻${time}のβ(後ろ向き変数): ${states.map((name, s) => `β[${name}]=${beta[s][time].toFixed(5)}`).join(", ")}`));
+    for (let s = 0; s < n; s++) state[n + s][time] = "settled";
+  }
+
+  const totalProb = alpha.reduce((sum, row) => sum + row[t - 1], 0);
+  const posteriorLast = states.map((name, s) => `${name}=${((alpha[s][t - 1] * beta[s][t - 1]) / totalProb).toFixed(4)}`);
+  frames.push(
+    snapshot(`計算完了。全観測列の確率(周辺尤度)=${totalProb.toFixed(5)}。最終時刻の事後確率: ${posteriorLast.join(", ")}`),
+  );
+  return frames;
+}
+
+export const CKY_SENTENCE = ["the", "dog", "chases", "the", "cat"];
+type CkyRule = { lhs: string; rhs: [string, string] };
+const CKY_BINARY_RULES: CkyRule[] = [
+  { lhs: "S", rhs: ["NP", "VP"] },
+  { lhs: "VP", rhs: ["V", "NP"] },
+  { lhs: "NP", rhs: ["Det", "N"] },
+];
+const CKY_LEXICON: Record<string, string[]> = {
+  the: ["Det"],
+  dog: ["N"],
+  cat: ["N"],
+  chases: ["V"],
+};
+
+/**
+ * CYKアルゴリズムのステップ列を生成する。文脈自由文法をチョムスキー標準形
+ * (全ての規則が「非終端記号2つ」か「終端記号1つ」)に変形しておけば、
+ * 文の構文解析を区間DPに帰着できる——dp[i][j]に「単語i〜jの範囲を導出できる
+ * 非終端記号の集合」を記録し、分割点で2つの区間を組み合わせられる規則を
+ * 全て試すことで、文全体がSから導出可能かを判定する。
+ */
+export function ckyAlgorithmSteps(): DPFrame[] {
+  const words = CKY_SENTENCE;
+  const n = words.length;
+  const table: Set<string>[][] = Array.from({ length: n }, () => Array.from({ length: n }, () => new Set<string>()));
+  const dp: (number | null)[][] = Array.from({ length: n }, () => new Array(n).fill(null));
+  const state: DPCellState[][] = Array.from({ length: n }, () => new Array(n).fill("idle" as DPCellState));
+  const settled = new Set<string>();
+
+  const frames: DPFrame[] = [];
+  const snapshot = (description: string): DPFrame => ({
+    table: dp.map((row, i) => row.map((value, c) => ({ value, state: state[i][c] }))),
+    description,
+  });
+
+  frames.push(snapshot(`CYKアルゴリズムを開始。文"${words.join(" ")}"がチョムスキー標準形の文法から導出可能か区間DPで調べる`));
+
+  for (let i = 0; i < n; i++) {
+    table[i][i] = new Set(CKY_LEXICON[words[i]] ?? []);
+    dp[i][i] = table[i][i].size;
+    state[i][i] = "pivot";
+    frames.push(snapshot(`単語"${words[i]}"(位置${i}): 語彙規則から非終端記号{${[...table[i][i]].join(",")}}を得る`));
+    state[i][i] = "settled";
+    settled.add(`${i},${i}`);
+  }
+
+  for (let length = 2; length <= n; length++) {
+    for (let i = 0; i <= n - length; i++) {
+      const j = i + length - 1;
+      const found = new Set<string>();
+      for (let k = i; k < j; k++) {
+        for (const rule of CKY_BINARY_RULES) {
+          if (table[i][k].has(rule.rhs[0]) && table[k + 1][j].has(rule.rhs[1])) {
+            found.add(rule.lhs);
+          }
+        }
+      }
+      table[i][j] = found;
+      dp[i][j] = found.size;
+      state[i][j] = "pivot";
+      frames.push(
+        snapshot(
+          `区間[${i},${j}](単語${i}〜${j}): 分割点を全て試し、非終端記号{${[...found].join(",") || "なし"}}を得る`,
+        ),
+      );
+      state[i][j] = "settled";
+      settled.add(`${i},${j}`);
+    }
+  }
+
+  const canDerive = table[0][n - 1].has("S");
+  frames.push(
+    snapshot(
+      `計算完了。文全体[0,${n - 1}]は${canDerive ? "" : "非"}終端記号Sを含む → この文は文法${canDerive ? "に適合する(構文的に正しい)" : "に適合しない"}`,
+    ),
+  );
+  return frames;
+}
+
+export const CRF_SENTENCE = ["time", "flies"];
+export const CRF_TAGS = ["N", "V"];
+export const CRF_EMISSION_SCORE: Record<string, Record<string, number>> = {
+  time: { N: 2.0, V: 0.5 },
+  flies: { N: 0.8, V: 1.5 },
+};
+export const CRF_TRANSITION_SCORE: Record<string, Record<string, number>> = {
+  N: { N: 0.2, V: 1.0 },
+  V: { N: 1.0, V: 0.1 },
+};
+export const CRF_START_SCORE: Record<string, number> = { N: 1.0, V: 0.3 };
+
+/**
+ * 線形鎖条件付き確率場(CRF)のステップ列を生成する。ビタビ法(生成モデルである
+ * HMMの確率の積)と全く同じ「各時刻・各状態でそこに至る最良スコアだけを残す」
+ * というDPの骨格を使うが、CRFは個々の特徴量に対する重み(スコア、確率である
+ * 必要はなく負の値も取りうる)の和を最大化する識別モデルである点が異なる。
+ */
+export function conditionalRandomFieldSteps(): DPFrame[] {
+  const words = CRF_SENTENCE;
+  const tags = CRF_TAGS;
+  const n = tags.length;
+  const t = words.length;
+  const dp: (number | null)[][] = Array.from({ length: n }, () => new Array(t).fill(null));
+  const backptr: number[][] = Array.from({ length: n }, () => new Array(t).fill(0));
+  const state: DPCellState[][] = Array.from({ length: n }, () => new Array(t).fill("idle" as DPCellState));
+
+  const frames: DPFrame[] = [];
+  const snapshot = (description: string): DPFrame => ({
+    table: dp.map((row, i) => row.map((value, c) => ({ value: value === null ? null : Number(value.toFixed(3)), state: state[i][c] }))),
+    description,
+  });
+
+  frames.push(snapshot(`CRFによる系列ラベリングを開始。単語列[${words.join(",")}]に最もスコアが高いタグ列(品詞)を求める`));
+
+  for (let s = 0; s < n; s++) {
+    dp[s][0] = CRF_START_SCORE[tags[s]] + CRF_EMISSION_SCORE[words[0]][tags[s]];
+    state[s][0] = "pivot";
+  }
+  frames.push(snapshot(`時刻0(単語"${words[0]}"): 各タグのスコア = 開始スコア + 出力スコア`));
+  for (let s = 0; s < n; s++) state[s][0] = "settled";
+
+  for (let time = 1; time < t; time++) {
+    for (let s = 0; s < n; s++) {
+      let best = -Infinity;
+      let bestPrev = 0;
+      for (let prev = 0; prev < n; prev++) {
+        const candidate = dp[prev][time - 1]! + CRF_TRANSITION_SCORE[tags[prev]][tags[s]];
+        if (candidate > best) {
+          best = candidate;
+          bestPrev = prev;
+        }
+      }
+      const value = best + CRF_EMISSION_SCORE[words[time]][tags[s]];
+      dp[s][time] = value;
+      backptr[s][time] = bestPrev;
+      state[s][time] = "pivot";
+      frames.push(
+        snapshot(`時刻${time}(単語"${words[time]}"), タグ${tags[s]}: 直前の最良タグは${tags[bestPrev]} → スコア=${value.toFixed(3)}`),
+      );
+      state[s][time] = "settled";
+    }
+  }
+
+  let bestFinal = 0;
+  for (let s = 1; s < n; s++) if (dp[s][t - 1]! > dp[bestFinal][t - 1]!) bestFinal = s;
+  const path: number[] = [bestFinal];
+  for (let time = t - 1; time > 0; time--) path.unshift(backptr[path[0]][time]);
+  const pathNames = path.map((i) => tags[i]);
+
+  frames.push(snapshot(`計算完了。最もスコアが高いタグ列は[${pathNames.join(", ")}](スコア=${dp[bestFinal][t - 1]!.toFixed(3)})`));
+  return frames;
+}
+
+export const OBST_KEYS = ["k1", "k2", "k3", "k4"];
+export const OBST_FREQ = [4, 2, 6, 3];
+
+/**
+ * 最適二分探索木のステップ列を生成する。各キーの検索頻度が分かっている時、
+ * 「頻繁に探索されるキーほど根に近い浅い位置に置く」ように木の形を工夫すると、
+ * 平均探索コストを最小化できる——行列連鎖乗算と同じ「区間を分割点で2つに割る」
+ * 区間DPの骨格に、根として選んだキー自身の頻度と両側の部分木のコストの和を
+ * 最小化するという条件を組み合わせている。
+ */
+export function optimalBinarySearchTreeSteps(): DPFrame[] {
+  const keys = OBST_KEYS;
+  const freq = OBST_FREQ;
+  const n = keys.length;
+  const prefixSum = [0];
+  for (const f of freq) prefixSum.push(prefixSum[prefixSum.length - 1] + f);
+
+  const dp: (number | null)[][] = Array.from({ length: n }, () => new Array(n).fill(null));
+  for (let i = 0; i < n; i++) dp[i][i] = freq[i];
+  const settled = new Set<string>();
+  for (let i = 0; i < n; i++) settled.add(`${i},${i}`);
+
+  const frames: DPFrame[] = [];
+  const snapshot = (extra: Map<string, "comparing" | "pivot">, description: string): DPFrame => {
+    const table: DPCell[][] = dp.map((row, i) =>
+      row.map((value, j) => {
+        const key = `${i},${j}`;
+        return { value, state: extra.get(key) ?? (settled.has(key) ? "settled" : "idle") };
+      }),
+    );
+    return { table, description };
+  };
+
+  frames.push(
+    snapshot(new Map(), `最適二分探索木を開始。キー[${keys.join(",")}]、検索頻度[${freq.join(",")}]について、平均探索コストが最小になる木の形を求める`),
+  );
+
+  for (let length = 2; length <= n; length++) {
+    for (let i = 0; i <= n - length; i++) {
+      const j = i + length - 1;
+      const rangeSum = prefixSum[j + 1] - prefixSum[i];
+      let best = Infinity;
+      let bestRoot = i;
+      const highlight = new Map<string, "comparing" | "pivot">();
+      for (let r = i; r <= j; r++) {
+        const left = r > i ? dp[i][r - 1] ?? 0 : 0;
+        const right = r < j ? dp[r + 1][j] ?? 0 : 0;
+        if (r > i) highlight.set(`${i},${r - 1}`, "comparing");
+        if (r < j) highlight.set(`${r + 1},${j}`, "comparing");
+        const cost = left + right + rangeSum;
+        if (cost < best) {
+          best = cost;
+          bestRoot = r;
+        }
+      }
+      frames.push(snapshot(highlight, `区間[${keys[i]}..${keys[j]}]: 根の候補を全て試す(頻度の合計=${rangeSum})`));
+      dp[i][j] = best;
+      settled.add(`${i},${j}`);
+      frames.push(snapshot(new Map([[`${i},${j}`, "pivot"]]), `dp[${i}][${j}] = ${best}(根=${keys[bestRoot]}のとき最小)を確定`));
+    }
+  }
+
+  frames.push(snapshot(new Map(), `計算完了。キー[${keys.join(",")}]の最適な二分探索木の平均探索コストは${dp[0][n - 1]}`));
+  return frames;
+}
+
+export const PALINDROME_PARTITIONING_STRING = "aabbc";
+
+/**
+ * 回文分割(最小カット数)のステップ列を生成する。文字列を「回文である部分文字列」
+ * だけに分割する時、必要なカット数(分割の切れ目の数)を最小化する問題——
+ * まず区間DPで「部分文字列s[i..j]が回文かどうか」を全ての区間について前計算し
+ * (この可視化ではその判定テーブルを表示)、その情報を使って1次元DPで最小カット数を求める。
+ */
+export function palindromePartitioningSteps(): DPFrame[] {
+  const s = PALINDROME_PARTITIONING_STRING;
+  const n = s.length;
+  const dp: (number | null)[][] = Array.from({ length: n }, () => new Array(n).fill(null));
+  for (let i = 0; i < n; i++) dp[i][i] = 1;
+  const settled = new Set<string>();
+  for (let i = 0; i < n; i++) settled.add(`${i},${i}`);
+
+  const frames: DPFrame[] = [];
+  const snapshot = (extra: Map<string, "comparing" | "pivot">, description: string): DPFrame => {
+    const table: DPCell[][] = dp.map((row, i) =>
+      row.map((value, j) => {
+        const key = `${i},${j}`;
+        return { value, state: extra.get(key) ?? (settled.has(key) ? "settled" : "idle") };
+      }),
+    );
+    return { table, description };
+  };
+
+  frames.push(snapshot(new Map(), `回文分割を開始。文字列"${s}"を回文の部分文字列だけに分割するための最小カット数を求める(まず全区間が回文かどうかを判定)`));
+
+  const isPalindrome: boolean[][] = Array.from({ length: n }, () => new Array(n).fill(false));
+  for (let i = 0; i < n; i++) isPalindrome[i][i] = true;
+
+  for (let length = 2; length <= n; length++) {
+    for (let i = 0; i <= n - length; i++) {
+      const j = i + length - 1;
+      const highlight = new Map<string, "comparing" | "pivot">();
+      const endsMatch = s[i] === s[j];
+      let value = 0;
+      if (endsMatch) {
+        if (length === 2) {
+          value = 1;
+        } else {
+          highlight.set(`${i + 1},${j - 1}`, "comparing");
+          value = isPalindrome[i + 1][j - 1] ? 1 : 0;
+        }
+      }
+      isPalindrome[i][j] = value === 1;
+      frames.push(
+        snapshot(
+          highlight,
+          `区間[${i},${j}]("${s.slice(i, j + 1)}"): 両端"${s[i]}"と"${s[j]}"が${endsMatch ? "一致" : "不一致"}` +
+            (endsMatch && length > 2 ? `、内側が回文${isPalindrome[i + 1][j - 1] ? "" : "でない"}か確認` : ""),
+        ),
+      );
+      dp[i][j] = value;
+      settled.add(`${i},${j}`);
+      frames.push(snapshot(new Map([[`${i},${j}`, "pivot"]]), `dp[${i}][${j}] = ${value}(回文${value === 1 ? "である" : "でない"})を確定`));
+    }
+  }
+
+  const cuts = new Array<number>(n).fill(0);
+  for (let i = 0; i < n; i++) {
+    if (isPalindrome[0][i]) {
+      cuts[i] = 0;
+    } else {
+      let best = Infinity;
+      for (let k = 0; k < i; k++) {
+        if (isPalindrome[k + 1][i] && cuts[k] + 1 < best) best = cuts[k] + 1;
+      }
+      cuts[i] = best;
+    }
+  }
+
+  frames.push(snapshot(new Map(), `計算完了。回文判定テーブルから求めた最小カット数は${cuts[n - 1]}(文字列"${s}"を${cuts[n - 1] + 1}個の回文に分割できる)`));
+  return frames;
+}
+
+export const BURST_BALLOONS_NUMS = [3, 1, 5, 8];
+
+/**
+ * 風船割りゲーム(burst-balloons)のステップ列を生成する。風船iを割ると
+ * (その時点で隣り合っている風船の値の積)のコインが得られ、風船が減ると
+ * 隣接関係が変わる——「最後に割る風船」を区間の外側の境界として固定して考える
+ * (逆に「最初に割る風船」を全探索すると隣接関係の管理が破綻する)という
+ * 発想の転換が、この区間DPを可能にする鍵になっている。
+ */
+export function burstBalloonsDpSteps(): DPFrame[] {
+  const nums = [1, ...BURST_BALLOONS_NUMS, 1];
+  const n = nums.length;
+  const dp: (number | null)[][] = Array.from({ length: n }, () => new Array(n).fill(null));
+  for (let i = 0; i < n - 1; i++) dp[i][i + 1] = 0;
+  const settled = new Set<string>();
+  for (let i = 0; i < n - 1; i++) settled.add(`${i},${i + 1}`);
+
+  const frames: DPFrame[] = [];
+  const snapshot = (extra: Map<string, "comparing" | "pivot">, description: string): DPFrame => {
+    const table: DPCell[][] = dp.map((row, i) =>
+      row.map((value, j) => {
+        const key = `${i},${j}`;
+        return { value, state: extra.get(key) ?? (settled.has(key) ? "settled" : "idle") };
+      }),
+    );
+    return { table, description };
+  };
+
+  frames.push(
+    snapshot(
+      new Map(),
+      `風船割りゲームを開始。風船[${BURST_BALLOONS_NUMS.join(",")}](両端に番兵の1を追加)を全て割って得られる最大コインを求める`,
+    ),
+  );
+
+  for (let length = 2; length < n; length++) {
+    for (let i = 0; i < n - length; i++) {
+      const j = i + length;
+      let best = 0;
+      let bestK = i + 1;
+      const highlight = new Map<string, "comparing" | "pivot">();
+      for (let k = i + 1; k < j; k++) {
+        highlight.set(`${i},${k}`, "comparing");
+        highlight.set(`${k},${j}`, "comparing");
+        const coins = (dp[i][k] ?? 0) + (dp[k][j] ?? 0) + nums[i] * nums[k] * nums[j];
+        if (coins > best) {
+          best = coins;
+          bestK = k;
+        }
+      }
+      frames.push(
+        snapshot(highlight, `区間(${i},${j})(番兵除く風船${i}〜${j - 2}番目): 最後に割る風船kを全て試す`),
+      );
+      dp[i][j] = best;
+      settled.add(`${i},${j}`);
+      frames.push(
+        snapshot(new Map([[`${i},${j}`, "pivot"]]), `dp[${i}][${j}] = ${best}(最後に割る風船=元の${bestK}番目)を確定`),
+      );
+    }
+  }
+
+  frames.push(snapshot(new Map(), `計算完了。全ての風船を割って得られる最大コインは${dp[0][n - 1]}`));
+  return frames;
+}
+
 export type LRUOperation = { type: "put" | "get"; key: number; value?: number };
 export const LRU_CAPACITY = 3;
 export const LRU_OPERATIONS: LRUOperation[] = [
@@ -3625,6 +5507,175 @@ export const DP_TABLE_META: Record<string, DPTableMeta> = {
       .sort((a, b) => b.value / b.weight - a.value / a.weight)
       .map((it) => it.name),
   },
+  "fermat-primality-test": {
+    chips: [`判定対象: n=${FERMAT_N}`, `試す底: ${FERMAT_WITNESSES.join(", ")}`],
+    cornerLabel: "項目 \\ 底",
+    rowHeaders: ["底a", "a^(n-1) mod n"],
+    colHeaders: FERMAT_WITNESSES.map((a) => `a=${a}`),
+  },
+  "pollards-p-minus-1": {
+    chips: [`判定対象: n=${POLLARDS_P_MINUS_1_N}`, `境界B=${POLLARDS_P_MINUS_1_BOUND}`],
+    cornerLabel: "項目 \\ 反復",
+    rowHeaders: ["k", "a", "gcd(a-1,n)"],
+    colHeaders: Array.from({ length: POLLARDS_P_MINUS_1_BOUND - 1 }, (_, i) => `k=${i + 2}`),
+  },
+  "tonelli-shanks": {
+    chips: [`n=${TONELLI_SHANKS_N}`, `p=${TONELLI_SHANKS_P}`],
+    cornerLabel: "変数 \\ 反復",
+    rowHeaders: ["M", "c", "t", "R"],
+    colHeaders: Array.from({ length: 6 }, (_, i) => `#${i}`),
+  },
+  "montgomery-multiplication": {
+    chips: [`a=${MONTGOMERY_A}`, `b=${MONTGOMERY_B}`, `n=${MONTGOMERY_N}`],
+    cornerLabel: "手順",
+    rowHeaders: ["値"],
+    colHeaders: ["a'", "b'", "a'b'", "m", "t", "結果'", "結果", "検算"],
+  },
+  "elgamal-encryption": {
+    chips: [`p=${ELGAMAL_P}`, `g=${ELGAMAL_G}`, `秘密鍵x=${ELGAMAL_X}`, `平文m=${ELGAMAL_M}`],
+    cornerLabel: "手順",
+    rowHeaders: ["値"],
+    colHeaders: ["公開鍵y", "c1", "共有s", "c2", "s'^-1", "復号m'", "元のm"],
+  },
+  "elliptic-curve-cryptography": {
+    chips: [
+      `曲線: y²=x³+${EC_A}x+${EC_B} (mod ${EC_P})`,
+      `基点P=(${EC_BASE_POINT?.x},${EC_BASE_POINT?.y})`,
+      `スカラーk=${EC_SCALAR}`,
+    ],
+    cornerLabel: "項目 \\ ビット",
+    rowHeaders: ["ビット", "result", "2倍点"],
+    colHeaders: Array.from({ length: EC_SCALAR.toString(2).length }, (_, i) => `bit${i}`),
+  },
+  "toom-cook-multiplication": {
+    chips: [`x=${TOOM_COOK_X}`, `y=${TOOM_COOK_Y}`],
+    cornerLabel: "多項式 \\ 評価点",
+    rowHeaders: ["P(t)", "Q(t)"],
+    colHeaders: ["t=0", "t=1", "t=-1", "t=2", "t=∞"],
+  },
+  "gaussian-elimination": {
+    chips: GAUSSIAN_ELIMINATION_MATRIX.map((row, i) => `${i + 1}行目: [${row.join(", ")}]`),
+    cornerLabel: "行 \\ 列",
+    rowHeaders: GAUSSIAN_ELIMINATION_MATRIX.map((_, i) => `${i + 1}行目`),
+    colHeaders: [...GAUSSIAN_ELIMINATION_MATRIX[0].slice(0, -1).map((_, i) => `x${i + 1}`), "定数項"],
+  },
+  "lu-decomposition": {
+    chips: LU_DECOMPOSITION_MATRIX.map((row, i) => `A${i + 1}行目: [${row.join(", ")}]`),
+    cornerLabel: "行 \\ 列(下三角=L, 上三角=U)",
+    rowHeaders: LU_DECOMPOSITION_MATRIX.map((_, i) => `${i + 1}行目`),
+    colHeaders: LU_DECOMPOSITION_MATRIX[0].map((_, i) => `列${i + 1}`),
+  },
+  "least-squares": {
+    chips: LEAST_SQUARES_POINTS.map((p) => `(${p.x}, ${p.y})`),
+    cornerLabel: "手順",
+    rowHeaders: ["値"],
+    colHeaders: ["Σx", "Σy", "Σxy", "Σx²", "傾きm", "切片b", "残差平方和"],
+  },
+  "power-iteration": {
+    chips: [`A=[[2,1],[1,2]]`, `初期v0=(${POWER_ITERATION_INITIAL.join(",")})`],
+    cornerLabel: "項目 \\ 反復",
+    rowHeaders: ["v.x", "v.y", "固有値推定"],
+    colHeaders: Array.from({ length: POWER_ITERATION_STEPS }, (_, i) => `反復${i + 1}`),
+  },
+  "discrete-convolution": {
+    chips: [`信号=[${CONVOLUTION_SIGNAL.join(", ")}]`, `カーネル=[${CONVOLUTION_KERNEL.join(", ")}]`],
+    cornerLabel: "出力インデックス",
+    rowHeaders: ["畳み込み結果"],
+    colHeaders: Array.from(
+      { length: CONVOLUTION_SIGNAL.length + CONVOLUTION_KERNEL.length - 1 },
+      (_, i) => `out[${i}]`,
+    ),
+  },
+  "qr-decomposition": {
+    chips: [`a1=(${QR_DECOMPOSITION_A1.join(",")})`, `a2=(${QR_DECOMPOSITION_A2.join(",")})`],
+    cornerLabel: "成分 \\ 手順",
+    rowHeaders: ["x成分", "y成分"],
+    colHeaders: ["r11", "q1", "r12", "a2'", "r22", "q2"],
+  },
+  "multivariate-newton-method": {
+    chips: [
+      `方程式1: x²+y²-4=0`,
+      `方程式2: x-y=0`,
+      `初期値: (${MULTIVARIATE_NEWTON_START.join(",")})`,
+    ],
+    cornerLabel: "変数 \\ 反復",
+    rowHeaders: ["x", "y", "f1(x,y)", "f2(x,y)"],
+    colHeaders: Array.from({ length: MULTIVARIATE_NEWTON_ITERATIONS + 1 }, (_, i) => (i === 0 ? "初期値" : `反復${i}`)),
+  },
+  "needleman-wunsch": {
+    chips: [
+      `配列A: "${NEEDLEMAN_WUNSCH_A}"`,
+      `配列B: "${NEEDLEMAN_WUNSCH_B}"`,
+      `一致=+${NEEDLEMAN_WUNSCH_MATCH} / 不一致=${NEEDLEMAN_WUNSCH_MISMATCH} / ギャップ=${NEEDLEMAN_WUNSCH_GAP}`,
+    ],
+    cornerLabel: "A \\ B",
+    rowHeaders: ["∅", ...NEEDLEMAN_WUNSCH_A.split("")],
+    colHeaders: ["∅", ...NEEDLEMAN_WUNSCH_B.split("")],
+  },
+  "smith-waterman": {
+    chips: [
+      `配列A: "${SMITH_WATERMAN_A}"`,
+      `配列B: "${SMITH_WATERMAN_B}"`,
+      `一致=+${SMITH_WATERMAN_MATCH} / 不一致=${SMITH_WATERMAN_MISMATCH} / ギャップ=${SMITH_WATERMAN_GAP}`,
+    ],
+    cornerLabel: "A \\ B",
+    rowHeaders: ["∅", ...SMITH_WATERMAN_A.split("")],
+    colHeaders: ["∅", ...SMITH_WATERMAN_B.split("")],
+  },
+  "nussinov-algorithm": {
+    chips: [`RNA配列: "${NUSSINOV_RNA}"`, "ペア規則: G-C, A-Uのみ"],
+    cornerLabel: "i \\ j",
+    rowHeaders: NUSSINOV_RNA.split(""),
+    colHeaders: NUSSINOV_RNA.split(""),
+  },
+  "multiple-sequence-alignment": {
+    chips: MSA_SEQUENCES.map((s, i) => `配列${i + 1}: "${s}"`),
+    cornerLabel: "手順",
+    rowHeaders: ["値"],
+    colHeaders: ["段階1スコア", "整列結果1", "段階2準備", "段階2スコア", "整列結果2", "完成"],
+  },
+  "viterbi-algorithm": {
+    chips: [`観測列: ${VITERBI_OBSERVATIONS.join(" → ")}`, `隠れ状態: ${VITERBI_STATES.join(", ")}`],
+    cornerLabel: "状態 \\ 時刻",
+    rowHeaders: VITERBI_STATES,
+    colHeaders: VITERBI_OBSERVATIONS,
+  },
+  "forward-backward-algorithm": {
+    chips: [`観測列: ${VITERBI_OBSERVATIONS.join(" → ")}`, `隠れ状態: ${VITERBI_STATES.join(", ")}`],
+    cornerLabel: "α/β[状態] \\ 時刻",
+    rowHeaders: [...VITERBI_STATES.map((s) => `α[${s}]`), ...VITERBI_STATES.map((s) => `β[${s}]`)],
+    colHeaders: VITERBI_OBSERVATIONS,
+  },
+  "cky-algorithm": {
+    chips: [`文: "${CKY_SENTENCE.join(" ")}"`, "文法: S→NP VP, VP→V NP, NP→Det N"],
+    cornerLabel: "開始 \\ 終了(単語位置)",
+    rowHeaders: CKY_SENTENCE.map((_, i) => `${i}`),
+    colHeaders: CKY_SENTENCE.map((_, i) => `${i}`),
+  },
+  "conditional-random-field": {
+    chips: [`単語列: ${CRF_SENTENCE.join(" ")}`, `タグ: ${CRF_TAGS.join(", ")}`],
+    cornerLabel: "タグ \\ 時刻",
+    rowHeaders: CRF_TAGS,
+    colHeaders: CRF_SENTENCE,
+  },
+  "optimal-binary-search-tree": {
+    chips: OBST_KEYS.map((k, i) => `${k}: 頻度${OBST_FREQ[i]}`),
+    cornerLabel: "開始 \\ 終了",
+    rowHeaders: OBST_KEYS,
+    colHeaders: OBST_KEYS,
+  },
+  "palindrome-partitioning": {
+    chips: [`文字列: "${PALINDROME_PARTITIONING_STRING}"`],
+    cornerLabel: "開始 \\ 終了",
+    rowHeaders: PALINDROME_PARTITIONING_STRING.split(""),
+    colHeaders: PALINDROME_PARTITIONING_STRING.split(""),
+  },
+  "burst-balloons-dp": {
+    chips: [`風船: [${BURST_BALLOONS_NUMS.join(", ")}](両端に番兵1を追加)`],
+    cornerLabel: "左境界 \\ 右境界",
+    rowHeaders: [1, ...BURST_BALLOONS_NUMS, 1].map((v) => String(v)),
+    colHeaders: [1, ...BURST_BALLOONS_NUMS, 1].map((v) => String(v)),
+  },
 };
 
 export const DP_VISUALIZERS: Record<string, () => DPFrame[]> = {
@@ -3672,4 +5723,29 @@ export const DP_VISUALIZERS: Record<string, () => DPFrame[]> = {
   "partition-problem": partitionProblemSteps,
   "assembly-line-scheduling": assemblyLineSchedulingSteps,
   "fractional-knapsack": fractionalKnapsackSteps,
+  "fermat-primality-test": fermatPrimalityTestSteps,
+  "pollards-p-minus-1": pollardsPMinus1Steps,
+  "tonelli-shanks": tonelliShanksSteps,
+  "montgomery-multiplication": montgomeryMultiplicationSteps,
+  "elgamal-encryption": elgamalEncryptionSteps,
+  "elliptic-curve-cryptography": ellipticCurveCryptographySteps,
+  "toom-cook-multiplication": toomCookMultiplicationSteps,
+  "gaussian-elimination": gaussianEliminationSteps,
+  "lu-decomposition": luDecompositionSteps,
+  "least-squares": leastSquaresSteps,
+  "power-iteration": powerIterationSteps,
+  "discrete-convolution": discreteConvolutionSteps,
+  "qr-decomposition": qrDecompositionSteps,
+  "multivariate-newton-method": multivariateNewtonMethodSteps,
+  "needleman-wunsch": needlemanWunschSteps,
+  "smith-waterman": smithWatermanSteps,
+  "nussinov-algorithm": nussinovAlgorithmSteps,
+  "multiple-sequence-alignment": multipleSequenceAlignmentSteps,
+  "viterbi-algorithm": viterbiAlgorithmSteps,
+  "forward-backward-algorithm": forwardBackwardAlgorithmSteps,
+  "cky-algorithm": ckyAlgorithmSteps,
+  "conditional-random-field": conditionalRandomFieldSteps,
+  "optimal-binary-search-tree": optimalBinarySearchTreeSteps,
+  "palindrome-partitioning": palindromePartitioningSteps,
+  "burst-balloons-dp": burstBalloonsDpSteps,
 };

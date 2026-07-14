@@ -1287,6 +1287,267 @@ export function secantMethodSteps(): SearchFrame[] {
   return frames;
 }
 
+/**
+ * 常微分方程式 dy/dx = y, y(0) = 1 の真の解 y = e^x を、オイラー法・ルンゲ・クッタ法で
+ * 共有する「地形」として提供する。真の解を41点サンプルした配列上に、各手法が
+ * 計算した近似値の位置をハイライトすることで、両手法の精度の違いを比較できる。
+ */
+const ODE_X_MIN = 0;
+const ODE_X_MAX = 2;
+const ODE_SAMPLES = 41;
+export const ODE_LANDSCAPE: number[] = Array.from({ length: ODE_SAMPLES }, (_, i) => {
+  const x = ODE_X_MIN + (i / (ODE_SAMPLES - 1)) * (ODE_X_MAX - ODE_X_MIN);
+  return Number(Math.exp(x).toFixed(3));
+});
+function odeXToIndex(x: number): number {
+  const t = (x - ODE_X_MIN) / (ODE_X_MAX - ODE_X_MIN);
+  return Math.min(ODE_SAMPLES - 1, Math.max(0, Math.round(t * (ODE_SAMPLES - 1))));
+}
+function odeDerivative(_x: number, y: number): number {
+  return y;
+}
+
+export const EULERS_METHOD_STEP_SIZE = 0.25;
+
+/**
+ * オイラー法のステップ列を生成する。現在の点における傾き(導関数の値)だけを使い、
+ * 一定の刻み幅hだけ直線的に進むことを繰り返す、最も単純な数値的常微分方程式解法。
+ * 実装が単純な反面、誤差がステップごとに蓄積しやすい(1次の精度)。
+ */
+export function eulersMethodSteps(): SearchFrame[] {
+  const h = EULERS_METHOD_STEP_SIZE;
+  let x = ODE_X_MIN;
+  let y = 1;
+  const frames: SearchFrame[] = [
+    frame(ODE_LANDSCAPE, { [odeXToIndex(x)]: "pivot" }, `オイラー法を開始。dy/dx=y, y(0)=1(真の解y=e^x)を刻み幅h=${h}で数値的に解く`),
+  ];
+
+  while (x < ODE_X_MAX - 1e-9) {
+    const slope = odeDerivative(x, y);
+    const yNext = y + h * slope;
+    const xNext = x + h;
+    frames.push(
+      frame(
+        ODE_LANDSCAPE,
+        { [odeXToIndex(x)]: "comparing" },
+        `x=${x.toFixed(2)}: 傾きf(x,y)=y=${y.toFixed(4)}、次の点 y ← y + h×傾き = ${yNext.toFixed(4)}`,
+      ),
+    );
+    x = xNext;
+    y = yNext;
+    frames.push(
+      frame(ODE_LANDSCAPE, { [odeXToIndex(x)]: "pivot" }, `x=${x.toFixed(2)}に更新。近似値y=${y.toFixed(4)}(真の値e^${x.toFixed(2)}=${Math.exp(x).toFixed(4)})`),
+    );
+  }
+
+  frames.push(
+    frame(
+      ODE_LANDSCAPE,
+      { [odeXToIndex(x)]: "settled" },
+      `計算完了。x=${x.toFixed(2)}での近似値y=${y.toFixed(4)}(真の値${Math.exp(x).toFixed(4)}、誤差${Math.abs(y - Math.exp(x)).toFixed(4)})`,
+    ),
+  );
+  return frames;
+}
+
+export const RUNGE_KUTTA_STEP_SIZE = 0.5;
+
+/**
+ * ルンゲ・クッタ法(RK4、4次)のステップ列を生成する。区間の始点・中間点(2回)・
+ * 終点の4か所で傾きを評価し、それらの加重平均(k1+2k2+2k3+k4)/6を使って
+ * 次の点へ進む——オイラー法と同じ刻み幅でも桁違いに高い精度(4次の精度)が
+ * 得られることを、同じ真の解y=e^xとの誤差比較で確認できる。
+ */
+export function rungeKuttaMethodSteps(): SearchFrame[] {
+  const h = RUNGE_KUTTA_STEP_SIZE;
+  let x = ODE_X_MIN;
+  let y = 1;
+  const frames: SearchFrame[] = [
+    frame(ODE_LANDSCAPE, { [odeXToIndex(x)]: "pivot" }, `ルンゲ・クッタ法(RK4)を開始。dy/dx=y, y(0)=1(真の解y=e^x)を刻み幅h=${h}で解く`),
+  ];
+
+  while (x < ODE_X_MAX - 1e-9) {
+    const k1 = odeDerivative(x, y);
+    const k2 = odeDerivative(x + h / 2, y + (h / 2) * k1);
+    const k3 = odeDerivative(x + h / 2, y + (h / 2) * k2);
+    const k4 = odeDerivative(x + h, y + h * k3);
+    const yNext = y + (h / 6) * (k1 + 2 * k2 + 2 * k3 + k4);
+    frames.push(
+      frame(
+        ODE_LANDSCAPE,
+        { [odeXToIndex(x)]: "comparing" },
+        `x=${x.toFixed(2)}: k1=${k1.toFixed(4)}, k2=${k2.toFixed(4)}, k3=${k3.toFixed(4)}, k4=${k4.toFixed(4)} → 加重平均で次の点へ`,
+      ),
+    );
+    x += h;
+    y = yNext;
+    frames.push(
+      frame(ODE_LANDSCAPE, { [odeXToIndex(x)]: "pivot" }, `x=${x.toFixed(2)}に更新。近似値y=${y.toFixed(4)}(真の値e^${x.toFixed(2)}=${Math.exp(x).toFixed(4)}、オイラー法より遥かに小さい誤差)`),
+    );
+  }
+
+  frames.push(
+    frame(
+      ODE_LANDSCAPE,
+      { [odeXToIndex(x)]: "settled" },
+      `計算完了。x=${x.toFixed(2)}での近似値y=${y.toFixed(4)}(真の値${Math.exp(x).toFixed(4)}、誤差${Math.abs(y - Math.exp(x)).toFixed(6)})`,
+    ),
+  );
+  return frames;
+}
+
+/**
+ * 数値積分3種(台形則・シンプソンの公式・モンテカルロ積分)が共有する被積分関数
+ * f(x)=x²の「地形」。区間[0,4]での定積分の真値は64/3≈21.333。
+ */
+const INTEGRATION_X_MIN = 0;
+const INTEGRATION_X_MAX = 4;
+const INTEGRATION_SAMPLES = 41;
+function integrationFunction(x: number): number {
+  return x * x;
+}
+export const INTEGRATION_LANDSCAPE: number[] = Array.from({ length: INTEGRATION_SAMPLES }, (_, i) => {
+  const x = INTEGRATION_X_MIN + (i / (INTEGRATION_SAMPLES - 1)) * (INTEGRATION_X_MAX - INTEGRATION_X_MIN);
+  return Number(integrationFunction(x).toFixed(3));
+});
+function integrationXToIndex(x: number): number {
+  const t = (x - INTEGRATION_X_MIN) / (INTEGRATION_X_MAX - INTEGRATION_X_MIN);
+  return Math.min(INTEGRATION_SAMPLES - 1, Math.max(0, Math.round(t * (INTEGRATION_SAMPLES - 1))));
+}
+export const INTEGRATION_TRUE_VALUE = (INTEGRATION_X_MAX ** 3 - INTEGRATION_X_MIN ** 3) / 3;
+
+export const TRAPEZOIDAL_RULE_N = 8;
+
+/**
+ * 台形則のステップ列を生成する。積分区間をn個の小区間に分割し、各小区間の
+ * 両端の関数値を結ぶ台形の面積(左端+右端の平均×幅)の総和で定積分を近似する——
+ * 長方形近似(リーマン和)より1段階精度が高い、最も基本的な数値積分法。
+ */
+export function trapezoidalRuleSteps(): SearchFrame[] {
+  const n = TRAPEZOIDAL_RULE_N;
+  const h = (INTEGRATION_X_MAX - INTEGRATION_X_MIN) / n;
+  let total = 0;
+  const frames: SearchFrame[] = [
+    frame(INTEGRATION_LANDSCAPE, {}, `台形則を開始。f(x)=x²を区間[${INTEGRATION_X_MIN},${INTEGRATION_X_MAX}]でn=${n}個の台形に分けて積分を近似する`),
+  ];
+
+  for (let i = 0; i < n; i++) {
+    const xLeft = INTEGRATION_X_MIN + i * h;
+    const xRight = xLeft + h;
+    const area = (h * (integrationFunction(xLeft) + integrationFunction(xRight))) / 2;
+    total += area;
+    frames.push(
+      frame(
+        INTEGRATION_LANDSCAPE,
+        { [integrationXToIndex(xLeft)]: "comparing", [integrationXToIndex(xRight)]: "comparing" },
+        `台形${i + 1}: [${xLeft.toFixed(2)}, ${xRight.toFixed(2)}]の面積 = h×(f(左)+f(右))/2 = ${area.toFixed(4)}(累計=${total.toFixed(4)})`,
+      ),
+    );
+  }
+
+  frames.push(
+    frame(
+      INTEGRATION_LANDSCAPE,
+      {},
+      `計算完了。近似値=${total.toFixed(4)}(真の値64/3≈${INTEGRATION_TRUE_VALUE.toFixed(4)}、誤差${Math.abs(total - INTEGRATION_TRUE_VALUE).toFixed(4)})`,
+    ),
+  );
+  return frames;
+}
+
+export const SIMPSONS_RULE_N = 8;
+
+/**
+ * シンプソンの公式のステップ列を生成する。台形則が2点を直線で結ぶのに対し、
+ * シンプソンの公式は隣接する2小区間(3点)を通る放物線で近似することで、
+ * 同じ分割数でも台形則よりずっと高い精度(4次)を達成する。
+ */
+export function simpsonsRuleSteps(): SearchFrame[] {
+  const n = SIMPSONS_RULE_N;
+  const h = (INTEGRATION_X_MAX - INTEGRATION_X_MIN) / n;
+  let total = 0;
+  const frames: SearchFrame[] = [
+    frame(INTEGRATION_LANDSCAPE, {}, `シンプソンの公式を開始。f(x)=x²を区間[${INTEGRATION_X_MIN},${INTEGRATION_X_MAX}]でn=${n}分割(放物線近似)して積分を近似する`),
+  ];
+
+  for (let i = 0; i < n; i += 2) {
+    const x0 = INTEGRATION_X_MIN + i * h;
+    const x1 = x0 + h;
+    const x2 = x0 + 2 * h;
+    const area = (h / 3) * (integrationFunction(x0) + 4 * integrationFunction(x1) + integrationFunction(x2));
+    total += area;
+    frames.push(
+      frame(
+        INTEGRATION_LANDSCAPE,
+        {
+          [integrationXToIndex(x0)]: "comparing",
+          [integrationXToIndex(x1)]: "pivot",
+          [integrationXToIndex(x2)]: "comparing",
+        },
+        `区間[${x0.toFixed(2)}, ${x2.toFixed(2)}]を放物線近似: (h/3)×(f(x0)+4f(x1)+f(x2)) = ${area.toFixed(4)}(累計=${total.toFixed(4)})`,
+      ),
+    );
+  }
+
+  frames.push(
+    frame(
+      INTEGRATION_LANDSCAPE,
+      {},
+      `計算完了。近似値=${total.toFixed(4)}(真の値64/3≈${INTEGRATION_TRUE_VALUE.toFixed(4)}、台形則より小さい誤差${Math.abs(total - INTEGRATION_TRUE_VALUE).toFixed(6)})`,
+    ),
+  );
+  return frames;
+}
+
+export const MONTE_CARLO_INTEGRATION_SAMPLES = 12;
+
+function monteCarloRandom(seed: number): number {
+  const value = Math.sin(seed * 12.9898) * 43758.5453;
+  return value - Math.floor(value);
+}
+
+/**
+ * モンテカルロ積分のステップ列を生成する。積分区間内にランダムな点を大量に
+ * 打ち込み、関数値の平均に区間の幅を掛けることで定積分を推定する——決定的な
+ * 分割を使う台形則・シンプソンの公式と異なり、乱数のみに基づくため多次元
+ * 積分にも次元の呪いを受けにくい形で拡張しやすいという特徴を持つ。
+ */
+export function monteCarloIntegrationSteps(): SearchFrame[] {
+  const samples = MONTE_CARLO_INTEGRATION_SAMPLES;
+  let sum = 0;
+  const frames: SearchFrame[] = [
+    frame(
+      INTEGRATION_LANDSCAPE,
+      {},
+      `モンテカルロ積分を開始。f(x)=x²を区間[${INTEGRATION_X_MIN},${INTEGRATION_X_MAX}]で、${samples}個のランダムな標本点の平均から積分を推定する`,
+    ),
+  ];
+
+  for (let i = 0; i < samples; i++) {
+    const x = INTEGRATION_X_MIN + monteCarloRandom(i + 1) * (INTEGRATION_X_MAX - INTEGRATION_X_MIN);
+    const fx = integrationFunction(x);
+    sum += fx;
+    const runningEstimate = (sum / (i + 1)) * (INTEGRATION_X_MAX - INTEGRATION_X_MIN);
+    frames.push(
+      frame(
+        INTEGRATION_LANDSCAPE,
+        { [integrationXToIndex(x)]: "comparing" },
+        `標本${i + 1}: x=${x.toFixed(3)}, f(x)=${fx.toFixed(3)} → 現時点の推定値=${runningEstimate.toFixed(4)}`,
+      ),
+    );
+  }
+
+  const finalEstimate = (sum / samples) * (INTEGRATION_X_MAX - INTEGRATION_X_MIN);
+  frames.push(
+    frame(
+      INTEGRATION_LANDSCAPE,
+      {},
+      `計算完了。推定値=${finalEstimate.toFixed(4)}(真の値64/3≈${INTEGRATION_TRUE_VALUE.toFixed(4)}、標本数を増やすほど誤差は小さくなる)`,
+    ),
+  );
+  return frames;
+}
+
 export const SEARCH_VISUALIZERS: Record<string, () => SearchFrame[]> = {
   "linear-search": linearSearchSteps,
   "binary-search": binarySearchSteps,
@@ -1309,4 +1570,9 @@ export const SEARCH_VISUALIZERS: Record<string, () => SearchFrame[]> = {
   "newton-method": newtonMethodSteps,
   "bisection-method": bisectionMethodSteps,
   "secant-method": secantMethodSteps,
+  "eulers-method": eulersMethodSteps,
+  "runge-kutta-method": rungeKuttaMethodSteps,
+  "trapezoidal-rule": trapezoidalRuleSteps,
+  "simpsons-rule": simpsonsRuleSteps,
+  "monte-carlo-integration": monteCarloIntegrationSteps,
 };

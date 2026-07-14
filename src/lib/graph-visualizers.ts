@@ -3143,6 +3143,236 @@ export function monteCarloTreeSearchSteps(): GraphFrame[] {
   return frames;
 }
 
+/**
+ * ネガマックス法のステップ列を生成する。ミニマックス法がMAXノードで最大値・
+ * MINノードで最小値と「場合分け」していたのに対し、ネガマックス法は
+ * 「常に自分にとっての最大値を選び、相手の手番では評価値の符号を反転させる」
+ * という一本化されたルールに書き換える——数学的にはminimaxStepsと全く同じ
+ * ゲーム木・同じ結果になるが、実装がシンプルになる(2人ゼロ和ゲームの対称性を利用)。
+ */
+export function negamaxSteps(): GraphFrame[] {
+  const nodesMap = GAME_TREE.nodes;
+  const nodeStates = initNodeStates(GAME_TREE_NODES, "idle");
+  const edgeStates = initEdgeStates(GAME_TREE_EDGES, "idle");
+  const values: Record<string, number | null> = {};
+  GAME_TREE_NODES.forEach((n) => {
+    values[n.id] = null;
+  });
+
+  const frames: GraphFrame[] = [
+    {
+      nodeStates: { ...nodeStates },
+      edgeStates: { ...edgeStates },
+      distances: { ...values },
+      description: `ネガマックス法を開始。各手番で「自分にとっての最大値」だけを求め、相手の手番に渡すときに符号を反転させる`,
+    },
+  ];
+
+  const visit = (id: string, color: 1 | -1): number => {
+    const node = nodesMap[id];
+    nodeStates[id] = "visited";
+    if (node.isLeaf) {
+      const value = color * node.leafValue!;
+      values[id] = value;
+      nodeStates[id] = "settled";
+      frames.push({
+        nodeStates: { ...nodeStates },
+        edgeStates: { ...edgeStates },
+        distances: { ...values },
+        description: `末端${id}: 符号${color > 0 ? "+1" : "-1"}を掛けた評価値=${value}(実際の値${node.leafValue})`,
+      });
+      return value;
+    }
+    frames.push({
+      nodeStates: { ...nodeStates },
+      edgeStates: { ...edgeStates },
+      distances: { ...values },
+      description: `頂点${id}(符号${color > 0 ? "+1" : "-1"})を展開`,
+    });
+    edgeStates[`${id}-${node.left}`] = "tree";
+    const leftVal = -visit(node.left!, (-color) as 1 | -1);
+    edgeStates[`${id}-${node.right}`] = "tree";
+    const rightVal = -visit(node.right!, (-color) as 1 | -1);
+    const value = Math.max(leftVal, rightVal);
+    values[id] = value;
+    nodeStates[id] = "settled";
+    frames.push({
+      nodeStates: { ...nodeStates },
+      edgeStates: { ...edgeStates },
+      distances: { ...values },
+      description: `頂点${id}: 子から返ってきた値を反転(${leftVal}, ${rightVal})し、その最大値${value}を採用`,
+    });
+    return value;
+  };
+
+  const rootValue = visit(GAME_TREE.rootId, 1);
+  frames.push({
+    nodeStates: { ...nodeStates },
+    edgeStates: { ...edgeStates },
+    distances: { ...values },
+    description: `計算完了。ルートの評価値=${rootValue}(minimaxStepsと同じゲーム木で同じ結果になることを確認できる)`,
+  });
+
+  return frames;
+}
+
+/**
+ * エクスペクティマックス法のステップ列を生成する。サイコロやカードなど
+ * 「確率的な要素」を含むゲームでは、相手が常に最善を尽くすとは限らない——
+ * minimaxStepsと同じゲーム木を使い、MINノードだった箇所を「偶然ノード」
+ * (2つの子が等確率で起こるとみなす)に読み替え、最小値の代わりに期待値
+ * (子の値の平均)を採用することで、確率的なゲームの意思決定を表現する。
+ */
+export function expectimaxSteps(): GraphFrame[] {
+  const nodesMap = GAME_TREE.nodes;
+  const nodeStates = initNodeStates(GAME_TREE_NODES, "idle");
+  const edgeStates = initEdgeStates(GAME_TREE_EDGES, "idle");
+  const values: Record<string, number | null> = {};
+  GAME_TREE_NODES.forEach((n) => {
+    values[n.id] = null;
+  });
+
+  const frames: GraphFrame[] = [
+    {
+      nodeStates: { ...nodeStates },
+      edgeStates: { ...edgeStates },
+      distances: { ...values },
+      description: `エクスペクティマックス法を開始。MAXノードはそのまま、MINノードは「偶然ノード」(2つの子が等確率)として扱い、平均値(期待値)を採用する`,
+    },
+  ];
+
+  const visit = (id: string): number => {
+    const node = nodesMap[id];
+    nodeStates[id] = "visited";
+    if (node.isLeaf) {
+      values[id] = node.leafValue!;
+      nodeStates[id] = "settled";
+      frames.push({
+        nodeStates: { ...nodeStates },
+        edgeStates: { ...edgeStates },
+        distances: { ...values },
+        description: `末端${id}: 評価値=${node.leafValue}`,
+      });
+      return node.leafValue!;
+    }
+    frames.push({
+      nodeStates: { ...nodeStates },
+      edgeStates: { ...edgeStates },
+      distances: { ...values },
+      description: `頂点${id}(${node.isMax ? "MAX" : "偶然ノード"})を展開`,
+    });
+    edgeStates[`${id}-${node.left}`] = "tree";
+    const leftVal = visit(node.left!);
+    edgeStates[`${id}-${node.right}`] = "tree";
+    const rightVal = visit(node.right!);
+    const value = node.isMax ? Math.max(leftVal, rightVal) : (leftVal + rightVal) / 2;
+    values[id] = value;
+    nodeStates[id] = "settled";
+    frames.push({
+      nodeStates: { ...nodeStates },
+      edgeStates: { ...edgeStates },
+      distances: { ...values },
+      description: `頂点${id}(${node.isMax ? "MAX" : "偶然ノード"}): 子の評価値(${leftVal}, ${rightVal})から${node.isMax ? "最大値" : "期待値(平均)"}${value}を採用`,
+    });
+    return value;
+  };
+
+  const rootValue = visit(GAME_TREE.rootId);
+  frames.push({
+    nodeStates: { ...nodeStates },
+    edgeStates: { ...edgeStates },
+    distances: { ...values },
+    description: `計算完了。ルートの期待値=${rootValue}(相手が最善を尽くすminimaxStepsの結果より、偶然ノードの影響で値が変わることを確認できる)`,
+  });
+
+  return frames;
+}
+
+function gameTreeLeafAverage(id: string): number {
+  const node = GAME_TREE.nodes[id];
+  if (node.isLeaf) return node.leafValue!;
+  return (gameTreeLeafAverage(node.left!) + gameTreeLeafAverage(node.right!)) / 2;
+}
+
+/**
+ * 反復深化ミニマックス法のステップ列を生成する。実戦の対局(将棋・チェス等)では
+ * 持ち時間の制約で全ての末端まで読み切れないことが多い——深さ制限を1,2,3…と
+ * 少しずつ増やしながらミニマックス法を繰り返し、制限に達したノードでは
+ * (末端まで読めない代わりに)そのノード配下の末端値の平均という簡易評価関数で
+ * 打ち切ることで、時間が許す限り読みを深めるごとに評価値が真の値へ収束していく様子を示す。
+ */
+export function iterativeDeepeningMinimaxSteps(): GraphFrame[] {
+  const nodesMap = GAME_TREE.nodes;
+  const nodeStates = initNodeStates(GAME_TREE_NODES, "idle");
+  const edgeStates = initEdgeStates(GAME_TREE_EDGES, "idle");
+  const values: Record<string, number | null> = {};
+  GAME_TREE_NODES.forEach((n) => {
+    values[n.id] = null;
+  });
+  const maxDepth = Math.max(...GAME_TREE_NODES.map((n) => nodesMap[n.id].depth));
+
+  const frames: GraphFrame[] = [
+    {
+      nodeStates: { ...nodeStates },
+      edgeStates: { ...edgeStates },
+      distances: { ...values },
+      description: `反復深化ミニマックス法を開始。深さ制限を1から${maxDepth}まで少しずつ増やしながら、同じゲーム木を繰り返し評価する`,
+    },
+  ];
+
+  let finalRootValue = 0;
+  for (let depthLimit = 1; depthLimit <= maxDepth; depthLimit++) {
+    GAME_TREE_NODES.forEach((n) => {
+      nodeStates[n.id] = "idle";
+      values[n.id] = null;
+    });
+    Object.keys(edgeStates).forEach((k) => {
+      edgeStates[k] = "idle";
+    });
+
+    const visit = (id: string): number => {
+      const node = nodesMap[id];
+      nodeStates[id] = "visited";
+      if (node.isLeaf) {
+        values[id] = node.leafValue!;
+        nodeStates[id] = "settled";
+        return node.leafValue!;
+      }
+      if (node.depth >= depthLimit) {
+        const heuristic = Number(gameTreeLeafAverage(id).toFixed(2));
+        values[id] = heuristic;
+        nodeStates[id] = "settled";
+        return heuristic;
+      }
+      edgeStates[`${id}-${node.left}`] = "tree";
+      const leftVal = visit(node.left!);
+      edgeStates[`${id}-${node.right}`] = "tree";
+      const rightVal = visit(node.right!);
+      const value = node.isMax ? Math.max(leftVal, rightVal) : Math.min(leftVal, rightVal);
+      values[id] = value;
+      nodeStates[id] = "settled";
+      return value;
+    };
+
+    finalRootValue = visit(GAME_TREE.rootId);
+    frames.push({
+      nodeStates: { ...nodeStates },
+      edgeStates: { ...edgeStates },
+      distances: { ...values },
+      description: `深さ制限=${depthLimit}: ルートの評価値=${finalRootValue}(制限に達したノードは配下の末端値の平均で簡易評価)`,
+    });
+  }
+
+  frames.push({
+    nodeStates: { ...nodeStates },
+    edgeStates: { ...edgeStates },
+    distances: { ...values },
+    description: `計算完了。深さ制限=${maxDepth}(木の全深さ)に到達し、通常のミニマックス法と同じ真の評価値${finalRootValue}に収束`,
+  });
+
+  return frames;
+}
+
 type NfaTransition = { from: string; to: string; symbol: string };
 type NfaFragment = { states: string[]; transitions: NfaTransition[]; start: string; accept: string };
 type NfaBuilder = { newState: () => string };
@@ -4966,4 +5196,7 @@ export const GRAPH_VISUALIZERS: Record<string, () => GraphFrame[]> = {
   "reverse-delete-algorithm": reverseDeleteSteps,
   "articulation-points": articulationPointsSteps,
   "bridges-finding": bridgesFindingSteps,
+  negamax: negamaxSteps,
+  expectimax: expectimaxSteps,
+  "iterative-deepening-minimax": iterativeDeepeningMinimaxSteps,
 };
