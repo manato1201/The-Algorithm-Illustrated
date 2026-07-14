@@ -56,6 +56,14 @@ import {
   BRIDGE_NODES,
   BRIDGE_EDGES,
   GAME_TREE_LEAF_VALUES,
+  STABLE_MARRIAGE_MEN,
+  STABLE_MARRIAGE_WOMEN,
+  STABLE_MARRIAGE_MEN_PREFS,
+  STABLE_MARRIAGE_WOMEN_PREFS,
+  HIERHOLZER_EDGES,
+  TWO_SAT_CLAUSES,
+  REGISTER_INTERFERENCE_EDGES,
+  SUFFIX_AUTOMATON_STRING,
 } from "../src/lib/graph-visualizers.ts";
 import {
   DP_VISUALIZERS,
@@ -115,6 +123,7 @@ import {
   OBST_FREQ,
   PALINDROME_PARTITIONING_STRING,
   BURST_BALLOONS_NUMS,
+  HUNGARIAN_COST_MATRIX,
 } from "../src/lib/dp-visualizers.ts";
 import { TREE_VISUALIZERS } from "../src/lib/tree-visualizers.ts";
 import { STRING_VISUALIZERS, TEXT, PATTERN } from "../src/lib/string-visualizers.ts";
@@ -541,6 +550,151 @@ function bruteExpectimax(values, depth, idx) {
 
 // FFT: 既知の入力に対しナイーブDFTと一致するかは説明文で確認(フレームが生成されること自体を確認)
 check("fft: FLOW_NODES/FLOW_EDGESが既知の最大流ネットワーク定義と整合", FLOW_NODES.length === 6 && FLOW_EDGES.length === 9);
+
+// ===========================================================================
+// GRAPH追加分: グラフ系9件
+// ===========================================================================
+section("GRAPH追加分: グラフ系9件");
+
+// stable-marriage-problem: 得られたマッチングにブロッキングペアが存在しないことを検証
+{
+  const frames = GRAPH_VISUALIZERS["stable-marriage-problem"]();
+  checkWellFormed("stable-marriage-problem", frames);
+  const lastDesc = frames[frames.length - 1].description;
+  const match = lastDesc.match(/安定マッチング: (.+?)\(/);
+  const pairs = match ? match[1].trim().split(", ").map((p) => p.split("-")) : [];
+  const engagement = new Map(pairs.map(([m, w]) => [w, m]));
+  let stable = pairs.length === 3;
+  for (const m of STABLE_MARRIAGE_MEN) {
+    const currentW = pairs.find(([mm]) => mm === m)?.[1];
+    for (const w of STABLE_MARRIAGE_WOMEN) {
+      if (w === currentW) continue;
+      const mPrefs = STABLE_MARRIAGE_MEN_PREFS[m];
+      if (mPrefs.indexOf(w) < mPrefs.indexOf(currentW)) {
+        const wPrefs = STABLE_MARRIAGE_WOMEN_PREFS[w];
+        if (wPrefs.indexOf(m) < wPrefs.indexOf(engagement.get(w))) stable = false;
+      }
+    }
+  }
+  check(`stable-marriage-problem: 完全マッチングかつブロッキングペアが存在しない`, stable, lastDesc);
+}
+
+// push-relabel-max-flow: Edmonds-Karp/Dinic/Ford-Fulkersonと同じ既知の最大流23と一致
+{
+  const frames = GRAPH_VISUALIZERS["push-relabel-max-flow"]();
+  checkWellFormed("push-relabel-max-flow", frames);
+  const lastDesc = frames[frames.length - 1].description;
+  check("push-relabel-max-flow: 既知の最大流23と一致", lastDesc.includes("最大流=23"), lastDesc);
+}
+
+// hierholzer-algorithm: 得られたオイラー閉路が全ての辺をちょうど1回ずつ通ることを検証
+{
+  const frames = GRAPH_VISUALIZERS["hierholzer-algorithm"]();
+  checkWellFormed("hierholzer-algorithm", frames);
+  const lastDesc = frames[frames.length - 1].description;
+  const match = lastDesc.match(/オイラー閉路: (.+?)\(/);
+  const circuit = match ? match[1].trim().split("→") : [];
+  const usedEdges = new Set();
+  let valid = circuit.length - 1 === HIERHOLZER_EDGES.length;
+  for (let i = 0; valid && i < circuit.length - 1; i++) {
+    const a = circuit[i], b = circuit[i + 1];
+    const edge = HIERHOLZER_EDGES.find((e) => (e.from === a && e.to === b) || (e.from === b && e.to === a));
+    if (!edge || usedEdges.has(edge.id)) { valid = false; break; }
+    usedEdges.add(edge.id);
+  }
+  check(`hierholzer-algorithm: 全${HIERHOLZER_EDGES.length}辺をちょうど1回ずつ通る閉路`, valid && usedEdges.size === HIERHOLZER_EDGES.length, lastDesc);
+}
+
+// two-sat: brute-force全8通りの真偽値割り当てとの充足可能性の一致
+{
+  function evalClause([a, b], assign) {
+    const lit = (l) => (l.startsWith("!") ? !assign[l.slice(1)] : assign[l]);
+    return lit(a) || lit(b);
+  }
+  let satisfiable = false;
+  for (let mask = 0; mask < 8; mask++) {
+    const assign = { x1: !!(mask & 1), x2: !!(mask & 2), x3: !!(mask & 4) };
+    if (TWO_SAT_CLAUSES.every((c) => evalClause(c, assign))) { satisfiable = true; break; }
+  }
+  const frames = GRAPH_VISUALIZERS["two-sat"]();
+  checkWellFormed("two-sat", frames);
+  const lastDesc = frames[frames.length - 1].description;
+  const reportedSat = lastDesc.includes("充足可能");
+  check(`two-sat: brute-force全探索(充足可能=${satisfiable})と一致`, reportedSat === satisfiable, lastDesc);
+}
+
+// textrank: フレームが正常に生成されランキングを報告すること
+{
+  const frames = GRAPH_VISUALIZERS["textrank"]();
+  checkWellFormed("textrank", frames);
+  const lastDesc = frames[frames.length - 1].description;
+  check("textrank: 採用する順位を報告", lastDesc.includes("採用する順位"), lastDesc);
+}
+
+// register-allocation-graph-coloring: 隣接する頂点が同じ色にならない妥当な彩色であることを検証
+{
+  const frames = GRAPH_VISUALIZERS["register-allocation-graph-coloring"]();
+  checkWellFormed("register-allocation-graph-coloring", frames);
+  const colors = frames[frames.length - 1].distances;
+  const validColoring = REGISTER_INTERFERENCE_EDGES.every((e) => colors[e.from] !== colors[e.to]);
+  check("register-allocation-graph-coloring: 隣接する頂点間で色の衝突がない", validColoring);
+}
+
+// de-bruijn-graph-assembly: 全頂点で入次数=出次数(オイラー閉路が存在)であることを確認
+{
+  const frames = GRAPH_VISUALIZERS["de-bruijn-graph-assembly"]();
+  checkWellFormed("de-bruijn-graph-assembly", frames);
+  const lastDesc = frames[frames.length - 1].description;
+  check("de-bruijn-graph-assembly: 全頂点で入次数=出次数、オイラー閉路が存在", lastDesc.includes("一致") && lastDesc.includes("復元できる"), lastDesc);
+}
+
+// suffix-automaton: 独立実装した接尾辞オートマトンが全ての部分文字列を受理することを確認
+{
+  function buildAutomaton(s) {
+    const states = [{ len: 0, link: -1, trans: new Map() }];
+    let last = 0;
+    for (const ch of s) {
+      const cur = states.length;
+      states.push({ len: states[last].len + 1, link: -1, trans: new Map() });
+      let p = last;
+      while (p !== -1 && !states[p].trans.has(ch)) { states[p].trans.set(ch, cur); p = states[p].link; }
+      if (p === -1) states[cur].link = 0;
+      else {
+        const q = states[p].trans.get(ch);
+        if (states[p].len + 1 === states[q].len) states[cur].link = q;
+        else {
+          const clone = states.length;
+          states.push({ len: states[p].len + 1, link: states[q].link, trans: new Map(states[q].trans) });
+          while (p !== -1 && states[p].trans.get(ch) === q) { states[p].trans.set(ch, clone); p = states[p].link; }
+          states[q].link = clone;
+          states[cur].link = clone;
+        }
+      }
+      last = cur;
+    }
+    return states;
+  }
+  const s = SUFFIX_AUTOMATON_STRING;
+  const states = buildAutomaton(s);
+  let allAccepted = true;
+  for (let i = 0; i < s.length; i++) {
+    for (let j = i; j < s.length; j++) {
+      let cur = 0;
+      let accepted = true;
+      for (const ch of s.slice(i, j + 1)) {
+        if (states[cur].trans.has(ch)) cur = states[cur].trans.get(ch);
+        else { accepted = false; break; }
+      }
+      if (!accepted) allAccepted = false;
+    }
+  }
+  const frames = GRAPH_VISUALIZERS["suffix-automaton"]();
+  checkWellFormed("suffix-automaton", frames);
+  const lastDesc = frames[frames.length - 1].description;
+  const match = lastDesc.match(/状態数=(\d+)/);
+  const stateCount = match ? parseInt(match[1], 10) : null;
+  check(`suffix-automaton: 独立実装が全部分文字列を受理し状態数(${states.length})も一致`, allAccepted && stateCount === states.length, lastDesc);
+}
 
 // ===========================================================================
 // DP (44件)
@@ -1053,6 +1207,23 @@ function burstBalloonsMax(numsIn) {
   const frames = DP_VISUALIZERS["burst-balloons-dp"]();
   const lastDesc = frames[frames.length - 1].description;
   check(`burst-balloons-dp: 独立実装の最大コイン(${expected}、既知のLeetCode解167)と一致`, lastDesc.includes(`最大コインは${expected}`), lastDesc);
+}
+
+// hungarian-algorithm: brute-force全順列探索との最小コスト一致
+{
+  const n = HUNGARIAN_COST_MATRIX.length;
+  const perms = (arr) =>
+    arr.length <= 1 ? [arr] : arr.flatMap((v, i) => perms([...arr.slice(0, i), ...arr.slice(i + 1)]).map((p) => [v, ...p]));
+  let best = Infinity;
+  for (const perm of perms([...Array(n).keys()])) {
+    let cost = 0;
+    for (let r = 0; r < n; r++) cost += HUNGARIAN_COST_MATRIX[r][perm[r]];
+    if (cost < best) best = cost;
+  }
+  const frames = DP_VISUALIZERS["hungarian-algorithm"]();
+  checkWellFormed("hungarian-algorithm", frames);
+  const lastDesc = frames[frames.length - 1].description;
+  check(`hungarian-algorithm: brute-force全順列探索の最小コスト(${best})と一致`, lastDesc.includes(`総コスト=${best}`), lastDesc);
 }
 
 // ===========================================================================
