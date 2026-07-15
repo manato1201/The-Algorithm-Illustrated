@@ -6,6 +6,37 @@ import { hasVisualizer } from "@/lib/has-visualizer";
 
 const CONTENT_DIR = path.join(process.cwd(), "content", "algorithms");
 
+/** コードフェンスの info string(```python 等)を「実装例」セクションの言語ラベルに変換する。 */
+const CODE_LANGUAGE_LABELS: Record<string, string> = {
+  python: "Python",
+  typescript: "TypeScript",
+  cpp: "C++",
+  rust: "Rust",
+  csharp: "C#",
+};
+
+function escapeHtml(value: string): string {
+  return value
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;");
+}
+
+/**
+ * 「## 実装例」セクションの各言語コードブロックに言語ラベルを表示するため、
+ * markedの標準レンダラーを上書きする(標準のまま`<pre><code class="language-xxx">`だけでは
+ * どの言語のコードかがぱっと見て分からないため)。
+ */
+const contentRenderer = {
+  code({ text, lang }: { text: string; lang?: string }): string {
+    const label = lang ? (CODE_LANGUAGE_LABELS[lang] ?? lang) : null;
+    const labelHtml = label ? `<div class="codeLangLabel">${escapeHtml(label)}</div>` : "";
+    const langClass = lang ? ` class="language-${escapeHtml(lang)}"` : "";
+    return `<div class="codeBlock">${labelHtml}<pre><code${langClass}>${escapeHtml(text)}</code></pre></div>`;
+  },
+};
+marked.use({ renderer: contentRenderer });
+
 export type AlgorithmFrontmatter = {
   name: string;
   category: string;

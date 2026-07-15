@@ -25,3 +25,99 @@ summary: 値の出現回数を数えて並べる。値域が小さい整数デ�
 - **安定ソート**: 累積和を使って末尾から配置することで、同じ値同士の相対順序を保てる
 - **整数(または離散値)専用**: 実数のような連続値にはそのままでは使えない
 - **使いどころ**: 年齢・得点・成績のような値域が限定された整数データ。基数ソートの内部処理としても使われる(桁ごとのソートに計数ソートを使う)
+
+## 実装例(非負整数、値域0〜kを仮定)
+
+```python
+def counting_sort(arr: list[int]) -> list[int]:
+    if not arr:
+        return []
+    k = max(arr)
+    count = [0] * (k + 1)
+    for v in arr:
+        count[v] += 1
+    for i in range(1, k + 1):
+        count[i] += count[i - 1]
+    result = [0] * len(arr)
+    for v in reversed(arr):
+        count[v] -= 1
+        result[count[v]] = v
+    return result
+```
+
+```typescript
+function countingSort(arr: number[]): number[] {
+  if (arr.length === 0) return [];
+  const k = Math.max(...arr);
+  const count = new Array(k + 1).fill(0);
+  for (const v of arr) count[v]++;
+  for (let i = 1; i <= k; i++) count[i] += count[i - 1];
+  const result = new Array(arr.length).fill(0);
+  for (let i = arr.length - 1; i >= 0; i--) {
+    const v = arr[i];
+    count[v]--;
+    result[count[v]] = v;
+  }
+  return result;
+}
+```
+
+```cpp
+#include <vector>
+#include <algorithm>
+
+std::vector<int> countingSort(const std::vector<int>& arr) {
+    if (arr.empty()) return {};
+    int k = *std::max_element(arr.begin(), arr.end());
+    std::vector<int> count(k + 1, 0);
+    for (int v : arr) count[v]++;
+    for (int i = 1; i <= k; i++) count[i] += count[i - 1];
+    std::vector<int> result(arr.size());
+    for (auto it = arr.rbegin(); it != arr.rend(); ++it) {
+        count[*it]--;
+        result[count[*it]] = *it;
+    }
+    return result;
+}
+```
+
+```rust
+fn counting_sort(arr: &[i32]) -> Vec<i32> {
+    if arr.is_empty() {
+        return Vec::new();
+    }
+    let k = *arr.iter().max().unwrap() as usize;
+    let mut count = vec![0usize; k + 1];
+    for &v in arr {
+        count[v as usize] += 1;
+    }
+    for i in 1..=k {
+        count[i] += count[i - 1];
+    }
+    let mut result = vec![0; arr.len()];
+    for &v in arr.iter().rev() {
+        count[v as usize] -= 1;
+        result[count[v as usize]] = v;
+    }
+    result
+}
+```
+
+```csharp
+static int[] CountingSort(int[] arr)
+{
+    if (arr.Length == 0) return Array.Empty<int>();
+    int k = arr.Max();
+    var count = new int[k + 1];
+    foreach (int v in arr) count[v]++;
+    for (int i = 1; i <= k; i++) count[i] += count[i - 1];
+    var result = new int[arr.Length];
+    for (int i = arr.Length - 1; i >= 0; i--)
+    {
+        int v = arr[i];
+        count[v]--;
+        result[count[v]] = v;
+    }
+    return result;
+}
+```
