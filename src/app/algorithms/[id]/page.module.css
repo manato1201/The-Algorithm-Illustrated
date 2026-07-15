@@ -130,3 +130,39 @@
 .markdownBody strong {
   color: var(--color-text);
 }
+
+/* 「## 実装例」セクションの言語別コードブロック(markedのレンダラー拡張が生成する生HTML) */
+.markdownBody :global(.codeBlock) {
+  margin: 0 0 var(--space-4);
+  border: 1px solid var(--color-line);
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.markdownBody :global(.codeLangLabel) {
+  font-family: var(--font-display-en);
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  color: var(--color-accent-amber);
+  background: var(--color-bg-surface);
+  padding: var(--space-1) var(--space-3);
+  border-bottom: 1px solid var(--color-line);
+}
+
+.markdownBody :global(.codeBlock) pre {
+  margin: 0;
+  padding: var(--space-3);
+  overflow-x: auto;
+  background: var(--color-bg-void);
+}
+
+.markdownBody :global(.codeBlock) code {
+  font-family: var(--font-mono);
+  font-size: 0.8125rem;
+  line-height: 1.6;
+  color: var(--color-text);
+  background: none;
+  padding: 0;
+  white-space: pre;
+}
