@@ -26,3 +26,137 @@ summary: 学習フェーズを持たず、予測時に最も近いk個のデー�
 - **kの選び方が精度を左右する**: kが小さすぎるとノイズに敏感になり(過学習)、大きすぎると細かい構造を見逃す(未学習)。適切なkを交差検証などで探る必要がある
 - **次元の呪い**: 次元数が高くなると、「近い」という概念自体が意味を持ちにくくなり(全ての点が互いに同じくらい離れて見える)、精度が悪化しやすい
 - **使いどころ**: シンプルな分類・回帰タスクのベースライン手法、レコメンデーションシステム(似たユーザー・商品の発見)、異常検知(近傍が極端に少ない/遠い点を異常とみなす)、画像認識の初期の手法など
+
+## 実装例(ラベル付き点群+クエリ点からk近傍の多数決でラベルを予測)
+
+```python
+import math
+from collections import Counter
+from typing import List, Tuple
+
+
+def knn_predict(
+    points: List[Tuple[float, float]],
+    labels: List[str],
+    query: Tuple[float, float],
+    k: int,
+) -> str:
+    distances = [(math.dist(p, query), label) for p, label in zip(points, labels)]
+    distances.sort(key=lambda x: x[0])
+    nearest_labels = [label for _, label in distances[:k]]
+    return Counter(nearest_labels).most_common(1)[0][0]
+```
+
+```typescript
+function knnPredict(
+  points: [number, number][],
+  labels: string[],
+  query: [number, number],
+  k: number
+): string {
+  const distances = points.map((p, i) => {
+    const dx = p[0] - query[0];
+    const dy = p[1] - query[1];
+    return { dist: Math.sqrt(dx * dx + dy * dy), label: labels[i] };
+  });
+  distances.sort((a, b) => a.dist - b.dist);
+  const nearest = distances.slice(0, k).map((d) => d.label);
+
+  const counts = new Map<string, number>();
+  for (const label of nearest) {
+    counts.set(label, (counts.get(label) ?? 0) + 1);
+  }
+  let best = nearest[0];
+  let bestCount = 0;
+  for (const [label, count] of counts) {
+    if (count > bestCount) {
+      best = label;
+      bestCount = count;
+    }
+  }
+  return best;
+}
+```
+
+```cpp
+#include <vector>
+#include <string>
+#include <cmath>
+#include <algorithm>
+#include <unordered_map>
+#include <utility>
+
+std::string knnPredict(const std::vector<std::pair<double, double>>& points,
+                        const std::vector<std::string>& labels,
+                        std::pair<double, double> query, int k) {
+    std::vector<std::pair<double, int>> distances;  // (距離, インデックス)
+    for (size_t i = 0; i < points.size(); i++) {
+        double dx = points[i].first - query.first;
+        double dy = points[i].second - query.second;
+        distances.push_back({std::sqrt(dx * dx + dy * dy), static_cast<int>(i)});
+    }
+    std::sort(distances.begin(), distances.end());
+
+    std::unordered_map<std::string, int> counts;
+    std::string best;
+    int bestCount = 0;
+    size_t limit = std::min(static_cast<size_t>(k), distances.size());
+    for (size_t i = 0; i < limit; i++) {
+        const std::string& label = labels[distances[i].second];
+        int c = ++counts[label];
+        if (c > bestCount) {
+            bestCount = c;
+            best = label;
+        }
+    }
+    return best;
+}
+```
+
+```rust
+use std::collections::HashMap;
+
+fn knn_predict(points: &[(f64, f64)], labels: &[String], query: (f64, f64), k: usize) -> String {
+    let mut distances: Vec<(f64, &String)> = points
+        .iter()
+        .zip(labels.iter())
+        .map(|(p, label)| {
+            let dx = p.0 - query.0;
+            let dy = p.1 - query.1;
+            ((dx * dx + dy * dy).sqrt(), label)
+        })
+        .collect();
+    distances.sort_by(|a, b| a.0.partial_cmp(&b.0).unwrap());
+
+    let mut counts: HashMap<&String, usize> = HashMap::new();
+    for (_, label) in distances.iter().take(k) {
+        *counts.entry(label).or_insert(0) += 1;
+    }
+    counts
+        .into_iter()
+        .max_by_key(|&(_, count)| count)
+        .map(|(label, _)| label.clone())
+        .unwrap_or_default()
+}
+```
+
+```csharp
+static string KnnPredict((double, double)[] points, string[] labels,
+                          (double, double) query, int k)
+{
+    var distances = points.Zip(labels, (p, label) =>
+    {
+        double dx = p.Item1 - query.Item1;
+        double dy = p.Item2 - query.Item2;
+        return (dist: Math.Sqrt(dx * dx + dy * dy), label);
+    }).OrderBy(d => d.dist).ToList();
+
+    return distances
+        .Take(k)
+        .Select(d => d.label)
+        .GroupBy(l => l)
+        .OrderByDescending(g => g.Count())
+        .First()
+        .Key;
+}
+```

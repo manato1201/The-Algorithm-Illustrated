@@ -26,3 +26,87 @@ summary: '最大公約数に加え、ax + by = gcd(a,b) を満たす係数まで
 - **モジュラ逆数の計算への応用**: `a`と`m`が互いに素であれば、拡張ユークリッドの互除法で `a×x + m×y = 1` を満たすxを求めることで、xが「aのmを法とする逆数」になる。これはRSA暗号の秘密鍵の計算(公開鍵の逆数を求める)に直接使われる
 - **一次不定方程式の解法**: `ax + by = c` の形の整数解を持つ方程式(cがgcd(a,b)の倍数の場合に限り解が存在する)を解く、数論の古典的な問題そのものにも使える
 - **使いどころ**: RSA暗号における秘密鍵の生成、中国剰余定理の実装の内部、一般に「モジュラ逆数が必要な暗号・数論の計算」のほぼ全てで使われる基礎部品
+
+## 実装例
+
+```python
+def extended_gcd(a: int, b: int) -> tuple[int, int, int]:
+    """gcd(a, b) と、a*x + b*y = gcd(a, b) を満たす x, y を返す"""
+    old_r, r = a, b
+    old_x, x = 1, 0
+    old_y, y = 0, 1
+    while r != 0:
+        q = old_r // r
+        old_r, r = r, old_r - q * r
+        old_x, x = x, old_x - q * x
+        old_y, y = y, old_y - q * y
+    return old_r, old_x, old_y
+```
+
+```typescript
+// gcd(a, b) と、a*x + b*y = gcd(a, b) を満たす x, y を返す
+function extendedGcd(a: number, b: number): [gcd: number, x: number, y: number] {
+  let oldR = a, r = b;
+  let oldX = 1, x = 0;
+  let oldY = 0, y = 1;
+  while (r !== 0) {
+    const q = Math.floor(oldR / r);
+    [oldR, r] = [r, oldR - q * r];
+    [oldX, x] = [x, oldX - q * x];
+    [oldY, y] = [y, oldY - q * y];
+  }
+  return [oldR, oldX, oldY];
+}
+```
+
+```cpp
+#include <tuple>
+
+// gcd(a, b) と、a*x + b*y = gcd(a, b) を満たす x, y を返す
+std::tuple<long long, long long, long long> extendedGcd(long long a, long long b) {
+    long long oldR = a, r = b;
+    long long oldX = 1, x = 0;
+    long long oldY = 0, y = 1;
+    while (r != 0) {
+        long long q = oldR / r;
+        long long tmpR = oldR - q * r; oldR = r; r = tmpR;
+        long long tmpX = oldX - q * x; oldX = x; x = tmpX;
+        long long tmpY = oldY - q * y; oldY = y; y = tmpY;
+    }
+    return {oldR, oldX, oldY};
+}
+```
+
+```rust
+// gcd(a, b) と、a*x + b*y = gcd(a, b) を満たす x, y を返す
+fn extended_gcd(a: i64, b: i64) -> (i64, i64, i64) {
+    let (mut old_r, mut r) = (a, b);
+    let (mut old_x, mut x) = (1i64, 0i64);
+    let (mut old_y, mut y) = (0i64, 1i64);
+    while r != 0 {
+        let q = old_r / r;
+        let tmp_r = old_r - q * r; old_r = r; r = tmp_r;
+        let tmp_x = old_x - q * x; old_x = x; x = tmp_x;
+        let tmp_y = old_y - q * y; old_y = y; y = tmp_y;
+    }
+    (old_r, old_x, old_y)
+}
+```
+
+```csharp
+// gcd(a, b) と、a*x + b*y = gcd(a, b) を満たす x, y を返す
+static (long g, long x, long y) ExtendedGcd(long a, long b)
+{
+    long oldR = a, r = b;
+    long oldX = 1, x = 0;
+    long oldY = 0, y = 1;
+    while (r != 0)
+    {
+        long q = oldR / r;
+        (oldR, r) = (r, oldR - q * r);
+        (oldX, x) = (x, oldX - q * x);
+        (oldY, y) = (y, oldY - q * y);
+    }
+    return (oldR, oldX, oldY);
+}
+```

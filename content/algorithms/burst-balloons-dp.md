@@ -24,3 +24,119 @@ summary: n個の風船を1つずつ割っていき、割った風船と両隣の
 - **「最初」ではなく「最後」に着目するという発想の転換**: この問題を解く上で最も重要な洞察は、時系列順(最初に割る風船)ではなく逆順(最後に割る風船)で区間を分割する発想に切り替える点にある——素朴な発想では部分問題が独立しない場合でも、視点を変えることで独立した部分問題に分解できることがある、という動的計画法の設計上の重要な教訓を示している
 - **番兵の導入という定石**: 区間の両端に値1のダミー要素を追加することで、境界条件(端の風船が割られた後の「隣」の扱い)を特別扱いせずに済む——区間DPやしゃくとり法など、様々なアルゴリズムで使われる汎用的なテクニック
 - **使いどころ**: 直接の実務応用は限定的だが、動的計画法における「時系列的な操作順序を、区間分割の順序に読み替える」という設計パターンの教材として、競技プログラミングやアルゴリズム面接で頻出する定番の応用問題
+
+## 実装例
+
+```python
+def max_coins(nums: list[int]) -> int:
+    balloons = [1] + nums + [1]  # 両端に番兵を追加
+    n = len(balloons)
+    dp = [[0] * n for _ in range(n)]
+    for length in range(2, n):
+        for i in range(0, n - length):
+            j = i + length
+            best = 0
+            for k in range(i + 1, j):  # kを「最後に割る風船」とみなす
+                val = dp[i][k] + balloons[i] * balloons[k] * balloons[j] + dp[k][j]
+                best = max(best, val)
+            dp[i][j] = best
+    return dp[0][n - 1]
+
+
+# 例: nums=[3, 1, 5, 8] -> 最大得点 167 (LeetCode 312の定番例)
+```
+
+```typescript
+function maxCoins(nums: number[]): number {
+  const balloons = [1, ...nums, 1];
+  const n = balloons.length;
+  const dp: number[][] = Array.from({ length: n }, () => new Array(n).fill(0));
+  for (let length = 2; length < n; length++) {
+    for (let i = 0; i < n - length; i++) {
+      const j = i + length;
+      let best = 0;
+      for (let k = i + 1; k < j; k++) {
+        const val = dp[i][k] + balloons[i] * balloons[k] * balloons[j] + dp[k][j];
+        if (val > best) best = val;
+      }
+      dp[i][j] = best;
+    }
+  }
+  return dp[0][n - 1];
+}
+```
+
+```cpp
+#include <vector>
+#include <algorithm>
+
+int maxCoins(std::vector<int> nums) {
+    std::vector<int> balloons;
+    balloons.push_back(1);
+    for (int v : nums) balloons.push_back(v);
+    balloons.push_back(1);
+    int n = static_cast<int>(balloons.size());
+    std::vector<std::vector<int>> dp(n, std::vector<int>(n, 0));
+    for (int length = 2; length < n; length++) {
+        for (int i = 0; i < n - length; i++) {
+            int j = i + length;
+            int best = 0;
+            for (int k = i + 1; k < j; k++) {
+                int val = dp[i][k] + balloons[i] * balloons[k] * balloons[j] + dp[k][j];
+                best = std::max(best, val);
+            }
+            dp[i][j] = best;
+        }
+    }
+    return dp[0][n - 1];
+}
+```
+
+```rust
+fn max_coins(nums: &[i32]) -> i32 {
+    let mut balloons = vec![1];
+    balloons.extend_from_slice(nums);
+    balloons.push(1);
+    let n = balloons.len();
+    let mut dp = vec![vec![0i32; n]; n];
+    for length in 2..n {
+        for i in 0..(n - length) {
+            let j = i + length;
+            let mut best = 0;
+            for k in (i + 1)..j {
+                let val = dp[i][k] + balloons[i] * balloons[k] * balloons[j] + dp[k][j];
+                best = best.max(val);
+            }
+            dp[i][j] = best;
+        }
+    }
+    dp[0][n - 1]
+}
+```
+
+```csharp
+static int MaxCoins(int[] nums)
+{
+    var balloons = new int[nums.Length + 2];
+    balloons[0] = 1;
+    balloons[^1] = 1;
+    for (int i = 0; i < nums.Length; i++) balloons[i + 1] = nums[i];
+    int n = balloons.Length;
+    var dp = new int[n, n];
+    for (int length = 2; length < n; length++)
+    {
+        for (int i = 0; i < n - length; i++)
+        {
+            int j = i + length;
+            int best = 0;
+            for (int k = i + 1; k < j; k++)
+            {
+                int val = dp[i, k] + balloons[i] * balloons[k] * balloons[j] + dp[k, j];
+                if (val > best) best = val;
+            }
+            dp[i, j] = best;
+        }
+    }
+    return dp[0, n - 1];
+}
+```

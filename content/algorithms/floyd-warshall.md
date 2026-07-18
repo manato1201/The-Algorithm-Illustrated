@@ -26,3 +26,82 @@ summary: 全点対の最短経路を動的計画法で一括に求める。
 - **負の辺に対応(負閉路がなければ)**: ベルマン・フォード法と同様、負の重みの辺があっても正しく動作する(ただし負閉路があると対角成分`dp[i][i]`が負になることで検出できる)
 - **実装の単純さ**: 優先度付きキューなど特別なデータ構造が不要で、3重ループだけで書ける。頂点数が少ない(〜数百程度)場合は、実装の手間と実行速度のバランスが良い
 - **使いどころ**: 全ての都市間の最短距離をあらかじめ計算しておきたい経路案内システム、ネットワークの全ノード間の遅延を事前計算しておくケースなど、「全点対」の最短経路そのものが必要な場面。1つのスタート地点だけでよいならダイクストラ法の方が高速
+
+## 実装例
+
+```python
+def floyd_warshall(dist: list[list[float]]) -> list[list[float]]:
+    n = len(dist)
+    d = [row[:] for row in dist]
+    for k in range(n):
+        for i in range(n):
+            for j in range(n):
+                if d[i][k] + d[k][j] < d[i][j]:
+                    d[i][j] = d[i][k] + d[k][j]
+    return d
+```
+
+```typescript
+function floydWarshall(dist: number[][]): number[][] {
+  const n = dist.length;
+  const d = dist.map((row) => [...row]);
+  for (let k = 0; k < n; k++) {
+    for (let i = 0; i < n; i++) {
+      for (let j = 0; j < n; j++) {
+        if (d[i][k] + d[k][j] < d[i][j]) {
+          d[i][j] = d[i][k] + d[k][j];
+        }
+      }
+    }
+  }
+  return d;
+}
+```
+
+```cpp
+#include <vector>
+
+std::vector<std::vector<double>> floydWarshall(std::vector<std::vector<double>> dist) {
+    int n = static_cast<int>(dist.size());
+    for (int k = 0; k < n; k++) {
+        for (int i = 0; i < n; i++) {
+            for (int j = 0; j < n; j++) {
+                if (dist[i][k] + dist[k][j] < dist[i][j]) {
+                    dist[i][j] = dist[i][k] + dist[k][j];
+                }
+            }
+        }
+    }
+    return dist;
+}
+```
+
+```rust
+fn floyd_warshall(dist: &[Vec<f64>]) -> Vec<Vec<f64>> {
+    let n = dist.len();
+    let mut d: Vec<Vec<f64>> = dist.to_vec();
+    for k in 0..n {
+        for i in 0..n {
+            for j in 0..n {
+                if d[i][k] + d[k][j] < d[i][j] {
+                    d[i][j] = d[i][k] + d[k][j];
+                }
+            }
+        }
+    }
+    d
+}
+```
+
+```csharp
+static double[,] FloydWarshall(double[,] dist)
+{
+    int n = dist.GetLength(0);
+    var d = (double[,])dist.Clone();
+    for (int k = 0; k < n; k++)
+        for (int i = 0; i < n; i++)
+            for (int j = 0; j < n; j++)
+                if (d[i, k] + d[k, j] < d[i, j]) d[i, j] = d[i, k] + d[k, j];
+    return d;
+}
+```
