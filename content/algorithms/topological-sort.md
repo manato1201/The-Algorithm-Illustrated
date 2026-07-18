@@ -24,3 +24,138 @@ summary: 依存関係のあるタスクを実行可能な順序に並べる。DA
 - **DAG(有向非巡回グラフ)にしか適用できない**: 依存関係に循環(AがBに依存し、BもAに依存する)があると、そもそも矛盾のない順序が存在しないため、トポロジカルソートは失敗する。DFSベースの実装では「訪問中」の頂点に再度到達したら閉路の存在を検出できる
 - **答えが一意とは限らない**: 依存関係を満たす順序が複数存在する場合、どれを選ぶかはアルゴリズムの実装(訪問順序)に依存する。全ての妥当な順序が「正解」になりうる
 - **使いどころ**: ビルドツール・パッケージマネージャの依存解決順序、スプレッドシートのセル再計算順序、大学のカリキュラム設計、タスクスケジューラなど、「順序制約のあるタスク群をどう並べて実行するか」というソフトウェア工学の随所に登場する
+
+## 実装例
+
+```python
+def topological_sort(graph: dict[str, list[str]]) -> list[str]:
+    visited: set[str] = set()
+    result: list[str] = []
+
+    def dfs(node: str) -> None:
+        visited.add(node)
+        for neighbor in graph.get(node, []):
+            if neighbor not in visited:
+                dfs(neighbor)
+        result.append(node)
+
+    for node in graph:
+        if node not in visited:
+            dfs(node)
+    result.reverse()
+    return result
+```
+
+```typescript
+function topologicalSort(graph: Record<string, string[]>): string[] {
+  const visited = new Set<string>();
+  const result: string[] = [];
+
+  function dfs(node: string) {
+    visited.add(node);
+    for (const neighbor of graph[node] ?? []) {
+      if (!visited.has(neighbor)) dfs(neighbor);
+    }
+    result.push(node);
+  }
+
+  for (const node of Object.keys(graph)) {
+    if (!visited.has(node)) dfs(node);
+  }
+  return result.reverse();
+}
+```
+
+```cpp
+#include <string>
+#include <unordered_map>
+#include <unordered_set>
+#include <vector>
+#include <algorithm>
+#include <functional>
+
+using Graph = std::unordered_map<std::string, std::vector<std::string>>;
+
+std::vector<std::string> topologicalSort(const Graph& graph) {
+    std::unordered_set<std::string> visited;
+    std::vector<std::string> result;
+
+    std::function<void(const std::string&)> dfs = [&](const std::string& node) {
+        visited.insert(node);
+        auto it = graph.find(node);
+        if (it != graph.end()) {
+            for (const auto& neighbor : it->second) {
+                if (!visited.count(neighbor)) dfs(neighbor);
+            }
+        }
+        result.push_back(node);
+    };
+
+    for (const auto& [node, _] : graph) {
+        if (!visited.count(node)) dfs(node);
+    }
+    std::reverse(result.begin(), result.end());
+    return result;
+}
+```
+
+```rust
+use std::collections::{HashMap, HashSet};
+
+fn dfs(
+    graph: &HashMap<String, Vec<String>>,
+    node: &str,
+    visited: &mut HashSet<String>,
+    result: &mut Vec<String>,
+) {
+    visited.insert(node.to_string());
+    if let Some(neighbors) = graph.get(node) {
+        for neighbor in neighbors {
+            if !visited.contains(neighbor) {
+                dfs(graph, neighbor, visited, result);
+            }
+        }
+    }
+    result.push(node.to_string());
+}
+
+fn topological_sort(graph: &HashMap<String, Vec<String>>) -> Vec<String> {
+    let mut visited = HashSet::new();
+    let mut result = vec![];
+    for node in graph.keys() {
+        if !visited.contains(node) {
+            dfs(graph, node, &mut visited, &mut result);
+        }
+    }
+    result.reverse();
+    result
+}
+```
+
+```csharp
+static List<string> TopologicalSort(Dictionary<string, List<string>> graph)
+{
+    var visited = new HashSet<string>();
+    var result = new List<string>();
+
+    void Dfs(string node)
+    {
+        visited.Add(node);
+        if (graph.TryGetValue(node, out var neighbors))
+        {
+            foreach (var neighbor in neighbors)
+            {
+                if (!visited.Contains(neighbor)) Dfs(neighbor);
+            }
+        }
+        result.Add(node);
+    }
+
+    foreach (var node in graph.Keys)
+    {
+        if (!visited.Contains(node)) Dfs(node);
+    }
+    result.Reverse();
+    return result;
+}
+```
