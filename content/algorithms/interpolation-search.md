@@ -28,3 +28,106 @@ summary: 値の分布から位置を推定してジャンプする。一様分�
 - **前提条件**: ソート済みであることに加え、**値の分布がある程度均一である**ことが性能発揮の鍵。二分探索より前提条件が厳しい
 - **数値データ限定**: 補間の計算に値の大小の「差」を使うため、数値データ(あるいは数値に変換できるデータ)にしか適用できない。文字列の辞書式順序のような比較のみ可能なデータには使いにくい
 - **使いどころ**: 一様に分布していることがわかっている大規模な数値データ(センサーのタイムスタンプ、連番に近いIDなど)。分布が不明・偏りがある場合は二分探索の方が安全
+
+## 実装例
+
+```python
+def interpolation_search(arr: list[int], target: int) -> int:
+    low, high = 0, len(arr) - 1
+    while low <= high and arr[low] <= target <= arr[high]:
+        if arr[low] == arr[high]:
+            return low if arr[low] == target else -1
+        pos = low + (target - arr[low]) * (high - low) // (arr[high] - arr[low])
+        if arr[pos] == target:
+            return pos
+        elif arr[pos] < target:
+            low = pos + 1
+        else:
+            high = pos - 1
+    return -1
+```
+
+```typescript
+function interpolationSearch(arr: number[], target: number): number {
+  let low = 0;
+  let high = arr.length - 1;
+  while (low <= high && arr[low] <= target && target <= arr[high]) {
+    if (arr[low] === arr[high]) {
+      return arr[low] === target ? low : -1;
+    }
+    const pos = low + Math.floor(((target - arr[low]) * (high - low)) / (arr[high] - arr[low]));
+    if (arr[pos] === target) return pos;
+    else if (arr[pos] < target) low = pos + 1;
+    else high = pos - 1;
+  }
+  return -1;
+}
+```
+
+```cpp
+#include <vector>
+
+int interpolationSearch(const std::vector<int>& arr, int target) {
+    int low = 0;
+    int high = static_cast<int>(arr.size()) - 1;
+    while (low <= high && arr[low] <= target && target <= arr[high]) {
+        if (arr[low] == arr[high]) {
+            return arr[low] == target ? low : -1;
+        }
+        int pos = low + static_cast<int>(
+            static_cast<long long>(target - arr[low]) * (high - low) / (arr[high] - arr[low])
+        );
+        if (arr[pos] == target) return pos;
+        else if (arr[pos] < target) low = pos + 1;
+        else high = pos - 1;
+    }
+    return -1;
+}
+```
+
+```rust
+fn interpolation_search(arr: &[i32], target: i32) -> Option<usize> {
+    if arr.is_empty() {
+        return None;
+    }
+    let mut low: isize = 0;
+    let mut high: isize = arr.len() as isize - 1;
+    while low <= high && arr[low as usize] <= target && target <= arr[high as usize] {
+        let low_val = arr[low as usize];
+        let high_val = arr[high as usize];
+        if low_val == high_val {
+            return if low_val == target { Some(low as usize) } else { None };
+        }
+        let pos = low + (target - low_val) as isize * (high - low) / (high_val - low_val) as isize;
+        let pos_val = arr[pos as usize];
+        if pos_val == target {
+            return Some(pos as usize);
+        } else if pos_val < target {
+            low = pos + 1;
+        } else {
+            high = pos - 1;
+        }
+    }
+    None
+}
+```
+
+```csharp
+static int InterpolationSearch(int[] arr, int target)
+{
+    int low = 0;
+    int high = arr.Length - 1;
+    while (low <= high && arr[low] <= target && target <= arr[high])
+    {
+        if (arr[low] == arr[high])
+        {
+            return arr[low] == target ? low : -1;
+        }
+        int pos = low + (target - arr[low]) * (high - low) / (arr[high] - arr[low]);
+        if (arr[pos] == target) return pos;
+        else if (arr[pos] < target) low = pos + 1;
+        else high = pos - 1;
+    }
+    return -1;
+}
+```

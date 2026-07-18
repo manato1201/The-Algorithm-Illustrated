@@ -25,3 +25,90 @@ summary: 目的金額を作る最小枚数(または組み合わせ数)を、部
 - **貪欲法が通用しない例がある**: 額面が {1, 3, 4} で目的金額が6の場合、貪欲に大きい額面から使うと 4+1+1=3枚になるが、実は 3+3=2枚が最適。**額面の組み合わせによっては貪欲法が最適解を出さない**ため、確実に最小枚数を求めるにはDPが必要になる(ただし日本や米国のような一般的な貨幣制度では、貪欲法でも最適解になることが知られている)
 - **組み合わせ数を数える亜種**: 「最小枚数」ではなく「何通りの組み合わせがあるか」を数える場合は漸化式が変わり、硬貨の種類でループを外側に置くか内側に置くかで「順序を区別するか」が変わる、というDPならではの繊細な違いも学べる
 - **使いどころ**: おつりの計算、ポイント消費の最適化、切手の組み合わせなど、「決まった単位の組み合わせで目的の量を作る」あらゆる場面
+
+## 実装例
+
+```python
+def coin_change(coins: list[int], amount: int) -> int:
+    INF = float("inf")
+    dp = [0] + [INF] * amount
+    for w in range(1, amount + 1):
+        for c in coins:
+            if c <= w and dp[w - c] + 1 < dp[w]:
+                dp[w] = dp[w - c] + 1
+    return dp[amount] if dp[amount] != INF else -1
+```
+
+```typescript
+function coinChange(coins: number[], amount: number): number {
+  const INF = Infinity;
+  const dp: number[] = new Array(amount + 1).fill(INF);
+  dp[0] = 0;
+  for (let w = 1; w <= amount; w++) {
+    for (const c of coins) {
+      if (c <= w && dp[w - c] + 1 < dp[w]) {
+        dp[w] = dp[w - c] + 1;
+      }
+    }
+  }
+  return dp[amount] === INF ? -1 : dp[amount];
+}
+```
+
+```cpp
+#include <vector>
+#include <climits>
+
+int coinChange(const std::vector<int>& coins, int amount) {
+    const int INF = INT_MAX / 2;
+    std::vector<int> dp(amount + 1, INF);
+    dp[0] = 0;
+    for (int w = 1; w <= amount; w++) {
+        for (int c : coins) {
+            if (c <= w && dp[w - c] + 1 < dp[w]) {
+                dp[w] = dp[w - c] + 1;
+            }
+        }
+    }
+    return dp[amount] >= INF ? -1 : dp[amount];
+}
+```
+
+```rust
+fn coin_change(coins: &[i32], amount: i32) -> i32 {
+    const INF: i32 = i32::MAX / 2;
+    let amount = amount as usize;
+    let mut dp = vec![INF; amount + 1];
+    dp[0] = 0;
+    for w in 1..=amount {
+        for &c in coins {
+            let c = c as usize;
+            if c <= w && dp[w - c] + 1 < dp[w] {
+                dp[w] = dp[w - c] + 1;
+            }
+        }
+    }
+    if dp[amount] >= INF { -1 } else { dp[amount] }
+}
+```
+
+```csharp
+static int CoinChange(int[] coins, int amount)
+{
+    const int INF = int.MaxValue / 2;
+    var dp = new int[amount + 1];
+    Array.Fill(dp, INF);
+    dp[0] = 0;
+    for (int w = 1; w <= amount; w++)
+    {
+        foreach (int c in coins)
+        {
+            if (c <= w && dp[w - c] + 1 < dp[w])
+            {
+                dp[w] = dp[w - c] + 1;
+            }
+        }
+    }
+    return dp[amount] >= INF ? -1 : dp[amount];
+}
+```

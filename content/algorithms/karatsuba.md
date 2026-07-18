@@ -27,3 +27,145 @@ n桁の数を2つに分割し、それぞれ半分の桁数の数として扱う
 - **さらに高速な手法との関係**: カラツバ法は乗算の分割数を増やすToom-Cook法や、FFTベースの乗算(桁数が非常に大きい場合に有利)へと発展していく、多倍長乗算アルゴリズムの系譜の出発点にあたる
 - **小さい桁数では逆に不利**: 分割・再帰のオーバーヘッドがあるため、桁数が小さい場合は素朴な筆算の方が実測で速いことが多い。実用の多倍長演算ライブラリでは、ある桁数を境に筆算とカラツバ法を切り替えるハイブリッドな実装が一般的
 - **使いどころ**: 暗号ライブラリにおける大きな整数(数百〜数千ビット)の乗算、多倍長演算ライブラリ(GMPなど)の内部実装、円周率などの超高精度計算
+
+## 実装例
+
+```python
+def karatsuba(x: int, y: int) -> int:
+    if x < 10 or y < 10:
+        return x * y
+
+    n = max(len(str(x)), len(str(y)))
+    m = n // 2
+
+    high1, low1 = divmod(x, 10 ** m)
+    high2, low2 = divmod(y, 10 ** m)
+
+    z2 = karatsuba(high1, high2)
+    z0 = karatsuba(low1, low2)
+    z1 = karatsuba(high1 + low1, high2 + low2) - z2 - z0
+
+    return z2 * 10 ** (2 * m) + z1 * 10 ** m + z0
+```
+
+```typescript
+function karatsuba(x: bigint, y: bigint): bigint {
+  if (x < 10n || y < 10n) return x * y;
+
+  const n = Math.max(x.toString().length, y.toString().length);
+  const m = BigInt(Math.floor(n / 2));
+  const base = 10n ** m;
+
+  const high1 = x / base, low1 = x % base;
+  const high2 = y / base, low2 = y % base;
+
+  const z2 = karatsuba(high1, high2);
+  const z0 = karatsuba(low1, low2);
+  const z1 = karatsuba(high1 + low1, high2 + low2) - z2 - z0;
+
+  return z2 * 10n ** (2n * m) + z1 * base + z0;
+}
+```
+
+```cpp
+#include <algorithm>
+
+// 演算範囲は__int128(概ね38桁)まで。それ以上の桁数を扱うには
+// 桁配列(vector<int>など)によるビッグインテガー表現への置き換えが必要。
+using Int128 = __int128;
+
+int digitCount(Int128 x) {
+    if (x == 0) return 1;
+    int count = 0;
+    while (x > 0) {
+        count++;
+        x /= 10;
+    }
+    return count;
+}
+
+Int128 pow10(int n) {
+    Int128 result = 1;
+    for (int i = 0; i < n; i++) result *= 10;
+    return result;
+}
+
+Int128 karatsuba(Int128 x, Int128 y) {
+    if (x < 10 || y < 10) return x * y;
+
+    int n = std::max(digitCount(x), digitCount(y));
+    int m = n / 2;
+    Int128 base = pow10(m);
+
+    Int128 high1 = x / base, low1 = x % base;
+    Int128 high2 = y / base, low2 = y % base;
+
+    Int128 z2 = karatsuba(high1, high2);
+    Int128 z0 = karatsuba(low1, low2);
+    Int128 z1 = karatsuba(high1 + low1, high2 + low2) - z2 - z0;
+
+    return z2 * pow10(2 * m) + z1 * base + z0;
+}
+```
+
+```rust
+// 演算範囲はi128(概ね38桁)まで。それ以上の桁数を扱うには
+// 桁配列によるビッグインテガー表現への置き換えが必要。
+fn digit_count(mut x: i128) -> u32 {
+    if x == 0 {
+        return 1;
+    }
+    let mut count = 0;
+    while x > 0 {
+        count += 1;
+        x /= 10;
+    }
+    count
+}
+
+fn pow10(n: u32) -> i128 {
+    10i128.pow(n)
+}
+
+fn karatsuba(x: i128, y: i128) -> i128 {
+    if x < 10 || y < 10 {
+        return x * y;
+    }
+
+    let n = digit_count(x).max(digit_count(y));
+    let m = n / 2;
+    let base = pow10(m);
+
+    let (high1, low1) = (x / base, x % base);
+    let (high2, low2) = (y / base, y % base);
+
+    let z2 = karatsuba(high1, high2);
+    let z0 = karatsuba(low1, low2);
+    let z1 = karatsuba(high1 + low1, high2 + low2) - z2 - z0;
+
+    z2 * pow10(2 * m) + z1 * base + z0
+}
+```
+
+```csharp
+using System;
+using System.Numerics;
+
+static BigInteger Karatsuba(BigInteger x, BigInteger y)
+{
+    if (x < 10 || y < 10) return x * y;
+
+    int n = Math.Max(x.ToString().Length, y.ToString().Length);
+    int m = n / 2;
+    BigInteger baseVal = BigInteger.Pow(10, m);
+
+    BigInteger high1 = BigInteger.DivRem(x, baseVal, out BigInteger low1);
+    BigInteger high2 = BigInteger.DivRem(y, baseVal, out BigInteger low2);
+
+    BigInteger z2 = Karatsuba(high1, high2);
+    BigInteger z0 = Karatsuba(low1, low2);
+    BigInteger z1 = Karatsuba(high1 + low1, high2 + low2) - z2 - z0;
+
+    return z2 * BigInteger.Pow(10, 2 * m) + z1 * baseVal + z0;
+}
+```
