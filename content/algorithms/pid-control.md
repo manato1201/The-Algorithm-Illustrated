@@ -24,3 +24,177 @@ summary: 目標値との誤差そのもの・誤差の蓄積・誤差の変化�
 - **ゲイン(Kp、Ki、Kd)の調整という職人技**: PID制御の性能は、3つの係数(ゲイン)の設定に大きく左右される。ゲインが小さすぎると反応が遅く、大きすぎると振動が起きやすい——チューニング(Ziegler-Nichols法のような体系的手法もあるが、実務では試行錯誤による微調整もよく行われる)が制御性能を左右する実践的な課題として残る
 - **[Bang-Bang制御](/algorithms/bang-bang-control)との対比**: Bang-Bang制御が「オンかオフか」の極端な2値制御であるのに対し、PID制御は誤差の大きさに応じて連続的に調整量を変える、より滑らかで精密な制御を可能にする——制御対象の特性(高速な切り替えが必要か、滑らかな追従が必要か)に応じて使い分けられる
 - **使いどころ**: 産業用ロボットアームの位置・速度制御、ドローン・自動運転車の姿勢・速度制御、エアコン・オーブンのような温度制御機器、ほぼ全ての自動制御システムにおける最も基本的で広く使われる制御アルゴリズム
+
+## 実装例
+
+単純な一次系(制御量がそのまま状態の変化速度になるプラント)にPID制御器を接続し、初期値0から目標値10へ収束することを検証する。
+
+```python
+class PID:
+    def __init__(self, kp: float, ki: float, kd: float, setpoint: float) -> None:
+        self.kp = kp
+        self.ki = ki
+        self.kd = kd
+        self.setpoint = setpoint
+        self.integral = 0.0
+        self.prev_error = 0.0
+        self.first = True
+
+    def update(self, measurement: float, dt: float) -> float:
+        error = self.setpoint - measurement
+        self.integral += error * dt
+        derivative = 0.0 if self.first else (error - self.prev_error) / dt
+        self.first = False
+        self.prev_error = error
+        return self.kp * error + self.ki * self.integral + self.kd * derivative
+
+
+def simulate_plant(pid: PID, initial: float, dt: float, steps: int) -> list[float]:
+    value = initial
+    history = [value]
+    for _ in range(steps):
+        control = pid.update(value, dt)
+        value += control * dt  # 制御量をそのまま状態変化速度とみなす一次系プラント
+        history.append(value)
+    return history
+```
+
+```typescript
+class PID {
+  kp: number; ki: number; kd: number; setpoint: number;
+  integral = 0; prevError = 0; first = true;
+
+  constructor(kp: number, ki: number, kd: number, setpoint: number) {
+    this.kp = kp; this.ki = ki; this.kd = kd; this.setpoint = setpoint;
+  }
+
+  update(measurement: number, dt: number): number {
+    const error = this.setpoint - measurement;
+    this.integral += error * dt;
+    const derivative = this.first ? 0 : (error - this.prevError) / dt;
+    this.first = false;
+    this.prevError = error;
+    return this.kp * error + this.ki * this.integral + this.kd * derivative;
+  }
+}
+
+function simulatePlant(pid: PID, initial: number, dt: number, steps: number): number[] {
+  let value = initial;
+  const history = [value];
+  for (let i = 0; i < steps; i++) {
+    const control = pid.update(value, dt);
+    value += control * dt;
+    history.push(value);
+  }
+  return history;
+}
+```
+
+```cpp
+#include <vector>
+
+class PID {
+public:
+    double kp, ki, kd, setpoint;
+    double integral = 0.0;
+    double prevError = 0.0;
+    bool first = true;
+
+    PID(double kp, double ki, double kd, double setpoint)
+        : kp(kp), ki(ki), kd(kd), setpoint(setpoint) {}
+
+    double update(double measurement, double dt) {
+        double error = setpoint - measurement;
+        integral += error * dt;
+        double derivative = first ? 0.0 : (error - prevError) / dt;
+        first = false;
+        prevError = error;
+        return kp * error + ki * integral + kd * derivative;
+    }
+};
+
+std::vector<double> simulatePlant(PID& pid, double initial, double dt, int steps) {
+    double value = initial;
+    std::vector<double> history = {value};
+    for (int i = 0; i < steps; i++) {
+        double control = pid.update(value, dt);
+        value += control * dt;
+        history.push_back(value);
+    }
+    return history;
+}
+```
+
+```rust
+struct Pid {
+    kp: f64,
+    ki: f64,
+    kd: f64,
+    setpoint: f64,
+    integral: f64,
+    prev_error: f64,
+    first: bool,
+}
+
+impl Pid {
+    fn new(kp: f64, ki: f64, kd: f64, setpoint: f64) -> Self {
+        Pid { kp, ki, kd, setpoint, integral: 0.0, prev_error: 0.0, first: true }
+    }
+
+    fn update(&mut self, measurement: f64, dt: f64) -> f64 {
+        let error = self.setpoint - measurement;
+        self.integral += error * dt;
+        let derivative = if self.first { 0.0 } else { (error - self.prev_error) / dt };
+        self.first = false;
+        self.prev_error = error;
+        self.kp * error + self.ki * self.integral + self.kd * derivative
+    }
+}
+
+fn simulate_plant(pid: &mut Pid, initial: f64, dt: f64, steps: usize) -> Vec<f64> {
+    let mut value = initial;
+    let mut history = vec![value];
+    for _ in 0..steps {
+        let control = pid.update(value, dt);
+        value += control * dt;
+        history.push(value);
+    }
+    history
+}
+```
+
+```csharp
+class PID
+{
+    public double Kp, Ki, Kd, Setpoint, Integral = 0, PrevError = 0;
+    public bool First = true;
+
+    public PID(double kp, double ki, double kd, double setpoint)
+    {
+        Kp = kp; Ki = ki; Kd = kd; Setpoint = setpoint;
+    }
+
+    public double Update(double measurement, double dt)
+    {
+        double error = Setpoint - measurement;
+        Integral += error * dt;
+        double derivative = First ? 0 : (error - PrevError) / dt;
+        First = false;
+        PrevError = error;
+        return Kp * error + Ki * Integral + Kd * derivative;
+    }
+
+    public static List<double> SimulatePlant(PID pid, double initial, double dt, int steps)
+    {
+        double value = initial;
+        var history = new List<double> { value };
+        for (int i = 0; i < steps; i++)
+        {
+            double control = pid.Update(value, dt);
+            value += control * dt;
+            history.Add(value);
+        }
+        return history;
+    }
+}
+```

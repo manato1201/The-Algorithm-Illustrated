@@ -24,3 +24,127 @@ summary: 誰も一人だけ戦略を変えても得をしない「均衡点」�
 - **均衡が最適とは限らない**: ナッシュ均衡は「誰も単独では得をしない」ことを保証するが、「全員がもっと得をする別の組み合わせ」が存在しても均衡になりうる(囚人のジレンマが典型例)。個々の合理性が全体の効率を保証しないという、ゲーム理論の重要な教訓を示す
 - **複数均衡の可能性**: 1つのゲームに複数のナッシュ均衡が存在することがあり、「どの均衡が実際に選ばれるか」はゲーム理論だけでは決まらないことも多い(調整ゲーム等)
 - **使いどころ**: 経済学の市場競争分析、オークション設計、マルチエージェントAIでの意思決定、対戦ゲームのバランス調整(誰かが一方的に得をする「支配戦略」がないかの検証)など
+
+## 実装例
+
+2人ゲームの利得行列から、純粋戦略ナッシュ均衡を「各セルが両プレイヤーにとって最適反応になっているか」を全探索して求める。囚人のジレンマでは唯一の均衡(相互裏切り)、調整ゲームでは複数均衡が見つかることを確認する。
+
+```python
+def find_pure_nash_equilibria(
+    payoff_a: list[list[float]], payoff_b: list[list[float]]
+) -> list[tuple[int, int]]:
+    n_rows = len(payoff_a)
+    n_cols = len(payoff_a[0])
+    equilibria = []
+    for i in range(n_rows):
+        for j in range(n_cols):
+            # 行プレイヤーは列jを固定したとき行iが最適反応か
+            row_best = all(payoff_a[i][j] >= payoff_a[k][j] for k in range(n_rows))
+            # 列プレイヤーは行iを固定したとき列jが最適反応か
+            col_best = all(payoff_b[i][j] >= payoff_b[i][k] for k in range(n_cols))
+            if row_best and col_best:
+                equilibria.append((i, j))
+    return equilibria
+
+
+# 囚人のジレンマ: 0=協調, 1=裏切り。唯一の均衡は(裏切り, 裏切り)
+payoff_a = [[-1, -3], [0, -2]]
+payoff_b = [[-1, 0], [-3, -2]]
+print(find_pure_nash_equilibria(payoff_a, payoff_b))  # [(1, 1)]
+```
+
+```typescript
+function findPureNashEquilibria(payoffA: number[][], payoffB: number[][]): [number, number][] {
+  const nRows = payoffA.length;
+  const nCols = payoffA[0].length;
+  const equilibria: [number, number][] = [];
+  for (let i = 0; i < nRows; i++) {
+    for (let j = 0; j < nCols; j++) {
+      // 行プレイヤーは列jを固定したとき行iが最適反応か
+      const rowBest = Array.from({ length: nRows }, (_, k) => k).every((k) => payoffA[i][j] >= payoffA[k][j]);
+      // 列プレイヤーは行iを固定したとき列jが最適反応か
+      const colBest = Array.from({ length: nCols }, (_, k) => k).every((k) => payoffB[i][j] >= payoffB[i][k]);
+      if (rowBest && colBest) equilibria.push([i, j]);
+    }
+  }
+  return equilibria;
+}
+
+// 囚人のジレンマ: 0=協調, 1=裏切り。唯一の均衡は(裏切り, 裏切り)
+const payoffA = [[-1, -3], [0, -2]];
+const payoffB = [[-1, 0], [-3, -2]];
+console.log(findPureNashEquilibria(payoffA, payoffB)); // [[1, 1]]
+```
+
+```cpp
+#include <vector>
+#include <utility>
+
+std::vector<std::pair<int, int>> findPureNashEquilibria(
+    const std::vector<std::vector<int>>& payoffA,
+    const std::vector<std::vector<int>>& payoffB) {
+    int nRows = static_cast<int>(payoffA.size());
+    int nCols = static_cast<int>(payoffA[0].size());
+    std::vector<std::pair<int, int>> equilibria;
+
+    for (int i = 0; i < nRows; i++) {
+        for (int j = 0; j < nCols; j++) {
+            bool rowBest = true;
+            for (int k = 0; k < nRows; k++) {
+                if (payoffA[i][j] < payoffA[k][j]) { rowBest = false; break; }
+            }
+            bool colBest = true;
+            for (int k = 0; k < nCols; k++) {
+                if (payoffB[i][j] < payoffB[i][k]) { colBest = false; break; }
+            }
+            if (rowBest && colBest) equilibria.emplace_back(i, j);
+        }
+    }
+    return equilibria;
+}
+```
+
+```rust
+fn find_pure_nash_equilibria(payoff_a: &[Vec<i32>], payoff_b: &[Vec<i32>]) -> Vec<(usize, usize)> {
+    let n_rows = payoff_a.len();
+    let n_cols = payoff_a[0].len();
+    let mut equilibria = Vec::new();
+
+    for i in 0..n_rows {
+        for j in 0..n_cols {
+            let row_best = (0..n_rows).all(|k| payoff_a[i][j] >= payoff_a[k][j]);
+            let col_best = (0..n_cols).all(|k| payoff_b[i][j] >= payoff_b[i][k]);
+            if row_best && col_best {
+                equilibria.push((i, j));
+            }
+        }
+    }
+    equilibria
+}
+```
+
+```csharp
+static List<(int, int)> FindPureNashEquilibria(int[,] payoffA, int[,] payoffB)
+{
+    int nRows = payoffA.GetLength(0);
+    int nCols = payoffA.GetLength(1);
+    var equilibria = new List<(int, int)>();
+
+    for (int i = 0; i < nRows; i++)
+    {
+        for (int j = 0; j < nCols; j++)
+        {
+            bool rowBest = true;
+            for (int k = 0; k < nRows; k++)
+                if (payoffA[i, j] < payoffA[k, j]) { rowBest = false; break; }
+
+            bool colBest = true;
+            for (int k = 0; k < nCols; k++)
+                if (payoffB[i, j] < payoffB[i, k]) { colBest = false; break; }
+
+            if (rowBest && colBest) equilibria.Add((i, j));
+        }
+    }
+    return equilibria;
+}
+```

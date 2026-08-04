@@ -23,3 +23,280 @@ summary: オブジェクトの状態ごとの振る舞いを別クラスに分�
 - **状態オブジェクト間の遷移ロジックの分散**: 「次にどの状態に遷移するか」の判断が各状態クラスに分散するため、全体の状態遷移図を一望したい場合は各クラスを横断して読む必要があり、把握しづらくなることがある(ドキュメントや状態遷移図での補完が重要)
 - **Strategyパターンとの構造的な類似**: 実装の構造(コンテキストが差し替え可能なオブジェクトを保持し、処理を委譲する)はStrategyとほぼ同じだが、Stateは「状態オブジェクト自身が次の状態への遷移を引き起こす」点が異なる(Strategyは外部から戦略を選んで注入するだけで、戦略同士が互いを知らない)
 - **使いどころ**: 自動販売機・注文処理・ワークフローエンジンなどの有限状態機械としてモデル化できる業務ロジック、ゲームのキャラクターAIステート(待機・追跡・攻撃)、TCP/HTTP等のプロトコル状態管理、UIコンポーネントの表示モード切り替えなど
+
+## 実装例
+
+「コイン投入待ち」「排出中」の2状態を持つ簡易自動販売機で検証する:コイン投入前の排出要求は拒否され、投入後は排出でき、二重投入は拒否される、という一連の遷移が状態オブジェクトの差し替えだけで表現されることを確認する。
+
+```python
+from __future__ import annotations
+from abc import ABC, abstractmethod
+
+
+class State(ABC):
+    @abstractmethod
+    def insert_coin(self, machine: "VendingMachine") -> str: ...
+
+    @abstractmethod
+    def dispense(self, machine: "VendingMachine") -> str: ...
+
+
+class WaitingForCoinState(State):
+    def insert_coin(self, machine: "VendingMachine") -> str:
+        machine.state = DispensingState()
+        return "コインを受け付けました"
+
+    def dispense(self, machine: "VendingMachine") -> str:
+        return "先にコインを入れてください"
+
+
+class DispensingState(State):
+    def insert_coin(self, machine: "VendingMachine") -> str:
+        return "既にコインが投入済みです"
+
+    def dispense(self, machine: "VendingMachine") -> str:
+        machine.state = WaitingForCoinState()
+        return "商品を排出しました"
+
+
+class VendingMachine:
+    def __init__(self) -> None:
+        self.state: State = WaitingForCoinState()
+
+    def insert_coin(self) -> str:
+        return self.state.insert_coin(self)
+
+    def dispense(self) -> str:
+        return self.state.dispense(self)
+
+
+def demo() -> list[str]:
+    machine = VendingMachine()
+    return [
+        machine.dispense(),      # コインがまだなので拒否される
+        machine.insert_coin(),   # 受け付け→Dispensingへ遷移
+        machine.insert_coin(),   # 二重投入は拒否される
+        machine.dispense(),      # 排出→WaitingForCoinへ遷移
+    ]
+```
+
+```typescript
+interface State {
+  insertCoin(machine: VendingMachine): string;
+  dispense(machine: VendingMachine): string;
+}
+
+class WaitingForCoinState implements State {
+  insertCoin(machine: VendingMachine): string {
+    machine.state = new DispensingState();
+    return "コインを受け付けました";
+  }
+  dispense(_machine: VendingMachine): string {
+    return "先にコインを入れてください";
+  }
+}
+
+class DispensingState implements State {
+  insertCoin(_machine: VendingMachine): string {
+    return "既にコインが投入済みです";
+  }
+  dispense(machine: VendingMachine): string {
+    machine.state = new WaitingForCoinState();
+    return "商品を排出しました";
+  }
+}
+
+class VendingMachine {
+  state: State = new WaitingForCoinState();
+
+  insertCoin(): string {
+    return this.state.insertCoin(this);
+  }
+  dispense(): string {
+    return this.state.dispense(this);
+  }
+}
+
+function demo(): string[] {
+  const machine = new VendingMachine();
+  return [
+    machine.dispense(),
+    machine.insertCoin(),
+    machine.insertCoin(),
+    machine.dispense(),
+  ];
+}
+```
+
+```cpp
+#include <memory>
+#include <string>
+#include <vector>
+
+class VendingMachine;
+
+class VendingState {
+public:
+    virtual ~VendingState() = default;
+    virtual std::string insertCoin(VendingMachine& machine) = 0;
+    virtual std::string dispense(VendingMachine& machine) = 0;
+};
+
+class DispensingState : public VendingState {
+public:
+    std::string insertCoin(VendingMachine& machine) override {
+        return "既にコインが投入済みです";
+    }
+    std::string dispense(VendingMachine& machine) override;
+};
+
+class WaitingForCoinState : public VendingState {
+public:
+    std::string insertCoin(VendingMachine& machine) override;
+    std::string dispense(VendingMachine& machine) override {
+        return "先にコインを入れてください";
+    }
+};
+
+class VendingMachine {
+public:
+    VendingMachine() : state(std::make_unique<WaitingForCoinState>()) {}
+    std::string insertCoin() { return state->insertCoin(*this); }
+    std::string dispense() { return state->dispense(*this); }
+    std::unique_ptr<VendingState> state;
+};
+
+std::string WaitingForCoinState::insertCoin(VendingMachine& machine) {
+    machine.state = std::make_unique<DispensingState>();
+    return "コインを受け付けました";
+}
+
+std::string DispensingState::dispense(VendingMachine& machine) {
+    machine.state = std::make_unique<WaitingForCoinState>();
+    return "商品を排出しました";
+}
+
+std::vector<std::string> demo() {
+    VendingMachine machine;
+    return {
+        machine.dispense(),
+        machine.insertCoin(),
+        machine.insertCoin(),
+        machine.dispense()
+    };
+}
+```
+
+```rust
+trait VendingState {
+    fn insert_coin(&self) -> (String, Option<Box<dyn VendingState>>);
+    fn dispense(&self) -> (String, Option<Box<dyn VendingState>>);
+}
+
+struct WaitingForCoinState;
+struct DispensingState;
+
+impl VendingState for WaitingForCoinState {
+    fn insert_coin(&self) -> (String, Option<Box<dyn VendingState>>) {
+        ("コインを受け付けました".to_string(), Some(Box::new(DispensingState)))
+    }
+    fn dispense(&self) -> (String, Option<Box<dyn VendingState>>) {
+        ("先にコインを入れてください".to_string(), None)
+    }
+}
+
+impl VendingState for DispensingState {
+    fn insert_coin(&self) -> (String, Option<Box<dyn VendingState>>) {
+        ("既にコインが投入済みです".to_string(), None)
+    }
+    fn dispense(&self) -> (String, Option<Box<dyn VendingState>>) {
+        ("商品を排出しました".to_string(), Some(Box::new(WaitingForCoinState)))
+    }
+}
+
+struct VendingMachine {
+    state: Box<dyn VendingState>,
+}
+
+impl VendingMachine {
+    fn new() -> Self {
+        VendingMachine { state: Box::new(WaitingForCoinState) }
+    }
+
+    fn insert_coin(&mut self) -> String {
+        let (message, next) = self.state.insert_coin();
+        if let Some(next_state) = next {
+            self.state = next_state;
+        }
+        message
+    }
+
+    fn dispense(&mut self) -> String {
+        let (message, next) = self.state.dispense();
+        if let Some(next_state) = next {
+            self.state = next_state;
+        }
+        message
+    }
+}
+
+fn demo() -> Vec<String> {
+    let mut machine = VendingMachine::new();
+    vec![
+        machine.dispense(),
+        machine.insert_coin(),
+        machine.insert_coin(),
+        machine.dispense(),
+    ]
+}
+```
+
+```csharp
+interface IState
+{
+    string InsertCoin(VendingMachine machine);
+    string Dispense(VendingMachine machine);
+}
+
+class WaitingForCoinState : IState
+{
+    public string InsertCoin(VendingMachine machine)
+    {
+        machine.State = new DispensingState();
+        return "コインを受け付けました";
+    }
+    public string Dispense(VendingMachine machine) => "先にコインを入れてください";
+}
+
+class DispensingState : IState
+{
+    public string InsertCoin(VendingMachine machine) => "既にコインが投入済みです";
+    public string Dispense(VendingMachine machine)
+    {
+        machine.State = new WaitingForCoinState();
+        return "商品を排出しました";
+    }
+}
+
+class VendingMachine
+{
+    public IState State { get; set; } = new WaitingForCoinState();
+    public string InsertCoin() => State.InsertCoin(this);
+    public string Dispense() => State.Dispense(this);
+}
+
+static class VendingMachineDemo
+{
+    public static List<string> Demo()
+    {
+        var machine = new VendingMachine();
+        return new List<string>
+        {
+            machine.Dispense(),
+            machine.InsertCoin(),
+            machine.InsertCoin(),
+            machine.Dispense(),
+        };
+    }
+}
+```

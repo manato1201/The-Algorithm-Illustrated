@@ -25,3 +25,268 @@ summary: 通常のLRU(最も長く使われていないものを追い出す)が
 - **`K`の値をどう選ぶかというトレードオフ**: `K`を大きくするほど「真に頻繁に使われるページ」をより正確に識別できるが、各ページの参照履歴をより多く保持する必要がありメモリオーバーヘッドが増える。実務では`K=2`(LRU-2)が、オーバーヘッドと精度のバランスが良いとして広く採用されている
 - **[LFUキャッシュ](/algorithms/lfu-cache)との違い**: [LFUキャッシュ](/algorithms/lfu-cache)は「単純な参照回数」を基準にするため、過去に大量にアクセスされたが最近は全く使われていないページを不当に優遇し続けてしまう問題(経年劣化への対応が難しい)があるのに対し、LRU-Kは「K回目の参照が最近かどうか」という時間情報を組み込んでいるため、この経年劣化の問題を自然に緩和できる
 - **使いどころ**: データベース管理システムのバッファプール管理(PostgreSQL・SQL Serverなど、実際にLRU-K系のアルゴリズムを採用しているシステムがある)、大規模ストレージシステムのキャッシュ層、CDN(コンテンツ配信network)におけるキャッシュ効率の最適化
+
+## 実装例
+
+```python
+class LRUKCache:
+    def __init__(self, capacity: int, k: int):
+        self.capacity = capacity
+        self.k = k
+        self.cache: dict[int, int] = {}
+        self.history: dict[int, list[int]] = {}
+        self.clock = 0
+
+    def _backward_k_distance(self, page: int) -> float:
+        """過去K回目の参照時刻までの距離。K回未満しか参照されていなければ無限大扱い。"""
+        hist = self.history[page]
+        if len(hist) < self.k:
+            return float("inf")
+        return self.clock - hist[-self.k]
+
+    def access(self, page: int) -> bool:
+        """ページを参照する。戻り値はヒットしたかどうか。"""
+        self.clock += 1
+        hit = page in self.cache
+        hist = self.history.setdefault(page, [])
+        hist.append(self.clock)
+        if len(hist) > self.k:
+            hist.pop(0)
+
+        if not hit:
+            if len(self.cache) >= self.capacity:
+                self._evict()
+            self.cache[page] = page
+        return hit
+
+    def _evict(self) -> None:
+        """Backward K-distanceが最大(タイならより長く触られていない方)のページを追い出す"""
+        victim = max(
+            self.cache,
+            key=lambda p: (self._backward_k_distance(p), -self.history[p][-1]),
+        )
+        del self.cache[victim]
+```
+
+```typescript
+class LRUKCache {
+  capacity: number;
+  k: number;
+  cache: Map<number, number> = new Map();
+  history: Map<number, number[]> = new Map();
+  clock = 0;
+
+  constructor(capacity: number, k: number) {
+    this.capacity = capacity;
+    this.k = k;
+  }
+
+  private backwardKDistance(page: number): number {
+    const hist = this.history.get(page)!;
+    if (hist.length < this.k) return Infinity;
+    return this.clock - hist[hist.length - this.k];
+  }
+
+  access(page: number): boolean {
+    this.clock++;
+    const hit = this.cache.has(page);
+    const hist = this.history.get(page) ?? [];
+    hist.push(this.clock);
+    if (hist.length > this.k) hist.shift();
+    this.history.set(page, hist);
+
+    if (!hit) {
+      if (this.cache.size >= this.capacity) this.evict();
+      this.cache.set(page, page);
+    }
+    return hit;
+  }
+
+  private evict(): void {
+    let victim = -1;
+    let bestKey: [number, number] | null = null;
+    for (const p of this.cache.keys()) {
+      const hist = this.history.get(p)!;
+      const key: [number, number] = [this.backwardKDistance(p), -hist[hist.length - 1]];
+      if (bestKey === null || key[0] > bestKey[0] || (key[0] === bestKey[0] && key[1] > bestKey[1])) {
+        bestKey = key;
+        victim = p;
+      }
+    }
+    this.cache.delete(victim);
+  }
+}
+```
+
+```cpp
+#include <unordered_map>
+#include <vector>
+#include <limits>
+
+class LRUKCache {
+public:
+    LRUKCache(int capacity, int k) : capacity(capacity), k(k), clock(0) {}
+
+    bool access(int page) {
+        clock++;
+        bool hit = cache.count(page) > 0;
+        auto& hist = history[page];
+        hist.push_back(clock);
+        if (static_cast<int>(hist.size()) > k) hist.erase(hist.begin());
+
+        if (!hit) {
+            if (static_cast<int>(cache.size()) >= capacity) evict();
+            cache[page] = page;
+        }
+        return hit;
+    }
+
+private:
+    int capacity;
+    int k;
+    std::unordered_map<int, int> cache;
+    std::unordered_map<int, std::vector<long long>> history;
+    long long clock;
+
+    double backwardKDistance(int page) const {
+        const auto& hist = history.at(page);
+        if (static_cast<int>(hist.size()) < k) return std::numeric_limits<double>::infinity();
+        return static_cast<double>(clock - hist[hist.size() - k]);
+    }
+
+    void evict() {
+        int victim = -1;
+        double bestDist = -1;
+        long long bestRecent = 0;
+        bool first = true;
+        for (const auto& [p, _] : cache) {
+            double dist = backwardKDistance(p);
+            long long recent = history.at(p).back();
+            if (first || dist > bestDist || (dist == bestDist && -recent > -bestRecent)) {
+                bestDist = dist;
+                bestRecent = recent;
+                victim = p;
+                first = false;
+            }
+        }
+        cache.erase(victim);
+    }
+};
+```
+
+```rust
+use std::collections::HashMap;
+
+struct LruKCache {
+    capacity: usize,
+    k: usize,
+    cache: HashMap<i32, i32>,
+    history: HashMap<i32, Vec<i64>>,
+    clock: i64,
+}
+
+impl LruKCache {
+    fn new(capacity: usize, k: usize) -> Self {
+        LruKCache { capacity, k, cache: HashMap::new(), history: HashMap::new(), clock: 0 }
+    }
+
+    fn backward_k_distance(&self, page: i32) -> f64 {
+        let hist = &self.history[&page];
+        if hist.len() < self.k {
+            f64::INFINITY
+        } else {
+            (self.clock - hist[hist.len() - self.k]) as f64
+        }
+    }
+
+    fn access(&mut self, page: i32) -> bool {
+        self.clock += 1;
+        let hit = self.cache.contains_key(&page);
+        let hist = self.history.entry(page).or_insert_with(Vec::new);
+        hist.push(self.clock);
+        if hist.len() > self.k {
+            hist.remove(0);
+        }
+        if !hit {
+            if self.cache.len() >= self.capacity {
+                self.evict();
+            }
+            self.cache.insert(page, page);
+        }
+        hit
+    }
+
+    fn evict(&mut self) {
+        let mut victim = None;
+        let mut best: (f64, i64) = (f64::NEG_INFINITY, i64::MIN);
+        for &p in self.cache.keys() {
+            let dist = self.backward_k_distance(p);
+            let last = *self.history[&p].last().unwrap();
+            let key = (dist, -last);
+            if victim.is_none() || key.0 > best.0 || (key.0 == best.0 && key.1 > best.1) {
+                best = key;
+                victim = Some(p);
+            }
+        }
+        if let Some(v) = victim {
+            self.cache.remove(&v);
+        }
+    }
+}
+```
+
+```csharp
+class LRUKCache
+{
+    private readonly int capacity;
+    private readonly int k;
+    public Dictionary<int, int> Cache = new();
+    private readonly Dictionary<int, List<long>> history = new();
+    private long clock = 0;
+
+    public LRUKCache(int capacity, int k) { this.capacity = capacity; this.k = k; }
+
+    private double BackwardKDistance(int page)
+    {
+        var hist = history[page];
+        if (hist.Count < k) return double.PositiveInfinity;
+        return clock - hist[hist.Count - k];
+    }
+
+    public bool Access(int page)
+    {
+        clock++;
+        bool hit = Cache.ContainsKey(page);
+        if (!history.ContainsKey(page)) history[page] = new List<long>();
+        var hist = history[page];
+        hist.Add(clock);
+        if (hist.Count > k) hist.RemoveAt(0);
+
+        if (!hit)
+        {
+            if (Cache.Count >= capacity) Evict();
+            Cache[page] = page;
+        }
+        return hit;
+    }
+
+    private void Evict()
+    {
+        int victim = -1;
+        (double dist, long recent) best = (double.NegativeInfinity, long.MinValue);
+        bool first = true;
+        foreach (var p in Cache.Keys)
+        {
+            var hist = history[p];
+            var key = (dist: BackwardKDistance(p), recent: -hist[^1]);
+            if (first || key.dist > best.dist || (key.dist == best.dist && key.recent > best.recent))
+            {
+                best = key;
+                victim = p;
+                first = false;
+            }
+        }
+        Cache.Remove(victim);
+    }
+}
+```

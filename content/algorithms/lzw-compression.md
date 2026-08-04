@@ -26,3 +26,251 @@ summary: 圧縮しながら「今まで見た部分文字列」を辞書に自�
 - **辞書サイズの上限という実務上の制約**: 辞書は際限なく増え続けるため、実装では辞書サイズに上限(例えば4096エントリ)を設け、上限に達したら辞書をリセットするか固定して以降は追加を止める、といった工夫が必要になる
 - **[LZ77](/algorithms/lz77-compression)との比較**: LZ77はウィンドウ内の生データを距離・長さで参照するのに対し、LZWは辞書テーブルという中間層を経由する点が異なる。LZWは実装がやや単純になる一方、GIFの特許問題(1990年代にUnisys社が特許を主張し議論になった、現在は特許は失効済み)のような歴史的経緯でも知られる
 - **使いどころ**: GIF画像フォーマットの圧縮、TIFF画像の圧縮オプション、Unixの`compress`コマンド、PDFの一部のストリーム圧縮
+
+## 実装例
+
+エンコードとデコードがそれぞれ独立に同じ辞書を再構築できることを、往復一致(round-trip)で確認する。
+
+```python
+def lzw_encode(s: str) -> list[int]:
+    dictionary = {chr(i): i for i in range(256)}
+    next_code = 256
+    w = ""
+    result = []
+    for c in s:
+        wc = w + c
+        if wc in dictionary:
+            w = wc
+        else:
+            result.append(dictionary[w])
+            dictionary[wc] = next_code
+            next_code += 1
+            w = c
+    if w:
+        result.append(dictionary[w])
+    return result
+
+
+def lzw_decode(codes: list[int]) -> str:
+    dictionary = {i: chr(i) for i in range(256)}
+    next_code = 256
+    result = []
+    w = dictionary[codes[0]]
+    result.append(w)
+    for k in codes[1:]:
+        if k in dictionary:
+            entry = dictionary[k]
+        elif k == next_code:
+            # まだ辞書にないが、直後に自分自身の登録が確定するパターン(w+w[0])
+            entry = w + w[0]
+        else:
+            raise ValueError("bad code")
+        result.append(entry)
+        dictionary[next_code] = w + entry[0]
+        next_code += 1
+        w = entry
+    return "".join(result)
+```
+
+```typescript
+function lzwEncode(s: string): number[] {
+  const dictionary = new Map<string, number>();
+  for (let i = 0; i < 256; i++) dictionary.set(String.fromCharCode(i), i);
+  let nextCode = 256;
+  let w = "";
+  const result: number[] = [];
+  for (const c of s) {
+    const wc = w + c;
+    if (dictionary.has(wc)) {
+      w = wc;
+    } else {
+      result.push(dictionary.get(w)!);
+      dictionary.set(wc, nextCode);
+      nextCode++;
+      w = c;
+    }
+  }
+  if (w) result.push(dictionary.get(w)!);
+  return result;
+}
+
+function lzwDecode(codes: number[]): string {
+  const dictionary = new Map<number, string>();
+  for (let i = 0; i < 256; i++) dictionary.set(i, String.fromCharCode(i));
+  let nextCode = 256;
+  const result: string[] = [];
+  let w = dictionary.get(codes[0])!;
+  result.push(w);
+  for (let idx = 1; idx < codes.length; idx++) {
+    const k = codes[idx];
+    let entry: string;
+    if (dictionary.has(k)) {
+      entry = dictionary.get(k)!;
+    } else if (k === nextCode) {
+      entry = w + w[0];
+    } else {
+      throw new Error("bad code");
+    }
+    result.push(entry);
+    dictionary.set(nextCode, w + entry[0]);
+    nextCode++;
+    w = entry;
+  }
+  return result.join("");
+}
+```
+
+```cpp
+#include <string>
+#include <vector>
+#include <unordered_map>
+#include <stdexcept>
+
+std::vector<int> lzwEncode(const std::string& s) {
+    std::unordered_map<std::string, int> dictionary;
+    for (int i = 0; i < 256; i++) dictionary[std::string(1, static_cast<char>(i))] = i;
+    int nextCode = 256;
+    std::string w;
+    std::vector<int> result;
+    for (char c : s) {
+        std::string wc = w + c;
+        if (dictionary.count(wc)) {
+            w = wc;
+        } else {
+            result.push_back(dictionary[w]);
+            dictionary[wc] = nextCode++;
+            w = std::string(1, c);
+        }
+    }
+    if (!w.empty()) result.push_back(dictionary[w]);
+    return result;
+}
+
+std::string lzwDecode(const std::vector<int>& codes) {
+    std::unordered_map<int, std::string> dictionary;
+    for (int i = 0; i < 256; i++) dictionary[i] = std::string(1, static_cast<char>(i));
+    int nextCode = 256;
+    std::string result;
+    std::string w = dictionary[codes[0]];
+    result += w;
+    for (size_t idx = 1; idx < codes.size(); idx++) {
+        int k = codes[idx];
+        std::string entry;
+        if (dictionary.count(k)) {
+            entry = dictionary[k];
+        } else if (k == nextCode) {
+            entry = w + w[0];
+        } else {
+            throw std::runtime_error("bad code");
+        }
+        result += entry;
+        dictionary[nextCode++] = w + entry[0];
+        w = entry;
+    }
+    return result;
+}
+```
+
+```rust
+use std::collections::HashMap;
+
+fn lzw_encode(s: &str) -> Vec<i32> {
+    let mut dictionary: HashMap<String, i32> = HashMap::new();
+    for i in 0..256 {
+        dictionary.insert((i as u8 as char).to_string(), i);
+    }
+    let mut next_code = 256;
+    let mut w = String::new();
+    let mut result = Vec::new();
+    for c in s.chars() {
+        let wc = format!("{}{}", w, c);
+        if dictionary.contains_key(&wc) {
+            w = wc;
+        } else {
+            result.push(dictionary[&w]);
+            dictionary.insert(wc, next_code);
+            next_code += 1;
+            w = c.to_string();
+        }
+    }
+    if !w.is_empty() {
+        result.push(dictionary[&w]);
+    }
+    result
+}
+
+fn lzw_decode(codes: &[i32]) -> String {
+    let mut dictionary: HashMap<i32, String> = HashMap::new();
+    for i in 0..256 {
+        dictionary.insert(i, (i as u8 as char).to_string());
+    }
+    let mut next_code = 256;
+    let mut result = String::new();
+    let mut w = dictionary[&codes[0]].clone();
+    result.push_str(&w);
+    for &k in &codes[1..] {
+        let entry = if let Some(e) = dictionary.get(&k) {
+            e.clone()
+        } else if k == next_code {
+            format!("{}{}", w, w.chars().next().unwrap())
+        } else {
+            panic!("bad code")
+        };
+        result.push_str(&entry);
+        let first = entry.chars().next().unwrap();
+        dictionary.insert(next_code, format!("{}{}", w, first));
+        next_code += 1;
+        w = entry;
+    }
+    result
+}
+```
+
+```csharp
+static List<int> LzwEncode(string s)
+{
+    var dictionary = new Dictionary<string, int>();
+    for (int i = 0; i < 256; i++) dictionary[((char)i).ToString()] = i;
+    int nextCode = 256;
+    string w = "";
+    var result = new List<int>();
+    foreach (var c in s)
+    {
+        string wc = w + c;
+        if (dictionary.ContainsKey(wc))
+        {
+            w = wc;
+        }
+        else
+        {
+            result.Add(dictionary[w]);
+            dictionary[wc] = nextCode++;
+            w = c.ToString();
+        }
+    }
+    if (w.Length > 0) result.Add(dictionary[w]);
+    return result;
+}
+
+static string LzwDecode(List<int> codes)
+{
+    var dictionary = new Dictionary<int, string>();
+    for (int i = 0; i < 256; i++) dictionary[i] = ((char)i).ToString();
+    int nextCode = 256;
+    var result = new StringBuilder();
+    string w = dictionary[codes[0]];
+    result.Append(w);
+    for (int idx = 1; idx < codes.Count; idx++)
+    {
+        int k = codes[idx];
+        string entry;
+        if (dictionary.ContainsKey(k)) entry = dictionary[k];
+        else if (k == nextCode) entry = w + w[0];
+        else throw new Exception("bad code");
+        result.Append(entry);
+        dictionary[nextCode++] = w + entry[0];
+        w = entry;
+    }
+    return result.ToString();
+}
+```

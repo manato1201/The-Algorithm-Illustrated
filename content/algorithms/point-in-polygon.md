@@ -28,3 +28,100 @@ summary: 点から伸ばした半直線が多角形の辺と何回交差する�
 - **凸・非凸を問わず適用できる**: 凸多角形限定の判定法(各辺に対して常に同じ側にあるかを調べる方法)よりも適用範囲が広く、複雑な形状(海岸線、行政区域の境界など)にもそのまま使える
 - **巻き数法(Winding Number)という代替手法**: レイキャスティング法(奇偶則)の他に、点の周りを多角形の辺がどれだけ「巻いているか」を数える巻き数法もあり、特に自己交差する多角形を扱う場合はこちらの方が直感的な結果になることがある
 - **使いどころ**: 地理情報システムにおける「ある地点がどの行政区域に属するか」の判定、ゲームにおけるクリック判定・当たり判定、CADソフトウェアにおける図形の内外判定、画像処理におけるマスク領域の判定など
+
+## 実装例
+
+```python
+def point_in_polygon(point: tuple[float, float], polygon: list[tuple[float, float]]) -> bool:
+    x, y = point
+    n = len(polygon)
+    inside = False
+    j = n - 1
+    for i in range(n):
+        xi, yi = polygon[i]
+        xj, yj = polygon[j]
+        # 点(x, y)からx軸正方向に伸ばした半直線が辺(i, j)と交差するか判定する
+        intersects = ((yi > y) != (yj > y)) and (
+            x < (xj - xi) * (y - yi) / (yj - yi) + xi
+        )
+        if intersects:
+            inside = not inside
+        j = i
+    return inside
+```
+
+```typescript
+function pointInPolygon(point: [number, number], polygon: [number, number][]): boolean {
+  const [x, y] = point;
+  const n = polygon.length;
+  let inside = false;
+  let j = n - 1;
+  for (let i = 0; i < n; i++) {
+    const [xi, yi] = polygon[i];
+    const [xj, yj] = polygon[j];
+    const intersects = yi > y !== yj > y && x < ((xj - xi) * (y - yi)) / (yj - yi) + xi;
+    if (intersects) inside = !inside;
+    j = i;
+  }
+  return inside;
+}
+```
+
+```cpp
+#include <vector>
+#include <utility>
+
+bool pointInPolygon(std::pair<double, double> point, const std::vector<std::pair<double, double>>& polygon) {
+    double x = point.first, y = point.second;
+    int n = static_cast<int>(polygon.size());
+    bool inside = false;
+    int j = n - 1;
+    for (int i = 0; i < n; i++) {
+        double xi = polygon[i].first, yi = polygon[i].second;
+        double xj = polygon[j].first, yj = polygon[j].second;
+        bool intersects = ((yi > y) != (yj > y)) &&
+                           (x < (xj - xi) * (y - yi) / (yj - yi) + xi);
+        if (intersects) inside = !inside;
+        j = i;
+    }
+    return inside;
+}
+```
+
+```rust
+fn point_in_polygon(point: (f64, f64), polygon: &[(f64, f64)]) -> bool {
+    let (x, y) = point;
+    let n = polygon.len();
+    let mut inside = false;
+    let mut j = n - 1;
+    for i in 0..n {
+        let (xi, yi) = polygon[i];
+        let (xj, yj) = polygon[j];
+        let intersects = (yi > y) != (yj > y) && x < (xj - xi) * (y - yi) / (yj - yi) + xi;
+        if intersects {
+            inside = !inside;
+        }
+        j = i;
+    }
+    inside
+}
+```
+
+```csharp
+static bool PointInPolygon((double x, double y) point, List<(double x, double y)> polygon)
+{
+    var (x, y) = point;
+    int n = polygon.Count;
+    bool inside = false;
+    int j = n - 1;
+    for (int i = 0; i < n; i++)
+    {
+        var (xi, yi) = polygon[i];
+        var (xj, yj) = polygon[j];
+        bool intersects = (yi > y) != (yj > y) && x < (xj - xi) * (y - yi) / (yj - yi) + xi;
+        if (intersects) inside = !inside;
+        j = i;
+    }
+    return inside;
+}
+```

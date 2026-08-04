@@ -26,3 +26,192 @@ summary: 各エッジ画素が「通りうる直線」全てに投票し、最�
 - **途切れたエッジに頑健**: 直線の一部が欠けていても、残ったエッジ画素からの投票が同じ`(r, θ)`に十分集まれば直線として検出できる——[Cannyエッジ検出](/algorithms/canny-edge-detection)の出力がノイズや遮蔽で不完全でも実用上機能しやすい
 - **投票箱の分解能とのトレードオフ**: `(r, θ)`の分割を細かくすると検出精度は上がるが、近い角度・距離の直線がそれぞれ別々の投票箱に票を分散させてしまい、かえって検出漏れが起きやすくなる。分割を粗くすると逆に精度が落ちる、というバランス調整が必要
 - **使いどころ**: 車線検出(自動運転)、文書画像のスキューやレイアウト解析、円形物体(硬貨、ボール、目の虹彩など)の検出、工業製品の外観検査における直線・円形パターンの検出
+
+## 実装例
+
+```python
+import math
+
+def hough_lines(
+    points: list[tuple[float, float]], width: float, height: float, theta_steps: int = 180
+) -> list[tuple[float, float, int]]:
+    max_r = math.hypot(width, height)
+    r_bins = 200
+    r_scale = r_bins / (2 * max_r)
+    accumulator = [[0] * theta_steps for _ in range(r_bins)]
+
+    for (x, y) in points:
+        for t in range(theta_steps):
+            theta = math.pi * t / theta_steps
+            r = x * math.cos(theta) + y * math.sin(theta)
+            r_idx = int((r + max_r) * r_scale)
+            if 0 <= r_idx < r_bins:
+                accumulator[r_idx][t] += 1
+
+    threshold = max(max(row) for row in accumulator)
+
+    detected = []
+    for r_idx in range(r_bins):
+        for t in range(theta_steps):
+            if accumulator[r_idx][t] >= threshold:
+                r = r_idx / r_scale - max_r
+                theta = math.pi * t / theta_steps
+                detected.append((r, math.degrees(theta), accumulator[r_idx][t]))
+    return detected
+```
+
+```typescript
+function houghLines(
+  points: [number, number][],
+  width: number,
+  height: number,
+  thetaSteps = 180
+): [number, number, number][] {
+  const maxR = Math.hypot(width, height);
+  const rBins = 200;
+  const rScale = rBins / (2 * maxR);
+  const accumulator: number[][] = Array.from({ length: rBins }, () => new Array(thetaSteps).fill(0));
+
+  for (const [x, y] of points) {
+    for (let t = 0; t < thetaSteps; t++) {
+      const theta = (Math.PI * t) / thetaSteps;
+      const r = x * Math.cos(theta) + y * Math.sin(theta);
+      const rIdx = Math.floor((r + maxR) * rScale);
+      if (rIdx >= 0 && rIdx < rBins) {
+        accumulator[rIdx][t]++;
+      }
+    }
+  }
+
+  let threshold = 0;
+  for (const row of accumulator) for (const v of row) threshold = Math.max(threshold, v);
+
+  const detected: [number, number, number][] = [];
+  for (let rIdx = 0; rIdx < rBins; rIdx++) {
+    for (let t = 0; t < thetaSteps; t++) {
+      if (accumulator[rIdx][t] >= threshold) {
+        const r = rIdx / rScale - maxR;
+        const theta = (Math.PI * t) / thetaSteps;
+        detected.push([r, (theta * 180) / Math.PI, accumulator[rIdx][t]]);
+      }
+    }
+  }
+  return detected;
+}
+```
+
+```cpp
+#include <vector>
+#include <cmath>
+#include <algorithm>
+#include <tuple>
+
+constexpr double PI = 3.14159265358979323846;
+
+std::vector<std::tuple<double, double, int>> houghLines(
+    const std::vector<std::pair<double, double>>& points, double width, double height, int thetaSteps = 180) {
+    double maxR = std::hypot(width, height);
+    int rBins = 200;
+    double rScale = rBins / (2 * maxR);
+    std::vector<std::vector<int>> accumulator(rBins, std::vector<int>(thetaSteps, 0));
+
+    for (const auto& [x, y] : points) {
+        for (int t = 0; t < thetaSteps; t++) {
+            double theta = PI * t / thetaSteps;
+            double r = x * std::cos(theta) + y * std::sin(theta);
+            int rIdx = static_cast<int>((r + maxR) * rScale);
+            if (rIdx >= 0 && rIdx < rBins) {
+                accumulator[rIdx][t]++;
+            }
+        }
+    }
+
+    int threshold = 0;
+    for (const auto& row : accumulator)
+        for (int v : row) threshold = std::max(threshold, v);
+
+    std::vector<std::tuple<double, double, int>> detected;
+    for (int rIdx = 0; rIdx < rBins; rIdx++) {
+        for (int t = 0; t < thetaSteps; t++) {
+            if (accumulator[rIdx][t] >= threshold) {
+                double r = rIdx / rScale - maxR;
+                double theta = PI * t / thetaSteps;
+                detected.emplace_back(r, theta * 180.0 / PI, accumulator[rIdx][t]);
+            }
+        }
+    }
+    return detected;
+}
+```
+
+```rust
+fn hough_lines(points: &[(f64, f64)], width: f64, height: f64, theta_steps: usize) -> Vec<(f64, f64, i32)> {
+    let max_r = width.hypot(height);
+    let r_bins = 200usize;
+    let r_scale = r_bins as f64 / (2.0 * max_r);
+    let mut accumulator = vec![vec![0i32; theta_steps]; r_bins];
+
+    for &(x, y) in points {
+        for t in 0..theta_steps {
+            let theta = std::f64::consts::PI * t as f64 / theta_steps as f64;
+            let r = x * theta.cos() + y * theta.sin();
+            let r_idx = ((r + max_r) * r_scale) as i64;
+            if r_idx >= 0 && (r_idx as usize) < r_bins {
+                accumulator[r_idx as usize][t] += 1;
+            }
+        }
+    }
+
+    let threshold = accumulator.iter().flatten().copied().max().unwrap_or(0);
+
+    let mut detected = Vec::new();
+    for r_idx in 0..r_bins {
+        for t in 0..theta_steps {
+            if accumulator[r_idx][t] >= threshold {
+                let r = r_idx as f64 / r_scale - max_r;
+                let theta = std::f64::consts::PI * t as f64 / theta_steps as f64;
+                detected.push((r, theta.to_degrees(), accumulator[r_idx][t]));
+            }
+        }
+    }
+    detected
+}
+```
+
+```csharp
+static List<(double r, double thetaDeg, int votes)> HoughLines(
+    List<(double x, double y)> points, double width, double height, int thetaSteps = 180)
+{
+    double maxR = Math.Sqrt(width * width + height * height);
+    int rBins = 200;
+    double rScale = rBins / (2 * maxR);
+    var accumulator = new int[rBins, thetaSteps];
+
+    foreach (var (x, y) in points)
+    {
+        for (int t = 0; t < thetaSteps; t++)
+        {
+            double theta = Math.PI * t / thetaSteps;
+            double r = x * Math.Cos(theta) + y * Math.Sin(theta);
+            int rIdx = (int)((r + maxR) * rScale);
+            if (rIdx >= 0 && rIdx < rBins) accumulator[rIdx, t]++;
+        }
+    }
+
+    int threshold = 0;
+    for (int i = 0; i < rBins; i++)
+        for (int j = 0; j < thetaSteps; j++)
+            threshold = Math.Max(threshold, accumulator[i, j]);
+
+    var detected = new List<(double, double, int)>();
+    for (int rIdx = 0; rIdx < rBins; rIdx++)
+        for (int t = 0; t < thetaSteps; t++)
+            if (accumulator[rIdx, t] >= threshold)
+            {
+                double r = rIdx / rScale - maxR;
+                double theta = Math.PI * t / thetaSteps;
+                detected.Add((r, theta * 180.0 / Math.PI, accumulator[rIdx, t]));
+            }
+    return detected;
+}
+```

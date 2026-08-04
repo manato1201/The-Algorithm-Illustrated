@@ -23,3 +23,203 @@ summary: 分割統治の再帰呼び出し自体を並列に実行し、さら�
 - **並列マージの追加コスト**: 各マージステップで[二分探索](/algorithms/binary-search)による分割点の特定という追加の処理が必要になるため、実用上はプロセッサ数が十分多い場合にのみこの並列マージの恩恵が計算量の理論通りに現れる。小規模なデータやプロセッサ数が少ない環境では、単純に再帰呼び出しだけを並列化し、マージ自体は逐次処理する方が実装がシンプルで十分高速なことも多い
 - **タスクの粒度の調整**: 再帰の末端まで並列化すると、小さすぎるタスクの生成・管理オーバーヘッドが計算そのもののコストを上回ってしまう。実用の並列ソートライブラリでは、ある閾値以下のサイズになったら逐次のソートアルゴリズムに切り替える、というハイブリッドな設計が一般的である
 - **使いどころ**: マルチコアCPU・分散システムにおける大規模データのソート、並列計算フレームワーク(OpenMP、Intel TBB、Javaのfork/joinフレームワーク等)の標準的な実装例、[MapReduce](/algorithms/mapreduce)のシャッフル・ソートフェーズの内部実装の理論的基盤
+
+## 実装例
+
+分割統治の再帰と、[二分探索](/algorithms/binary-search)による分割点特定を使った並列マージを、決定論的な逐次シミュレーションとして実装する。実際の並列実行では左右の再帰やマージの左右部分問題を別スレッドに割り当てるが、ここではその構造を保ったまま逐次実行し、結果が標準ソートと一致することを検証する。
+
+```python
+def binary_search_insert_pos(a: list[int], x: int) -> int:
+    lo, hi = 0, len(a)
+    while lo < hi:
+        mid = (lo + hi) // 2
+        if a[mid] < x:
+            lo = mid + 1
+        else:
+            hi = mid
+    return lo
+
+
+def parallel_merge(a: list[int], b: list[int]) -> list[int]:
+    if len(a) < len(b):
+        a, b = b, a
+    if len(a) == 0:
+        return []
+    # aの中央要素の挿入位置をbの中で二分探索することで、マージを2つの独立した部分問題に分割する
+    mid_a = len(a) // 2
+    pivot = a[mid_a]
+    mid_b = binary_search_insert_pos(b, pivot)
+    left = parallel_merge(a[:mid_a], b[:mid_b])   # 実際の並列実行では別スレッドに割り当て可能
+    right = parallel_merge(a[mid_a + 1:], b[mid_b:])  # 同上
+    return left + [pivot] + right
+
+
+def parallel_merge_sort(arr: list[int]) -> list[int]:
+    if len(arr) <= 1:
+        return list(arr)
+    mid = len(arr) // 2
+    left = parallel_merge_sort(arr[:mid])   # 実際の並列実行では別スレッドに割り当て可能
+    right = parallel_merge_sort(arr[mid:])  # 同上
+    return parallel_merge(left, right)
+```
+
+```typescript
+function binarySearchInsertPos(a: number[], x: number): number {
+  let lo = 0;
+  let hi = a.length;
+  while (lo < hi) {
+    const mid = (lo + hi) >> 1;
+    if (a[mid] < x) lo = mid + 1;
+    else hi = mid;
+  }
+  return lo;
+}
+
+function parallelMerge(a: number[], b: number[]): number[] {
+  if (a.length < b.length) [a, b] = [b, a];
+  if (a.length === 0) return [];
+  // aの中央要素の挿入位置をbの中で二分探索することで、マージを2つの独立した部分問題に分割する
+  const midA = Math.floor(a.length / 2);
+  const pivot = a[midA];
+  const midB = binarySearchInsertPos(b, pivot);
+  const left = parallelMerge(a.slice(0, midA), b.slice(0, midB));
+  const right = parallelMerge(a.slice(midA + 1), b.slice(midB));
+  return [...left, pivot, ...right];
+}
+
+function parallelMergeSort(arr: number[]): number[] {
+  if (arr.length <= 1) return [...arr];
+  const mid = Math.floor(arr.length / 2);
+  const left = parallelMergeSort(arr.slice(0, mid));
+  const right = parallelMergeSort(arr.slice(mid));
+  return parallelMerge(left, right);
+}
+```
+
+```cpp
+#include <vector>
+#include <algorithm>
+
+int binarySearchInsertPos(const std::vector<int>& a, int x) {
+    int lo = 0, hi = static_cast<int>(a.size());
+    while (lo < hi) {
+        int mid = (lo + hi) / 2;
+        if (a[mid] < x) lo = mid + 1;
+        else hi = mid;
+    }
+    return lo;
+}
+
+std::vector<int> parallelMerge(std::vector<int> a, std::vector<int> b) {
+    if (a.size() < b.size()) std::swap(a, b);
+    if (a.empty()) return {};
+    int midA = static_cast<int>(a.size()) / 2;
+    int pivot = a[midA];
+    int midB = binarySearchInsertPos(b, pivot);
+
+    std::vector<int> aLeft(a.begin(), a.begin() + midA);
+    std::vector<int> bLeft(b.begin(), b.begin() + midB);
+    std::vector<int> aRight(a.begin() + midA + 1, a.end());
+    std::vector<int> bRight(b.begin() + midB, b.end());
+
+    auto left = parallelMerge(aLeft, bLeft);
+    auto right = parallelMerge(aRight, bRight);
+
+    std::vector<int> result;
+    result.reserve(left.size() + 1 + right.size());
+    result.insert(result.end(), left.begin(), left.end());
+    result.push_back(pivot);
+    result.insert(result.end(), right.begin(), right.end());
+    return result;
+}
+
+std::vector<int> parallelMergeSort(const std::vector<int>& arr) {
+    if (arr.size() <= 1) return arr;
+    size_t mid = arr.size() / 2;
+    std::vector<int> left(arr.begin(), arr.begin() + mid);
+    std::vector<int> right(arr.begin() + mid, arr.end());
+    return parallelMerge(parallelMergeSort(left), parallelMergeSort(right));
+}
+```
+
+```rust
+fn binary_search_insert_pos(a: &[i32], x: i32) -> usize {
+    let mut lo = 0;
+    let mut hi = a.len();
+    while lo < hi {
+        let mid = (lo + hi) / 2;
+        if a[mid] < x {
+            lo = mid + 1;
+        } else {
+            hi = mid;
+        }
+    }
+    lo
+}
+
+fn parallel_merge(a: &[i32], b: &[i32]) -> Vec<i32> {
+    let (a, b) = if a.len() < b.len() { (b, a) } else { (a, b) };
+    if a.is_empty() {
+        return Vec::new();
+    }
+    // aの中央要素の挿入位置をbの中で二分探索することで、マージを2つの独立した部分問題に分割する
+    let mid_a = a.len() / 2;
+    let pivot = a[mid_a];
+    let mid_b = binary_search_insert_pos(b, pivot);
+
+    let mut result = parallel_merge(&a[..mid_a], &b[..mid_b]);
+    result.push(pivot);
+    result.extend(parallel_merge(&a[mid_a + 1..], &b[mid_b..]));
+    result
+}
+
+fn parallel_merge_sort(arr: &[i32]) -> Vec<i32> {
+    if arr.len() <= 1 {
+        return arr.to_vec();
+    }
+    let mid = arr.len() / 2;
+    let left = parallel_merge_sort(&arr[..mid]);
+    let right = parallel_merge_sort(&arr[mid..]);
+    parallel_merge(&left, &right)
+}
+```
+
+```csharp
+static int BinarySearchInsertPos(List<int> a, int x)
+{
+    int lo = 0, hi = a.Count;
+    while (lo < hi)
+    {
+        int mid = (lo + hi) / 2;
+        if (a[mid] < x) lo = mid + 1; else hi = mid;
+    }
+    return lo;
+}
+
+static List<int> ParallelMerge(List<int> a, List<int> b)
+{
+    if (a.Count < b.Count) (a, b) = (b, a);
+    if (a.Count == 0) return new List<int>();
+    // aの中央要素の挿入位置をbの中で二分探索することで、マージを2つの独立した部分問題に分割する
+    int midA = a.Count / 2;
+    int pivot = a[midA];
+    int midB = BinarySearchInsertPos(b, pivot);
+
+    var left = ParallelMerge(a.GetRange(0, midA), b.GetRange(0, midB));
+    var right = ParallelMerge(a.GetRange(midA + 1, a.Count - midA - 1), b.GetRange(midB, b.Count - midB));
+
+    var result = new List<int>(left);
+    result.Add(pivot);
+    result.AddRange(right);
+    return result;
+}
+
+static List<int> ParallelMergeSort(List<int> arr)
+{
+    if (arr.Count <= 1) return new List<int>(arr);
+    int mid = arr.Count / 2;
+    var left = ParallelMergeSort(arr.GetRange(0, mid));
+    var right = ParallelMergeSort(arr.GetRange(mid, arr.Count - mid));
+    return ParallelMerge(left, right);
+}
+```

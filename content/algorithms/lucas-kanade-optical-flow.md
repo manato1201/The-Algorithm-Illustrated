@@ -23,3 +23,121 @@ summary: 「明るさは短時間では保存される」という仮定のも�
 - **開口問題への部分的な対処**: 窓内で構造テンソルの2つの固有値が両方十分大きい(=コーナーらしい)点では信頼できる`(u, v)`が求まるが、窓がエッジ上や平坦な領域にある場合は解が不安定または不定になる——これが「追跡しやすい点(コーナー)を先に選ぶ」ことが重要な理由
 - **大きな動きに弱い**: テイラー展開による1次近似は、フレーム間の動きが小さいことを前提にしている。動きが大きいと近似が破綻するため、実用の実装では画像をぼかして粗いスケールから細かいスケールへ段階的に推定を精緻化するピラミッド階層アプローチが標準的に使われる
 - **使いどころ**: 動画のモーション追跡・手ブレ補正、拡張現実(AR)でのマーカーレストラッキング、ビデオ圧縮の動き補償、ロボットの視覚オドメトリ(カメラの動きからの自己位置推定)
+
+## 実装例
+
+窓内の各画素における輝度勾配`(Ix, Iy)`と時間変化`It`から、2×2の正規方程式を解いて移動ベクトル`(u, v)`を求める。
+
+```python
+def lucas_kanade(ix: list[float], iy: list[float], it: list[float]) -> tuple[float, float]:
+    """窓内の勾配 Ix, Iy と時間変化 It から移動ベクトル (u, v) を最小二乗法で求める"""
+    sxx = sum(x * x for x in ix)
+    syy = sum(y * y for y in iy)
+    sxy = sum(x * y for x, y in zip(ix, iy))
+    sxt = sum(x * t for x, t in zip(ix, it))
+    syt = sum(y * t for y, t in zip(iy, it))
+
+    det = sxx * syy - sxy * sxy
+    if abs(det) < 1e-12:
+        # 開口問題: 勾配が平行(エッジ上)で行列が特異、動きを一意に決められない
+        return (0.0, 0.0)
+
+    u = (-syy * sxt + sxy * syt) / det
+    v = (sxy * sxt - sxx * syt) / det
+    return (u, v)
+```
+
+```typescript
+function lucasKanade(ix: number[], iy: number[], it: number[]): [number, number] {
+  let sxx = 0,
+    syy = 0,
+    sxy = 0,
+    sxt = 0,
+    syt = 0;
+  for (let i = 0; i < ix.length; i++) {
+    sxx += ix[i] * ix[i];
+    syy += iy[i] * iy[i];
+    sxy += ix[i] * iy[i];
+    sxt += ix[i] * it[i];
+    syt += iy[i] * it[i];
+  }
+  const det = sxx * syy - sxy * sxy;
+  if (Math.abs(det) < 1e-12) {
+    // 開口問題: 勾配が平行(エッジ上)で行列が特異
+    return [0, 0];
+  }
+  const u = (-syy * sxt + sxy * syt) / det;
+  const v = (sxy * sxt - sxx * syt) / det;
+  return [u, v];
+}
+```
+
+```cpp
+#include <utility>
+#include <vector>
+#include <cmath>
+
+std::pair<double, double> lucasKanade(const std::vector<double>& ix, const std::vector<double>& iy,
+                                       const std::vector<double>& it) {
+    double sxx = 0, syy = 0, sxy = 0, sxt = 0, syt = 0;
+    for (size_t i = 0; i < ix.size(); i++) {
+        sxx += ix[i] * ix[i];
+        syy += iy[i] * iy[i];
+        sxy += ix[i] * iy[i];
+        sxt += ix[i] * it[i];
+        syt += iy[i] * it[i];
+    }
+    double det = sxx * syy - sxy * sxy;
+    if (std::abs(det) < 1e-12) {
+        return {0.0, 0.0};  // 開口問題: 勾配が平行で行列が特異
+    }
+    double u = (-syy * sxt + sxy * syt) / det;
+    double v = (sxy * sxt - sxx * syt) / det;
+    return {u, v};
+}
+```
+
+```rust
+fn lucas_kanade(ix: &[f64], iy: &[f64], it: &[f64]) -> (f64, f64) {
+    let mut sxx = 0.0;
+    let mut syy = 0.0;
+    let mut sxy = 0.0;
+    let mut sxt = 0.0;
+    let mut syt = 0.0;
+    for i in 0..ix.len() {
+        sxx += ix[i] * ix[i];
+        syy += iy[i] * iy[i];
+        sxy += ix[i] * iy[i];
+        sxt += ix[i] * it[i];
+        syt += iy[i] * it[i];
+    }
+    let det = sxx * syy - sxy * sxy;
+    if det.abs() < 1e-12 {
+        return (0.0, 0.0); // 開口問題: 勾配が平行で行列が特異
+    }
+    let u = (-syy * sxt + sxy * syt) / det;
+    let v = (sxy * sxt - sxx * syt) / det;
+    (u, v)
+}
+```
+
+```csharp
+static (double u, double v) LucasKanade(double[] ix, double[] iy, double[] it)
+{
+    double sxx = 0, syy = 0, sxy = 0, sxt = 0, syt = 0;
+    for (int i = 0; i < ix.Length; i++)
+    {
+        sxx += ix[i] * ix[i];
+        syy += iy[i] * iy[i];
+        sxy += ix[i] * iy[i];
+        sxt += ix[i] * it[i];
+        syt += iy[i] * it[i];
+    }
+    double det = sxx * syy - sxy * sxy;
+    if (Math.Abs(det) < 1e-12) return (0, 0); // 開口問題: 勾配が平行で行列が特異
+
+    double u = (-syy * sxt + sxy * syt) / det;
+    double v = (sxy * sxt - sxx * syt) / det;
+    return (u, v);
+}
+```

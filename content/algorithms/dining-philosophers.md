@@ -24,3 +24,199 @@ summary: 円卓に座る哲学者が両隣の箸を同時に必要とする状�
 - **ライブロックの可能性**: デッドロックを防いでも、全員が礼儀正しく譲り合い続けて誰も箸を取れない「ライブロック」という別の問題が起こりうる——単に「待つ」以外の解決策(タイムアウト後のランダムな再試行など)が必要になることもある
 - **スケーラビリティとのトレードオフ**: 給仕人による人数制限は確実にデッドロックを防ぐが、常に1人は待たされる状態になり、資源利用率(並行度)が理論上の最大値より低くなる。厳密な安全性と資源利用の効率性の間には、実務上のトレードオフが常に存在する
 - **使いどころ**: オペレーティングシステムやデータベースにおけるロック取得順序の設計指針、デッドロック検出・回避アルゴリズムの教育、マルチスレッドプログラミングにおける共有資源の排他制御パターンの理解
+
+## 実装例
+
+実際のマルチスレッドではなく、「解法1(資源の順序付け)」を適用した決定論的なラウンドベースのシミュレーションとして実装する。各哲学者は「思考中→空腹→食事中」の状態を1ラウンドごとに1段階だけ進め、箸は必ず番号の小さい方から取得する。これにより循環待ちが構造的に起こらず、全員が確実に複数回食事できることを検証する。
+
+```python
+def simulate_dining_philosophers(n: int, rounds: int) -> list[int]:
+    forks = [True] * n  # True = 利用可能
+    states = ["thinking"] * n
+    meals_eaten = [0] * n
+
+    def fork_pair(i: int) -> tuple[int, int]:
+        left, right = i, (i + 1) % n
+        return (min(left, right), max(left, right))  # 常に番号の小さい箸から取得
+
+    for _ in range(rounds):
+        for i in range(n):
+            if states[i] == "thinking":
+                states[i] = "hungry"
+            elif states[i] == "hungry":
+                f1, f2 = fork_pair(i)
+                if forks[f1] and forks[f2]:
+                    forks[f1] = False
+                    forks[f2] = False
+                    states[i] = "eating"
+            elif states[i] == "eating":
+                f1, f2 = fork_pair(i)
+                forks[f1] = True
+                forks[f2] = True
+                meals_eaten[i] += 1
+                states[i] = "thinking"
+    return meals_eaten
+```
+
+```typescript
+function simulateDiningPhilosophers(n: number, rounds: number): number[] {
+  const forks = new Array(n).fill(true);
+  const states = new Array(n).fill("thinking");
+  const mealsEaten = new Array(n).fill(0);
+
+  const forkPair = (i: number): [number, number] => {
+    const left = i, right = (i + 1) % n;
+    return [Math.min(left, right), Math.max(left, right)];
+  };
+
+  for (let r = 0; r < rounds; r++) {
+    for (let i = 0; i < n; i++) {
+      if (states[i] === "thinking") {
+        states[i] = "hungry";
+      } else if (states[i] === "hungry") {
+        const [f1, f2] = forkPair(i);
+        if (forks[f1] && forks[f2]) {
+          forks[f1] = false; forks[f2] = false;
+          states[i] = "eating";
+        }
+      } else if (states[i] === "eating") {
+        const [f1, f2] = forkPair(i);
+        forks[f1] = true; forks[f2] = true;
+        mealsEaten[i] += 1;
+        states[i] = "thinking";
+      }
+    }
+  }
+  return mealsEaten;
+}
+```
+
+```cpp
+#include <vector>
+#include <string>
+#include <utility>
+#include <algorithm>
+
+std::vector<int> simulateDiningPhilosophers(int n, int rounds) {
+    std::vector<bool> forks(n, true);
+    std::vector<std::string> states(n, "thinking");
+    std::vector<int> mealsEaten(n, 0);
+
+    auto forkPair = [n](int i) {
+        int left = i, right = (i + 1) % n;
+        return std::make_pair(std::min(left, right), std::max(left, right));
+    };
+
+    for (int r = 0; r < rounds; r++) {
+        for (int i = 0; i < n; i++) {
+            if (states[i] == "thinking") {
+                states[i] = "hungry";
+            } else if (states[i] == "hungry") {
+                auto [f1, f2] = forkPair(i);
+                if (forks[f1] && forks[f2]) {
+                    forks[f1] = false; forks[f2] = false;
+                    states[i] = "eating";
+                }
+            } else if (states[i] == "eating") {
+                auto [f1, f2] = forkPair(i);
+                forks[f1] = true; forks[f2] = true;
+                mealsEaten[i] += 1;
+                states[i] = "thinking";
+            }
+        }
+    }
+    return mealsEaten;
+}
+```
+
+```rust
+#[derive(Clone, Copy, PartialEq)]
+enum State {
+    Thinking,
+    Hungry,
+    Eating,
+}
+
+fn fork_pair(i: usize, n: usize) -> (usize, usize) {
+    let (left, right) = (i, (i + 1) % n);
+    (left.min(right), left.max(right))
+}
+
+fn simulate_dining_philosophers(n: usize, rounds: usize) -> Vec<u32> {
+    let mut forks = vec![true; n];
+    let mut states = vec![State::Thinking; n];
+    let mut meals_eaten = vec![0u32; n];
+
+    for _ in 0..rounds {
+        for i in 0..n {
+            match states[i] {
+                State::Thinking => {
+                    states[i] = State::Hungry;
+                }
+                State::Hungry => {
+                    let (f1, f2) = fork_pair(i, n);
+                    if forks[f1] && forks[f2] {
+                        forks[f1] = false;
+                        forks[f2] = false;
+                        states[i] = State::Eating;
+                    }
+                }
+                State::Eating => {
+                    let (f1, f2) = fork_pair(i, n);
+                    forks[f1] = true;
+                    forks[f2] = true;
+                    meals_eaten[i] += 1;
+                    states[i] = State::Thinking;
+                }
+            }
+        }
+    }
+    meals_eaten
+}
+```
+
+```csharp
+static class DiningPhilosophers
+{
+    public static int[] Simulate(int n, int rounds)
+    {
+        var forks = Enumerable.Repeat(true, n).ToArray();
+        var states = Enumerable.Repeat("thinking", n).ToArray();
+        var mealsEaten = new int[n];
+
+        (int, int) ForkPair(int i)
+        {
+            int left = i, right = (i + 1) % n;
+            return (Math.Min(left, right), Math.Max(left, right));
+        }
+
+        for (int r = 0; r < rounds; r++)
+        {
+            for (int i = 0; i < n; i++)
+            {
+                if (states[i] == "thinking")
+                {
+                    states[i] = "hungry";
+                }
+                else if (states[i] == "hungry")
+                {
+                    var (f1, f2) = ForkPair(i);
+                    if (forks[f1] && forks[f2])
+                    {
+                        forks[f1] = false; forks[f2] = false;
+                        states[i] = "eating";
+                    }
+                }
+                else if (states[i] == "eating")
+                {
+                    var (f1, f2) = ForkPair(i);
+                    forks[f1] = true; forks[f2] = true;
+                    mealsEaten[i] += 1;
+                    states[i] = "thinking";
+                }
+            }
+        }
+        return mealsEaten;
+    }
+}
+```
