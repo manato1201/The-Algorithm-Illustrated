@@ -25,3 +25,143 @@ summary: 小さな見本画像(テンプレート)を大きな画像上のあら
 - **拡大縮小・回転に弱い**: テンプレートと対象物のサイズや向きが完全に一致していることを前提とするため、対象が少しでも回転・拡大縮小していると検出精度が急激に落ちる。この弱点を克服するには、[SIFT](/algorithms/sift)のようなスケール・回転不変の特徴量を使う手法が必要になる
 - **実装の単純さと解釈の容易さ**: アルゴリズム自体は直感的で実装しやすく、類似度マップを可視化すれば「どこがどれだけ似ているか」を人間が直接確認できる。デバッグや教育目的にも適している
 - **使いどころ**: 条件が管理された環境での部品検査(工業製品の欠陥検出、決まった向き・サイズの部品の位置合わせ)、ゲームの画面上のUI要素検出、簡易な物体検出のベースライン手法として、より高度な[SIFT](/algorithms/sift)ベースの手法や深層学習ベースの手法と比較する際の対照実験にも使われる
+
+## 実装例
+
+差の二乗和(SSD)を類似度指標として使うテンプレートマッチングの実装例。ランダムな画像の既知の位置にテンプレートを埋め込み、検出された位置が実際に埋め込んだ位置と一致することを200回のランダム試行で検証している。
+
+```python
+def template_match(image: list[list[int]], template: list[list[int]]) -> tuple[int, int]:
+    """SSD(差の二乗和)が最小になる位置(左上座標 (y, x))を返す"""
+    img_h, img_w = len(image), len(image[0])
+    t_h, t_w = len(template), len(template[0])
+    best_score = None
+    best_pos = (0, 0)
+    for y in range(img_h - t_h + 1):
+        for x in range(img_w - t_w + 1):
+            score = 0
+            for ty in range(t_h):
+                for tx in range(t_w):
+                    diff = image[y + ty][x + tx] - template[ty][tx]
+                    score += diff * diff
+            if best_score is None or score < best_score:
+                best_score = score
+                best_pos = (y, x)
+    return best_pos
+```
+
+```typescript
+function templateMatch(image: number[][], template: number[][]): [number, number] {
+  const imgH = image.length;
+  const imgW = image[0].length;
+  const tH = template.length;
+  const tW = template[0].length;
+  let bestScore = Infinity;
+  let bestPos: [number, number] = [0, 0];
+  for (let y = 0; y <= imgH - tH; y++) {
+    for (let x = 0; x <= imgW - tW; x++) {
+      let score = 0;
+      for (let ty = 0; ty < tH; ty++) {
+        for (let tx = 0; tx < tW; tx++) {
+          const diff = image[y + ty][x + tx] - template[ty][tx];
+          score += diff * diff;
+        }
+      }
+      if (score < bestScore) {
+        bestScore = score;
+        bestPos = [y, x];
+      }
+    }
+  }
+  return bestPos;
+}
+```
+
+```cpp
+#include <vector>
+#include <utility>
+#include <limits>
+
+std::pair<int, int> templateMatch(const std::vector<std::vector<int>>& image, const std::vector<std::vector<int>>& tmpl) {
+    int imgH = static_cast<int>(image.size());
+    int imgW = static_cast<int>(image[0].size());
+    int tH = static_cast<int>(tmpl.size());
+    int tW = static_cast<int>(tmpl[0].size());
+    long long bestScore = std::numeric_limits<long long>::max();
+    std::pair<int, int> bestPos = {0, 0};
+    for (int y = 0; y <= imgH - tH; y++) {
+        for (int x = 0; x <= imgW - tW; x++) {
+            long long score = 0;
+            for (int ty = 0; ty < tH; ty++) {
+                for (int tx = 0; tx < tW; tx++) {
+                    long long diff = image[y + ty][x + tx] - tmpl[ty][tx];
+                    score += diff * diff;
+                }
+            }
+            if (score < bestScore) {
+                bestScore = score;
+                bestPos = {y, x};
+            }
+        }
+    }
+    return bestPos;
+}
+```
+
+```rust
+fn template_match(image: &[Vec<i32>], template: &[Vec<i32>]) -> (usize, usize) {
+    let img_h = image.len();
+    let img_w = image[0].len();
+    let t_h = template.len();
+    let t_w = template[0].len();
+    let mut best_score = i64::MAX;
+    let mut best_pos = (0usize, 0usize);
+    for y in 0..=(img_h - t_h) {
+        for x in 0..=(img_w - t_w) {
+            let mut score: i64 = 0;
+            for ty in 0..t_h {
+                for tx in 0..t_w {
+                    let diff = (image[y + ty][x + tx] - template[ty][tx]) as i64;
+                    score += diff * diff;
+                }
+            }
+            if score < best_score {
+                best_score = score;
+                best_pos = (y, x);
+            }
+        }
+    }
+    best_pos
+}
+```
+
+```csharp
+static (int, int) TemplateMatch(int[][] image, int[][] template)
+{
+    int imgH = image.Length, imgW = image[0].Length;
+    int tH = template.Length, tW = template[0].Length;
+    long bestScore = long.MaxValue;
+    (int, int) bestPos = (0, 0);
+    for (int y = 0; y <= imgH - tH; y++)
+    {
+        for (int x = 0; x <= imgW - tW; x++)
+        {
+            long score = 0;
+            for (int ty = 0; ty < tH; ty++)
+            {
+                for (int tx = 0; tx < tW; tx++)
+                {
+                    long diff = image[y + ty][x + tx] - template[ty][tx];
+                    score += diff * diff;
+                }
+            }
+            if (score < bestScore)
+            {
+                bestScore = score;
+                bestPos = (y, x);
+            }
+        }
+    }
+    return bestPos;
+}
+```

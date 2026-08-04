@@ -26,3 +26,166 @@ summary: 文字列を可逆的に並べ替えて同じ文字を隣接させ、�
 - **可逆性**: 情報を一切失わずに元の文字列に戻せる(可逆変換)ため、ロスレス圧縮の前処理として安心して使える
 - **接尾辞配列との関係**: BWTは接尾辞配列と密接な関係にあり、接尾辞配列から直接BWTを構築することもできる。逆に、BWTから接尾辞配列に相当する情報を復元することも可能
 - **使いどころ**: bzip2をはじめとするファイル圧縮ツール、バイオインフォマティクスにおけるゲノム配列の高速アラインメントツール(BWA, Bowtieなど、BWTを索引構造として活用する)
+
+## 実装例
+
+```python
+def bwt_transform(s: str) -> str:
+    s = s + "$"
+    n = len(s)
+    rotations = sorted(s[i:] + s[:i] for i in range(n))
+    return "".join(r[-1] for r in rotations)
+
+def bwt_inverse(bwt: str) -> str:
+    n = len(bwt)
+    table = [""] * n
+    for _ in range(n):
+        table = sorted(bwt[i] + table[i] for i in range(n))
+    for row in table:
+        if row.endswith("$"):
+            return row[:-1]
+    return ""
+```
+
+```typescript
+function bwtTransform(input: string): string {
+  const s = input + "$";
+  const n = s.length;
+  const rotations: string[] = [];
+  for (let i = 0; i < n; i++) {
+    rotations.push(s.slice(i) + s.slice(0, i));
+  }
+  rotations.sort();
+  return rotations.map((r) => r[r.length - 1]).join("");
+}
+
+function bwtInverse(bwt: string): string {
+  const n = bwt.length;
+  let table: string[] = new Array(n).fill("");
+  for (let iter = 0; iter < n; iter++) {
+    const next: string[] = new Array(n);
+    for (let i = 0; i < n; i++) {
+      next[i] = bwt[i] + table[i];
+    }
+    next.sort();
+    table = next;
+  }
+  for (const row of table) {
+    if (row.endsWith("$")) {
+      return row.slice(0, -1);
+    }
+  }
+  return "";
+}
+```
+
+```cpp
+#include <string>
+#include <vector>
+#include <algorithm>
+
+std::string bwtTransform(const std::string& input) {
+    std::string s = input + "$";
+    int n = static_cast<int>(s.size());
+    std::vector<std::string> rotations;
+    rotations.reserve(n);
+    for (int i = 0; i < n; i++) {
+        rotations.push_back(s.substr(i) + s.substr(0, i));
+    }
+    std::sort(rotations.begin(), rotations.end());
+    std::string result;
+    result.reserve(n);
+    for (const auto& r : rotations) result.push_back(r.back());
+    return result;
+}
+
+std::string bwtInverse(const std::string& bwt) {
+    int n = static_cast<int>(bwt.size());
+    std::vector<std::string> table(n, "");
+    for (int iter = 0; iter < n; iter++) {
+        std::vector<std::string> next(n);
+        for (int i = 0; i < n; i++) {
+            next[i] = bwt[i] + table[i];
+        }
+        std::sort(next.begin(), next.end());
+        table = std::move(next);
+    }
+    for (const auto& row : table) {
+        if (!row.empty() && row.back() == '$') {
+            return row.substr(0, row.size() - 1);
+        }
+    }
+    return "";
+}
+```
+
+```rust
+fn bwt_transform(input: &str) -> String {
+    let s = format!("{}$", input);
+    let n = s.len();
+    let bytes: Vec<u8> = s.into_bytes();
+    let mut rotations: Vec<Vec<u8>> = Vec::with_capacity(n);
+    for i in 0..n {
+        let mut rot = bytes[i..].to_vec();
+        rot.extend_from_slice(&bytes[..i]);
+        rotations.push(rot);
+    }
+    rotations.sort();
+    rotations.iter().map(|r| r[r.len() - 1] as char).collect()
+}
+
+fn bwt_inverse(bwt: &str) -> String {
+    let bytes: Vec<u8> = bwt.bytes().collect();
+    let n = bytes.len();
+    let mut table: Vec<Vec<u8>> = vec![Vec::new(); n];
+    for _ in 0..n {
+        let mut next: Vec<Vec<u8>> = Vec::with_capacity(n);
+        for i in 0..n {
+            let mut row = vec![bytes[i]];
+            row.extend_from_slice(&table[i]);
+            next.push(row);
+        }
+        next.sort();
+        table = next;
+    }
+    for row in &table {
+        if row.last() == Some(&b'$') {
+            return String::from_utf8(row[..row.len() - 1].to_vec()).unwrap();
+        }
+    }
+    String::new()
+}
+```
+
+```csharp
+static string BwtTransform(string input)
+{
+    string s = input + "$";
+    int n = s.Length;
+    var rotations = new List<string>();
+    for (int i = 0; i < n; i++) rotations.Add(s.Substring(i) + s.Substring(0, i));
+    rotations.Sort(StringComparer.Ordinal);
+    var sb = new StringBuilder();
+    foreach (var r in rotations) sb.Append(r[^1]);
+    return sb.ToString();
+}
+
+static string BwtInverse(string bwt)
+{
+    int n = bwt.Length;
+    var table = new string[n];
+    for (int i = 0; i < n; i++) table[i] = "";
+    for (int iter = 0; iter < n; iter++)
+    {
+        var next = new string[n];
+        for (int i = 0; i < n; i++) next[i] = bwt[i] + table[i];
+        Array.Sort(next, StringComparer.Ordinal);
+        table = next;
+    }
+    foreach (var row in table)
+    {
+        if (row.EndsWith("$")) return row.Substring(0, row.Length - 1);
+    }
+    return "";
+}
+```

@@ -24,3 +24,97 @@ summary: 集団の大多数がその戦略を取る限り、少数の変異戦�
 - **意思決定を仮定しない**: プレイヤーが合理的に戦略を選ぶという前提が要らず、「利得が高い戦略の個体ほど多く子孫を残す」という自然選択の力学だけで安定な戦略構成が説明できる。この非意図的な安定性は生物学的な現象の説明に特に強力
 - **混合戦略と多型均衡**: タカ・ハトゲームのように純粋戦略ではESSが存在しない場合、集団内に複数の戦略が一定の比率で共存する「多型均衡」(または個体ごとに確率的に戦略を選ぶ混合ESS)が安定解になることがある——自然界に複数の生存戦略が共存する現象の説明に使われる
 - **使いどころ**: 動物行動学(縄張り争い・求愛行動の説明)、進化ゲーム理論、マルチエージェントシステムにおける学習アルゴリズムの収束先の分析、ゲームバランス調整における「特定の戦略への一極集中(メタの固定化)」の分析にも応用される
+
+## 実装例
+
+```python
+def is_ess(payoff: list[list[float]], i: int) -> bool:
+    n = len(payoff)
+    for j in range(n):
+        if j == i:
+            continue
+        if payoff[i][i] > payoff[j][i]:
+            continue
+        if payoff[i][i] == payoff[j][i] and payoff[i][j] > payoff[j][j]:
+            continue
+        return False
+    return True
+
+
+# タカ・ハトゲーム: V=資源の価値, C=争いのコスト(V < C なら純粋戦略ESSは存在しない)
+V, C = 2.0, 4.0
+payoff = [
+    [(V - C) / 2, V],  # Hawk vs (Hawk, Dove)
+    [0.0, V / 2],      # Dove vs (Hawk, Dove)
+]
+print(is_ess(payoff, 0), is_ess(payoff, 1))  # False False -> 混合ESSが安定解
+```
+
+```typescript
+function isEss(payoff: number[][], i: number): boolean {
+  const n = payoff.length;
+  for (let j = 0; j < n; j++) {
+    if (j === i) continue;
+    if (payoff[i][i] > payoff[j][i]) continue;
+    if (payoff[i][i] === payoff[j][i] && payoff[i][j] > payoff[j][j]) continue;
+    return false;
+  }
+  return true;
+}
+
+const V = 2.0;
+const C = 4.0;
+const payoff = [
+  [(V - C) / 2, V],
+  [0.0, V / 2],
+];
+console.log(isEss(payoff, 0), isEss(payoff, 1)); // false false
+```
+
+```cpp
+#include <vector>
+
+bool isEss(const std::vector<std::vector<double>>& payoff, int i) {
+    int n = static_cast<int>(payoff.size());
+    for (int j = 0; j < n; j++) {
+        if (j == i) continue;
+        if (payoff[i][i] > payoff[j][i]) continue;
+        if (payoff[i][i] == payoff[j][i] && payoff[i][j] > payoff[j][j]) continue;
+        return false;
+    }
+    return true;
+}
+```
+
+```rust
+fn is_ess(payoff: &[Vec<f64>], i: usize) -> bool {
+    for (j, row) in payoff.iter().enumerate() {
+        if j == i {
+            continue;
+        }
+        if payoff[i][i] > row[i] {
+            continue;
+        }
+        if payoff[i][i] == row[i] && payoff[i][j] > row[j] {
+            continue;
+        }
+        return false;
+    }
+    true
+}
+```
+
+```csharp
+static bool IsEss(double[][] payoff, int i)
+{
+    int n = payoff.Length;
+    for (int j = 0; j < n; j++)
+    {
+        if (j == i) continue;
+        if (payoff[i][i] > payoff[j][i]) continue;
+        if (payoff[i][i] == payoff[j][i] && payoff[i][j] > payoff[j][j]) continue;
+        return false;
+    }
+    return true;
+}
+```

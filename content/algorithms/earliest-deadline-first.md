@@ -24,3 +24,148 @@ summary: 締め切りが最も近いタスクを常に最優先で実行する�
 - **理論的な最適性**: 単一プロセッサ上で動的優先度スケジューリングを行う場合、CPU利用率が100%以下に収まるタスク集合であれば、EDFは必ず全てのタスクを締め切り内に完了できることが数学的に証明されている——これは動的優先度方式の中では最も強い理論的保証であり、リアルタイムシステム理論における重要な結果になっている
 - **過負荷時の予測困難な崩壊**: CPU利用率が100%を超えてしまう(そもそも全タスクを間に合わせることが不可能な)過負荷状態になると、EDFはどのタスクが締め切りに遅れるかを予測しにくい形で、複数のタスクが連鎖的に遅延する「ドミノ効果」を起こすことがある。固定優先度方式([優先度スケジューリング](/algorithms/priority-scheduling)を静的に適用する方式)は、過負荷時にどのタスクが犠牲になるかがより予測しやすいという対照的な利点を持つ
 - **使いどころ**: リアルタイムオペレーティングシステムにおけるタスクスケジューリング(航空機の制御システム、産業用ロボット制御)、ネットワークのパケットスケジューリング(締め切りのあるストリーミングデータの配信保証)、マルチメディア処理における一定のフレームレート保証
+
+## 実装例
+
+```python
+def edf_schedule(tasks: list[dict], horizon: int) -> list[str | None]:
+    remaining = {t["id"]: t["burst"] for t in tasks}
+    timeline: list[str | None] = []
+    for now in range(horizon):
+        available = [t for t in tasks if t["arrival"] <= now and remaining[t["id"]] > 0]
+        if not available:
+            timeline.append(None)
+            continue
+        current = min(available, key=lambda t: t["deadline"])
+        remaining[current["id"]] -= 1
+        timeline.append(current["id"])
+    return timeline
+```
+
+```typescript
+interface Task {
+  id: string;
+  arrival: number;
+  burst: number;
+  deadline: number;
+}
+
+function edfSchedule(tasks: Task[], horizon: number): (string | null)[] {
+  const remaining = new Map(tasks.map((t) => [t.id, t.burst]));
+  const timeline: (string | null)[] = [];
+  for (let now = 0; now < horizon; now++) {
+    const available = tasks.filter((t) => t.arrival <= now && (remaining.get(t.id) ?? 0) > 0);
+    if (available.length === 0) {
+      timeline.push(null);
+      continue;
+    }
+    const current = available.reduce((a, b) => (b.deadline < a.deadline ? b : a));
+    remaining.set(current.id, (remaining.get(current.id) ?? 0) - 1);
+    timeline.push(current.id);
+  }
+  return timeline;
+}
+```
+
+```cpp
+#include <vector>
+#include <string>
+#include <optional>
+#include <unordered_map>
+#include <limits>
+
+struct Task {
+    std::string id;
+    int arrival;
+    int burst;
+    int deadline;
+};
+
+std::vector<std::optional<std::string>> edfSchedule(const std::vector<Task>& tasks, int horizon) {
+    std::unordered_map<std::string, int> remaining;
+    for (const auto& t : tasks) remaining[t.id] = t.burst;
+
+    std::vector<std::optional<std::string>> timeline;
+    for (int now = 0; now < horizon; now++) {
+        const Task* current = nullptr;
+        int bestDeadline = std::numeric_limits<int>::max();
+        for (const auto& t : tasks) {
+            if (t.arrival <= now && remaining[t.id] > 0 && t.deadline < bestDeadline) {
+                bestDeadline = t.deadline;
+                current = &t;
+            }
+        }
+        if (current == nullptr) {
+            timeline.push_back(std::nullopt);
+            continue;
+        }
+        remaining[current->id]--;
+        timeline.push_back(current->id);
+    }
+    return timeline;
+}
+```
+
+```rust
+use std::collections::HashMap;
+
+struct Task {
+    id: &'static str,
+    arrival: i32,
+    burst: i32,
+    deadline: i32,
+}
+
+fn edf_schedule(tasks: &[Task], horizon: i32) -> Vec<Option<&'static str>> {
+    let mut remaining: HashMap<&str, i32> = tasks.iter().map(|t| (t.id, t.burst)).collect();
+    let mut timeline = Vec::new();
+
+    for now in 0..horizon {
+        let current = tasks
+            .iter()
+            .filter(|t| t.arrival <= now && remaining[t.id] > 0)
+            .min_by_key(|t| t.deadline);
+
+        match current {
+            Some(t) => {
+                *remaining.get_mut(t.id).unwrap() -= 1;
+                timeline.push(Some(t.id));
+            }
+            None => timeline.push(None),
+        }
+    }
+    timeline
+}
+```
+
+```csharp
+using System.Linq;
+
+class EdfTask
+{
+    public string Id = "";
+    public int Arrival;
+    public int Burst;
+    public int Deadline;
+}
+
+static List<string?> EdfSchedule(List<EdfTask> tasks, int horizon)
+{
+    var remaining = tasks.ToDictionary(t => t.Id, t => t.Burst);
+    var timeline = new List<string?>();
+
+    for (int now = 0; now < horizon; now++)
+    {
+        var available = tasks.Where(t => t.Arrival <= now && remaining[t.Id] > 0).ToList();
+        if (available.Count == 0)
+        {
+            timeline.Add(null);
+            continue;
+        }
+        var current = available.OrderBy(t => t.Deadline).First();
+        remaining[current.Id]--;
+        timeline.Add(current.Id);
+    }
+    return timeline;
+}
+```

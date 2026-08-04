@@ -24,3 +24,162 @@ DNA配列解析の多くの手法は、配列そのものを直接比較する�
 - **`k`の選び方のトレードオフ**: `k`が小さすぎると、異なる箇所に偶然同じk-merが出現しやすくなり(ゲノムの反復配列との衝突)、`k`が大きすぎると、シーケンシングエラーの影響を受けやすくなり(1塩基の読み取りミスで別のk-merになってしまう)、かつメモリ消費も増える。ゲノムの特性に応じた`k`の選択が解析の質を左右する
 - **エラー検出への応用**: 正しい配列由来のk-merは(ゲノムサイズに応じて)ある程度の頻度で繰り返し出現するはずだが、シーケンシングエラーによって生じたk-merは、その特定のエラーパターンがたまたま繰り返し起こらない限り極めて低頻度でしか出現しない。この頻度分布の違いから、エラーを含むリードを検出・訂正できる
 - **使いどころ**: [de Bruijnグラフによるゲノムアセンブリ](/algorithms/de-bruijn-graph-assembly)の頂点集合の構築、ゲノムサイズ・ヘテロ接合度の統計的推定、メタゲノム解析における種構成の同定、シーケンシングエラーの検出・訂正の前処理
+
+## 実装例
+
+```python
+COMPLEMENT = {"A": "T", "T": "A", "C": "G", "G": "C"}
+
+def reverse_complement(s: str) -> str:
+    return "".join(COMPLEMENT[c] for c in reversed(s))
+
+def canonical(kmer: str) -> str:
+    """k-merとその逆相補配列のうち辞書順で小さい方を正規形として採用する"""
+    rc = reverse_complement(kmer)
+    return kmer if kmer < rc else rc
+
+def count_kmers(sequence: str, k: int) -> dict[str, int]:
+    counts: dict[str, int] = {}
+    for i in range(len(sequence) - k + 1):
+        kmer = sequence[i:i + k]
+        c = canonical(kmer)
+        counts[c] = counts.get(c, 0) + 1
+    return counts
+```
+
+```typescript
+const COMPLEMENT: Record<string, string> = { A: "T", T: "A", C: "G", G: "C" };
+
+function reverseComplement(s: string): string {
+  return s
+    .split("")
+    .reverse()
+    .map((c) => COMPLEMENT[c])
+    .join("");
+}
+
+function canonical(kmer: string): string {
+  const rc = reverseComplement(kmer);
+  return kmer < rc ? kmer : rc;
+}
+
+function countKmers(sequence: string, k: number): Map<string, number> {
+  const counts = new Map<string, number>();
+  for (let i = 0; i <= sequence.length - k; i++) {
+    const kmer = sequence.slice(i, i + k);
+    const c = canonical(kmer);
+    counts.set(c, (counts.get(c) ?? 0) + 1);
+  }
+  return counts;
+}
+```
+
+```cpp
+#include <string>
+#include <unordered_map>
+#include <algorithm>
+
+char complementBase(char c) {
+    switch (c) {
+        case 'A': return 'T';
+        case 'T': return 'A';
+        case 'C': return 'G';
+        default: return 'C'; // 'G'
+    }
+}
+
+std::string reverseComplement(const std::string& s) {
+    std::string rc(s.rbegin(), s.rend());
+    for (char& c : rc) c = complementBase(c);
+    return rc;
+}
+
+std::string canonical(const std::string& kmer) {
+    std::string rc = reverseComplement(kmer);
+    return kmer < rc ? kmer : rc;
+}
+
+std::unordered_map<std::string, int> countKmers(const std::string& sequence, int k) {
+    std::unordered_map<std::string, int> counts;
+    for (int i = 0; i + k <= static_cast<int>(sequence.size()); i++) {
+        std::string kmer = sequence.substr(i, k);
+        std::string c = canonical(kmer);
+        counts[c]++;
+    }
+    return counts;
+}
+```
+
+```rust
+use std::collections::HashMap;
+
+fn complement_base(c: u8) -> u8 {
+    match c {
+        b'A' => b'T',
+        b'T' => b'A',
+        b'C' => b'G',
+        _ => b'C', // b'G'
+    }
+}
+
+fn reverse_complement(s: &[u8]) -> Vec<u8> {
+    s.iter().rev().map(|&c| complement_base(c)).collect()
+}
+
+fn canonical(kmer: &[u8]) -> Vec<u8> {
+    let rc = reverse_complement(kmer);
+    if kmer <= rc.as_slice() {
+        kmer.to_vec()
+    } else {
+        rc
+    }
+}
+
+fn count_kmers(sequence: &str, k: usize) -> HashMap<Vec<u8>, i32> {
+    let bytes = sequence.as_bytes();
+    let mut counts: HashMap<Vec<u8>, i32> = HashMap::new();
+    if bytes.len() < k {
+        return counts;
+    }
+    for i in 0..=(bytes.len() - k) {
+        let kmer = &bytes[i..i + k];
+        let c = canonical(kmer);
+        *counts.entry(c).or_insert(0) += 1;
+    }
+    counts
+}
+```
+
+```csharp
+static char ComplementBase(char c) => c switch
+{
+    'A' => 'T',
+    'T' => 'A',
+    'C' => 'G',
+    _ => 'C', // 'G'
+};
+
+static string ReverseComplement(string s)
+{
+    var chars = s.Reverse().Select(ComplementBase).ToArray();
+    return new string(chars);
+}
+
+static string Canonical(string kmer)
+{
+    string rc = ReverseComplement(kmer);
+    return string.CompareOrdinal(kmer, rc) < 0 ? kmer : rc;
+}
+
+static Dictionary<string, int> CountKmers(string sequence, int k)
+{
+    var counts = new Dictionary<string, int>();
+    for (int i = 0; i <= sequence.Length - k; i++)
+    {
+        string kmer = sequence.Substring(i, k);
+        string c = Canonical(kmer);
+        counts[c] = counts.GetValueOrDefault(c, 0) + 1;
+    }
+    return counts;
+}
+```

@@ -24,3 +24,194 @@ summary: 「本来正しかった単語がタイプミスという雑音を経�
 - **単なる[編集距離](/algorithms/edit-distance)の最小化との違い**: 編集距離だけで訂正候補を選ぶと、複数の候補が同じ距離になったときにどれを選ぶべきか分からない。ノイジーチャネルモデルは「よく使われる単語」「よく起こるタイプミスのパターン」という2つの追加情報を組み合わせることで、より人間の意図に近い訂正を選べる
 - **文脈を考慮した拡張**: 単語単体の頻度`P(w)`ではなく、[n-gram言語モデル](/algorithms/n-gram-language-model)で「直前の単語列を踏まえたときのその単語の自然さ」を使うと、文脈に応じた訂正(同じ誤字でも前後の単語によって異なる訂正候補を選ぶ)が可能になる
 - **使いどころ**: ワープロ・検索エンジンのスペルチェッカー・自動訂正機能、OCR(光学文字認識)の誤認識訂正、音声認識の後処理における誤認識の訂正。統計的機械翻訳の理論的枠組み(翻訳先言語への「ノイズ」としての翻訳過程をモデル化する)にも同じベイズ的な発想が使われている
+
+## 実装例
+
+小さな単語頻度辞書(言語モデル`P(w)`の代わり)と、編集距離に応じて指数的に確率が下がる単純な誤りモデル`P(x|w)`を組み合わせ、`P(x|w) × P(w)`が最大になる訂正候補を選ぶ。`"teh"`→`"the"`のような典型的な入れ替えミスが正しく訂正されることを検証する。
+
+```python
+def edit_distance(a: str, b: str) -> int:
+    n, m = len(a), len(b)
+    dp = [[0] * (m + 1) for _ in range(n + 1)]
+    for i in range(n + 1):
+        dp[i][0] = i
+    for j in range(m + 1):
+        dp[0][j] = j
+    for i in range(1, n + 1):
+        for j in range(1, m + 1):
+            cost = 0 if a[i - 1] == b[j - 1] else 1
+            dp[i][j] = min(dp[i - 1][j] + 1, dp[i][j - 1] + 1, dp[i - 1][j - 1] + cost)
+    return dp[n][m]
+
+
+def noisy_channel_correct(
+    word: str, dictionary_freq: dict[str, int], max_edit_distance: int = 2
+) -> str:
+    total_freq = sum(dictionary_freq.values())
+    candidates: list[tuple[str, float]] = []
+    for candidate, freq in dictionary_freq.items():
+        d = edit_distance(word, candidate)
+        if d <= max_edit_distance:
+            prior = freq / total_freq  # P(w): 単語の一般的な使われやすさ
+            error_prob = 0.9 if d == 0 else 0.1**d  # P(x|w): 誤りモデル
+            candidates.append((candidate, prior * error_prob))
+    if not candidates:
+        return word
+    return max(candidates, key=lambda c: c[1])[0]
+
+
+dictionary_freq = {"the": 1000, "then": 50, "them": 40, "tea": 5, "ten": 20}
+print(noisy_channel_correct("teh", dictionary_freq))  # "the"
+```
+
+```typescript
+function editDistance(a: string, b: string): number {
+  const [n, m] = [a.length, b.length];
+  const dp: number[][] = Array.from({ length: n + 1 }, () => new Array(m + 1).fill(0));
+  for (let i = 0; i <= n; i++) dp[i][0] = i;
+  for (let j = 0; j <= m; j++) dp[0][j] = j;
+  for (let i = 1; i <= n; i++) {
+    for (let j = 1; j <= m; j++) {
+      const cost = a[i - 1] === b[j - 1] ? 0 : 1;
+      dp[i][j] = Math.min(dp[i - 1][j] + 1, dp[i][j - 1] + 1, dp[i - 1][j - 1] + cost);
+    }
+  }
+  return dp[n][m];
+}
+
+function noisyChannelCorrect(word: string, dictionaryFreq: Map<string, number>, maxEditDistance = 2): string {
+  const totalFreq = [...dictionaryFreq.values()].reduce((a, b) => a + b, 0);
+  const candidates: [string, number][] = [];
+  for (const [candidate, freq] of dictionaryFreq) {
+    const d = editDistance(word, candidate);
+    if (d <= maxEditDistance) {
+      const prior = freq / totalFreq; // P(w): 単語の一般的な使われやすさ
+      const errorProb = d === 0 ? 0.9 : Math.pow(0.1, d); // P(x|w): 誤りモデル
+      candidates.push([candidate, prior * errorProb]);
+    }
+  }
+  if (candidates.length === 0) return word;
+  return candidates.reduce((best, c) => (c[1] > best[1] ? c : best))[0];
+}
+```
+
+```cpp
+#include <string>
+#include <unordered_map>
+#include <vector>
+#include <algorithm>
+#include <cmath>
+
+int editDistance(const std::string& a, const std::string& b) {
+    int n = static_cast<int>(a.size()), m = static_cast<int>(b.size());
+    std::vector<std::vector<int>> dp(n + 1, std::vector<int>(m + 1, 0));
+    for (int i = 0; i <= n; i++) dp[i][0] = i;
+    for (int j = 0; j <= m; j++) dp[0][j] = j;
+    for (int i = 1; i <= n; i++) {
+        for (int j = 1; j <= m; j++) {
+            int cost = a[i - 1] == b[j - 1] ? 0 : 1;
+            dp[i][j] = std::min({dp[i - 1][j] + 1, dp[i][j - 1] + 1, dp[i - 1][j - 1] + cost});
+        }
+    }
+    return dp[n][m];
+}
+
+std::string noisyChannelCorrect(
+    const std::string& word,
+    const std::unordered_map<std::string, int>& dictionaryFreq,
+    int maxEditDistance = 2) {
+    int totalFreq = 0;
+    for (const auto& [w, freq] : dictionaryFreq) totalFreq += freq;
+
+    std::string best;
+    double bestScore = -1.0;
+    for (const auto& [candidate, freq] : dictionaryFreq) {
+        int d = editDistance(word, candidate);
+        if (d <= maxEditDistance) {
+            double prior = static_cast<double>(freq) / totalFreq;      // P(w)
+            double errorProb = d == 0 ? 0.9 : std::pow(0.1, d);        // P(x|w)
+            double score = prior * errorProb;
+            if (score > bestScore) { bestScore = score; best = candidate; }
+        }
+    }
+    return bestScore < 0 ? word : best;
+}
+```
+
+```rust
+use std::collections::HashMap;
+
+fn edit_distance(a: &str, b: &str) -> usize {
+    let (a, b): (Vec<char>, Vec<char>) = (a.chars().collect(), b.chars().collect());
+    let (n, m) = (a.len(), b.len());
+    let mut dp = vec![vec![0usize; m + 1]; n + 1];
+    for i in 0..=n { dp[i][0] = i; }
+    for j in 0..=m { dp[0][j] = j; }
+    for i in 1..=n {
+        for j in 1..=m {
+            let cost = if a[i - 1] == b[j - 1] { 0 } else { 1 };
+            dp[i][j] = (dp[i - 1][j] + 1).min(dp[i][j - 1] + 1).min(dp[i - 1][j - 1] + cost);
+        }
+    }
+    dp[n][m]
+}
+
+fn noisy_channel_correct(word: &str, dictionary_freq: &HashMap<String, i32>, max_edit_distance: usize) -> String {
+    let total_freq: i32 = dictionary_freq.values().sum();
+    let mut best_candidate = word.to_string();
+    let mut best_score = -1.0_f64;
+
+    for (candidate, &freq) in dictionary_freq {
+        let d = edit_distance(word, candidate);
+        if d <= max_edit_distance {
+            let prior = freq as f64 / total_freq as f64; // P(w)
+            let error_prob = if d == 0 { 0.9 } else { 0.1_f64.powi(d as i32) }; // P(x|w)
+            let score = prior * error_prob;
+            if score > best_score {
+                best_score = score;
+                best_candidate = candidate.clone();
+            }
+        }
+    }
+    best_candidate
+}
+```
+
+```csharp
+static int EditDistance(string a, string b)
+{
+    int n = a.Length, m = b.Length;
+    var dp = new int[n + 1, m + 1];
+    for (int i = 0; i <= n; i++) dp[i, 0] = i;
+    for (int j = 0; j <= m; j++) dp[0, j] = j;
+    for (int i = 1; i <= n; i++)
+    {
+        for (int j = 1; j <= m; j++)
+        {
+            int cost = a[i - 1] == b[j - 1] ? 0 : 1;
+            dp[i, j] = Math.Min(Math.Min(dp[i - 1, j] + 1, dp[i, j - 1] + 1), dp[i - 1, j - 1] + cost);
+        }
+    }
+    return dp[n, m];
+}
+
+static string NoisyChannelCorrect(string word, Dictionary<string, int> dictionaryFreq, int maxEditDistance = 2)
+{
+    int totalFreq = dictionaryFreq.Values.Sum();
+    string best = word;
+    double bestScore = -1;
+
+    foreach (var (candidate, freq) in dictionaryFreq)
+    {
+        int d = EditDistance(word, candidate);
+        if (d <= maxEditDistance)
+        {
+            double prior = (double)freq / totalFreq;               // P(w)
+            double errorProb = d == 0 ? 0.9 : Math.Pow(0.1, d);     // P(x|w)
+            double score = prior * errorProb;
+            if (score > bestScore) { bestScore = score; best = candidate; }
+        }
+    }
+    return best;
+}
+```

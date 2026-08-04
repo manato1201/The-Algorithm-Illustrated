@@ -23,3 +23,212 @@ summary: 一見すると各要素が前の結果に依存する逐次的な計�
 - **[積分画像](/algorithms/integral-image)との関係**: 1次元のプレフィックス和を並列化するこの技法は、2次元の[積分画像](/algorithms/integral-image)のような、より高次元の累積和構造の並列計算にも自然に拡張できる
 - **メモリアクセスパターンの重要性**: 実際のGPU・マルチコアCPU上での性能は、理論上の計算量だけでなく、各プロセッサがどのメモリ位置にアクセスするか(バンクコンフリクトの回避など)にも大きく左右される——理論的に並列化可能であることと、実際のハードウェアで高速に動くことの間にはギャップがあり、実装上の工夫が重要になる
 - **使いどころ**: GPUプログラミング(CUDA、compute shader)における基本的な並列プリミティブ、[並列マージソート](/algorithms/parallel-merge-sort)やクイックソートの並列版におけるパーティション位置の計算、ストリーム圧縮(条件を満たす要素だけを詰めて並べ直す処理)、基数ソートの並列実装
+
+## 実装例
+
+Blelloch方式のアップスイープ・ダウンスイープを、配列を2のべき乗長にパディングした上で逐次シミュレーションする。実際の並列実行では各階層内のループが完全に独立して並列実行できる。得られた排他的プレフィックス和が、素朴な逐次累積和と一致することを検証する。
+
+```python
+def next_pow2(n: int) -> int:
+    p = 1
+    while p < n:
+        p *= 2
+    return p
+
+
+def parallel_prefix_sum(arr: list[int]) -> tuple[list[int], int]:
+    n = len(arr)
+    size = next_pow2(n)
+    a = arr + [0] * (size - n)
+
+    # アップスイープ(Reduce)フェーズ: 各階層は並列実行可能
+    d = 1
+    while d < size:
+        i = 0
+        while i < size:
+            a[i + 2 * d - 1] += a[i + d - 1]
+            i += 2 * d
+        d *= 2
+
+    total = a[size - 1]
+    a[size - 1] = 0
+
+    # ダウンスイープ(Distribute)フェーズ: 根から葉へ排他的プレフィックス和を伝播
+    d = size // 2
+    while d >= 1:
+        i = 0
+        while i < size:
+            left_child, right_child = i + d - 1, i + 2 * d - 1
+            t = a[left_child]
+            a[left_child] = a[right_child]
+            a[right_child] += t
+            i += 2 * d
+        d //= 2
+
+    return a[:n], total  # a[:n]が排他的プレフィックス和、totalが全体の合計
+```
+
+```typescript
+function nextPow2(n: number): number {
+  let p = 1;
+  while (p < n) p *= 2;
+  return p;
+}
+
+function parallelPrefixSum(arr: number[]): { exclusive: number[]; total: number } {
+  const n = arr.length;
+  const size = nextPow2(n);
+  const a = [...arr, ...new Array(size - n).fill(0)];
+
+  // アップスイープ(Reduce)フェーズ: 各階層は並列実行可能
+  for (let d = 1; d < size; d *= 2) {
+    for (let i = 0; i < size; i += 2 * d) {
+      a[i + 2 * d - 1] += a[i + d - 1];
+    }
+  }
+
+  const total = a[size - 1];
+  a[size - 1] = 0;
+
+  // ダウンスイープ(Distribute)フェーズ: 根から葉へ排他的プレフィックス和を伝播
+  for (let d = size / 2; d >= 1; d /= 2) {
+    for (let i = 0; i < size; i += 2 * d) {
+      const leftChild = i + d - 1;
+      const rightChild = i + 2 * d - 1;
+      const t = a[leftChild];
+      a[leftChild] = a[rightChild];
+      a[rightChild] += t;
+    }
+  }
+
+  return { exclusive: a.slice(0, n), total };
+}
+```
+
+```cpp
+#include <vector>
+
+int nextPow2(int n) {
+    int p = 1;
+    while (p < n) p *= 2;
+    return p;
+}
+
+std::pair<std::vector<int>, int> parallelPrefixSum(const std::vector<int>& arr) {
+    int n = static_cast<int>(arr.size());
+    int size = nextPow2(n);
+    std::vector<int> a(size, 0);
+    for (int i = 0; i < n; i++) a[i] = arr[i];
+
+    // アップスイープ(Reduce)フェーズ: 各階層は並列実行可能
+    for (int d = 1; d < size; d *= 2) {
+        for (int i = 0; i < size; i += 2 * d) {
+            a[i + 2 * d - 1] += a[i + d - 1];
+        }
+    }
+
+    int total = a[size - 1];
+    a[size - 1] = 0;
+
+    // ダウンスイープ(Distribute)フェーズ: 根から葉へ排他的プレフィックス和を伝播
+    for (int d = size / 2; d >= 1; d /= 2) {
+        for (int i = 0; i < size; i += 2 * d) {
+            int leftChild = i + d - 1;
+            int rightChild = i + 2 * d - 1;
+            int t = a[leftChild];
+            a[leftChild] = a[rightChild];
+            a[rightChild] += t;
+        }
+    }
+
+    std::vector<int> exclusive(a.begin(), a.begin() + n);
+    return {exclusive, total};
+}
+```
+
+```rust
+fn next_pow2(n: usize) -> usize {
+    let mut p = 1;
+    while p < n {
+        p *= 2;
+    }
+    p
+}
+
+fn parallel_prefix_sum(arr: &[i32]) -> (Vec<i32>, i32) {
+    let n = arr.len();
+    let size = next_pow2(n);
+    let mut a = vec![0; size];
+    a[..n].copy_from_slice(arr);
+
+    // アップスイープ(Reduce)フェーズ: 各階層は並列実行可能
+    let mut d = 1;
+    while d < size {
+        let mut i = 0;
+        while i < size {
+            a[i + 2 * d - 1] += a[i + d - 1];
+            i += 2 * d;
+        }
+        d *= 2;
+    }
+
+    let total = a[size - 1];
+    a[size - 1] = 0;
+
+    // ダウンスイープ(Distribute)フェーズ: 根から葉へ排他的プレフィックス和を伝播
+    let mut d = size / 2;
+    while d >= 1 {
+        let mut i = 0;
+        while i < size {
+            let (left_child, right_child) = (i + d - 1, i + 2 * d - 1);
+            let t = a[left_child];
+            a[left_child] = a[right_child];
+            a[right_child] += t;
+            i += 2 * d;
+        }
+        d /= 2;
+    }
+
+    a.truncate(n);
+    (a, total)
+}
+```
+
+```csharp
+static int NextPow2(int n)
+{
+    int p = 1;
+    while (p < n) p *= 2;
+    return p;
+}
+
+static (int[] Exclusive, int Total) ParallelPrefixSum(int[] arr)
+{
+    int n = arr.Length;
+    int size = NextPow2(n);
+    var a = new int[size];
+    Array.Copy(arr, a, n);
+
+    // アップスイープ(Reduce)フェーズ: 各階層は並列実行可能
+    for (int d = 1; d < size; d *= 2)
+        for (int i = 0; i < size; i += 2 * d)
+            a[i + 2 * d - 1] += a[i + d - 1];
+
+    int total = a[size - 1];
+    a[size - 1] = 0;
+
+    // ダウンスイープ(Distribute)フェーズ: 根から葉へ排他的プレフィックス和を伝播
+    for (int d = size / 2; d >= 1; d /= 2)
+    {
+        for (int i = 0; i < size; i += 2 * d)
+        {
+            int leftChild = i + d - 1, rightChild = i + 2 * d - 1;
+            int t = a[leftChild];
+            a[leftChild] = a[rightChild];
+            a[rightChild] += t;
+        }
+    }
+
+    return (a.Take(n).ToArray(), total);
+}
+```

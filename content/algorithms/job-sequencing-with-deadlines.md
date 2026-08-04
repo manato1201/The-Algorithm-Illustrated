@@ -24,3 +24,131 @@ summary: 各ジョブに締切と利益が設定されているとき、それ�
 - **貪欲選択の正当性**: 利益の高い順に選び、かつ各ジョブを「割り当て可能な最も遅いスロット」に置くという2つの貪欲判断の組み合わせが最適性を保証する——交換論法により、利益の高いジョブを後回しにしたり、より早いスロットに割り当てたりする解は、常に今回の貪欲戦略の解以下の利益しか得られないことが示せる
 - **[Union-Find](/algorithms/union-find)を貪欲法の高速化に応用する好例**: 一見グラフの連結性判定のためのデータ構造に見える[Union-Find](/algorithms/union-find)が、「使用可能な最大のスロット番号を素早く見つける」という全く異なる目的にも応用できる点は、データ構造の汎用性を示す興味深い応用例になっている
 - **使いどころ**: 締切のあるタスクの優先度スケジューリング、CPUの単一プロセッサジョブスケジューリング、広告枠のような限られた時間スロットへの入札案件の割り当て最適化
+
+## 実装例
+
+```python
+def job_sequencing(jobs: list[tuple[str, int, int]]) -> tuple[list[str], int]:
+    """jobs: (id, deadline, profit) のリスト。利益降順に処理し、締切以前の最も遅い空きスロットに割り当てる"""
+    jobs_sorted = sorted(jobs, key=lambda j: j[2], reverse=True)
+    max_deadline = max(j[1] for j in jobs) if jobs else 0
+    slots: list[str | None] = [None] * (max_deadline + 1)  # 1-indexed、slots[0]は未使用
+    total_profit = 0
+    scheduled = []
+    for job_id, deadline, profit in jobs_sorted:
+        for slot in range(min(deadline, max_deadline), 0, -1):
+            if slots[slot] is None:
+                slots[slot] = job_id
+                total_profit += profit
+                scheduled.append(job_id)
+                break
+    return scheduled, total_profit
+```
+
+```typescript
+type Job = [string, number, number]; // id, deadline, profit
+
+function jobSequencing(jobs: Job[]): { scheduled: string[]; totalProfit: number } {
+  const sorted = [...jobs].sort((a, b) => b[2] - a[2]);
+  const maxDeadline = Math.max(...jobs.map((j) => j[1]));
+  const slots: (string | null)[] = new Array(maxDeadline + 1).fill(null);
+  let totalProfit = 0;
+  const scheduled: string[] = [];
+  for (const [id, deadline, profit] of sorted) {
+    for (let slot = Math.min(deadline, maxDeadline); slot > 0; slot--) {
+      if (slots[slot] === null) {
+        slots[slot] = id;
+        totalProfit += profit;
+        scheduled.push(id);
+        break;
+      }
+    }
+  }
+  return { scheduled, totalProfit };
+}
+```
+
+```cpp
+#include <vector>
+#include <string>
+#include <algorithm>
+#include <tuple>
+#include <optional>
+
+struct Job { std::string id; int deadline; int profit; };
+
+std::pair<std::vector<std::string>, int> jobSequencing(std::vector<Job> jobs) {
+    std::sort(jobs.begin(), jobs.end(), [](const Job& a, const Job& b) { return a.profit > b.profit; });
+    int maxDeadline = 0;
+    for (const auto& j : jobs) maxDeadline = std::max(maxDeadline, j.deadline);
+    std::vector<std::optional<std::string>> slots(maxDeadline + 1);
+    int totalProfit = 0;
+    std::vector<std::string> scheduled;
+    for (const auto& job : jobs) {
+        for (int slot = std::min(job.deadline, maxDeadline); slot > 0; slot--) {
+            if (!slots[slot].has_value()) {
+                slots[slot] = job.id;
+                totalProfit += job.profit;
+                scheduled.push_back(job.id);
+                break;
+            }
+        }
+    }
+    return {scheduled, totalProfit};
+}
+```
+
+```rust
+struct Job {
+    id: String,
+    deadline: usize,
+    profit: i32,
+}
+
+fn job_sequencing(jobs: &[Job]) -> (Vec<String>, i32) {
+    let mut sorted: Vec<&Job> = jobs.iter().collect();
+    sorted.sort_by(|a, b| b.profit.cmp(&a.profit));
+    let max_deadline = jobs.iter().map(|j| j.deadline).max().unwrap_or(0);
+    let mut slots: Vec<Option<String>> = vec![None; max_deadline + 1];
+    let mut total_profit = 0;
+    let mut scheduled = Vec::new();
+    for job in sorted {
+        let mut slot = job.deadline.min(max_deadline);
+        while slot > 0 {
+            if slots[slot].is_none() {
+                slots[slot] = Some(job.id.clone());
+                total_profit += job.profit;
+                scheduled.push(job.id.clone());
+                break;
+            }
+            slot -= 1;
+        }
+    }
+    (scheduled, total_profit)
+}
+```
+
+```csharp
+static (List<string> scheduled, int totalProfit) JobSequencing(List<(string id, int deadline, int profit)> jobs)
+{
+    var sorted = jobs.OrderByDescending(j => j.profit).ToList();
+    int maxDeadline = jobs.Max(j => j.deadline);
+    var slots = new string?[maxDeadline + 1];
+    int totalProfit = 0;
+    var scheduled = new List<string>();
+    foreach (var (id, deadline, profit) in sorted)
+    {
+        for (int slot = Math.Min(deadline, maxDeadline); slot > 0; slot--)
+        {
+            if (slots[slot] == null)
+            {
+                slots[slot] = id;
+                totalProfit += profit;
+                scheduled.Add(id);
+                break;
+            }
+        }
+    }
+    return (scheduled, totalProfit);
+}
+```

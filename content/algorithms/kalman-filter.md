@@ -24,3 +24,116 @@ GPSの位置情報にはノイズが乗り、加速度センサーの読み取�
 - **線形性とガウス分布の仮定**: 標準的なカルマンフィルタは、システムの動きが線形であり、ノイズがガウス分布(正規分布)に従うことを仮定した上で、その条件下で数学的に最適な推定量であることが証明されている。非線形なシステムには、モデルを局所的に線形近似する拡張カルマンフィルタ(EKF)や、確率分布をサンプル点の集合で表現する[パーティクルフィルタ](/algorithms/particle-filter)のような発展形が必要になる
 - **信頼度の自動的な重み付け**: センサーの精度が悪化した(ノイズが増えた)状況でも、カルマンゲインの計算に組み込まれた不確実性の情報が自動的に観測値への依存度を下げ、予測モデルにより重きを置くよう調整される——この自己適応的な重み付けが、単純な平均化とは異なるカルマンフィルタの数学的な強さの源泉になっている
 - **使いどころ**: GPS・慣性センサーを組み合わせたロボット・ドローン・自動運転車の自己位置推定(センサーフュージョン)、宇宙船の航法システム、金融時系列データのノイズ除去とトレンド推定、[Lucas-Kanade法](/algorithms/lucas-kanade-optical-flow)による物体追跡結果の平滑化
+
+## 実装例
+
+```python
+def kalman_1d(
+    measurements: list[float],
+    x0: float,
+    p0: float,
+    process_var: float,
+    meas_var: float,
+) -> list[float]:
+    """1次元スカラーカルマンフィルタ(静止量を観測するモデル)。各観測後の推定値を返す。"""
+    x, p = x0, p0
+    estimates = []
+    for z in measurements:
+        # 予測ステップ(静止モデルなので状態自体は変化せず、不確実性だけ増える)
+        x_pred = x
+        p_pred = p + process_var
+        # 更新ステップ(カルマンゲインで予測と観測を融合)
+        k = p_pred / (p_pred + meas_var)
+        x = x_pred + k * (z - x_pred)
+        p = (1 - k) * p_pred
+        estimates.append(x)
+    return estimates
+```
+
+```typescript
+function kalman1D(
+  measurements: number[],
+  x0: number,
+  p0: number,
+  processVar: number,
+  measVar: number
+): number[] {
+  let x = x0;
+  let p = p0;
+  const estimates: number[] = [];
+  for (const z of measurements) {
+    // 予測ステップ(静止モデルなので状態自体は変化せず、不確実性だけ増える)
+    const xPred = x;
+    const pPred = p + processVar;
+    // 更新ステップ(カルマンゲインで予測と観測を融合)
+    const k = pPred / (pPred + measVar);
+    x = xPred + k * (z - xPred);
+    p = (1 - k) * pPred;
+    estimates.push(x);
+  }
+  return estimates;
+}
+```
+
+```cpp
+#include <vector>
+
+std::vector<double> kalman1D(
+    const std::vector<double>& measurements,
+    double x0, double p0, double processVar, double measVar) {
+    double x = x0, p = p0;
+    std::vector<double> estimates;
+    estimates.reserve(measurements.size());
+    for (double z : measurements) {
+        // 予測ステップ
+        double xPred = x;
+        double pPred = p + processVar;
+        // 更新ステップ
+        double k = pPred / (pPred + measVar);
+        x = xPred + k * (z - xPred);
+        p = (1 - k) * pPred;
+        estimates.push_back(x);
+    }
+    return estimates;
+}
+```
+
+```rust
+fn kalman_1d(measurements: &[f64], x0: f64, p0: f64, process_var: f64, meas_var: f64) -> Vec<f64> {
+    let mut x = x0;
+    let mut p = p0;
+    let mut estimates = Vec::with_capacity(measurements.len());
+    for &z in measurements {
+        // 予測ステップ
+        let x_pred = x;
+        let p_pred = p + process_var;
+        // 更新ステップ
+        let k = p_pred / (p_pred + meas_var);
+        x = x_pred + k * (z - x_pred);
+        p = (1.0 - k) * p_pred;
+        estimates.push(x);
+    }
+    estimates
+}
+```
+
+```csharp
+static List<double> Kalman1D(
+    List<double> measurements, double x0, double p0, double processVar, double measVar)
+{
+    double x = x0, p = p0;
+    var estimates = new List<double>();
+    foreach (var z in measurements)
+    {
+        // 予測ステップ
+        double xPred = x;
+        double pPred = p + processVar;
+        // 更新ステップ
+        double k = pPred / (pPred + measVar);
+        x = xPred + k * (z - xPred);
+        p = (1 - k) * pPred;
+        estimates.Add(x);
+    }
+    return estimates;
+}
+```

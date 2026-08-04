@@ -24,3 +24,226 @@ summary: "[Word2Vec(Skip-gram)](/algorithms/word2vec-skip-gram)が局所的な�
 - **[Word2Vec](/algorithms/word2vec-skip-gram)との位置づけ**: [Word2Vec](/algorithms/word2vec-skip-gram)は局所的な予測タスク(周囲の単語を当てる)を通じて間接的に大域的な統計を学習するのに対し、GloVeは大域的な共起統計を明示的な目的関数として直接最適化する——理論的な出発点は異なるが、得られる単語ベクトルの性質(意味的な類似度、"king - man + woman ≈ queen"のような加法構成性)は驚くほど似ていることが実証されている
 - **静的な埋め込みという世代的な制約**: GloVeも[Word2Vec](/algorithms/word2vec-skip-gram)と同様、各単語に文脈によらない1つの固定ベクトルしか割り当てられない(”bank”が「銀行」と「川岸」のどちらの意味でも同じベクトル)。この制約は、後のBERT等の文脈依存埋め込みモデルによって克服されることになる
 - **使いどころ**: 検索エンジンにおけるクエリ拡張(意味的に近い単語の発見)、機械学習モデルの入力特徴量としての単語ベクトル利用、単語間の類似度・アナロジー(”パリ-フランス+日本≈東京”)の計算、[潜在意味解析](/algorithms/latent-semantic-analysis)や[Word2Vec](/algorithms/word2vec-skip-gram)と並ぶ、深層学習以前の分散表現学習の代表的な到達点
+
+## 実装例
+
+小さなトイコーパスから共起行列を構築し、重み付き最小二乗損失を[勾配降下法](/algorithms/gradient-descent)で最小化する簡易版GloVe。
+
+```python
+import math
+from collections import defaultdict
+
+
+def build_cooccurrence(corpus: list[list[str]], window: int) -> dict[tuple[str, str], float]:
+    cooc: dict[tuple[str, str], float] = defaultdict(float)
+    for sentence in corpus:
+        for i, wi in enumerate(sentence):
+            for dist in range(1, window + 1):
+                j = i + dist
+                if j >= len(sentence):
+                    break
+                wj = sentence[j]
+                weight = 1.0 / dist  # 遠い共起ほど重みを下げる
+                cooc[(wi, wj)] += weight
+                cooc[(wj, wi)] += weight
+    return cooc
+
+
+def weighting_fn(x: float, x_max: float = 100.0, alpha: float = 0.75) -> float:
+    return (x / x_max) ** alpha if x < x_max else 1.0
+
+
+def train_glove(
+    cooc: dict[tuple[str, str], float], vocab: list[str], dim: int, iterations: int, lr: float,
+) -> dict[str, list[float]]:
+    w = {word: [0.1 * (hash((word, d)) % 10 - 5) for d in range(dim)] for word in vocab}
+    wt = {word: [0.1 * (hash((word, "t", d)) % 10 - 5) for d in range(dim)] for word in vocab}
+    b = {word: 0.0 for word in vocab}
+    bt = {word: 0.0 for word in vocab}
+    pairs = list(cooc.items())
+
+    for _ in range(iterations):
+        for (wi, wj), xij in pairs:
+            dot = sum(w[wi][d] * wt[wj][d] for d in range(dim))
+            diff = dot + b[wi] + bt[wj] - math.log(xij)
+            weight = weighting_fn(xij)
+            grad_common = weight * diff
+            for d in range(dim):
+                grad_w = grad_common * wt[wj][d]
+                grad_wt = grad_common * w[wi][d]
+                w[wi][d] -= lr * grad_w
+                wt[wj][d] -= lr * grad_wt
+            b[wi] -= lr * grad_common
+            bt[wj] -= lr * grad_common
+
+    # 最終的な単語ベクトルは w と wt の和(GloVe論文の慣例)
+    return {word: [w[word][d] + wt[word][d] for d in range(dim)] for word in vocab}
+```
+
+```typescript
+function buildCooccurrence(corpus: string[][], window: number): Map<string, number> {
+  const cooc = new Map<string, number>();
+  const add = (a: string, b: string, weight: number) => {
+    const key = `${a}|${b}`;
+    cooc.set(key, (cooc.get(key) ?? 0) + weight);
+  };
+  for (const sentence of corpus) {
+    for (let i = 0; i < sentence.length; i++) {
+      for (let dist = 1; dist <= window; dist++) {
+        const j = i + dist;
+        if (j >= sentence.length) break;
+        const weight = 1.0 / dist;
+        add(sentence[i], sentence[j], weight);
+        add(sentence[j], sentence[i], weight);
+      }
+    }
+  }
+  return cooc;
+}
+
+function weightingFn(x: number, xMax = 100.0, alpha = 0.75): number {
+  return x < xMax ? Math.pow(x / xMax, alpha) : 1.0;
+}
+
+function trainGlove(
+  cooc: Map<string, number>,
+  vocab: string[],
+  dim: number,
+  iterations: number,
+  lr: number,
+  rng: () => number
+): Map<string, number[]> {
+  const w = new Map(vocab.map((word) => [word, Array.from({ length: dim }, () => rng() - 0.5)]));
+  const wt = new Map(vocab.map((word) => [word, Array.from({ length: dim }, () => rng() - 0.5)]));
+  const b = new Map(vocab.map((word) => [word, 0]));
+  const bt = new Map(vocab.map((word) => [word, 0]));
+  const pairs = [...cooc.entries()].map(([key, xij]) => {
+    const [wi, wj] = key.split("|");
+    return { wi, wj, xij };
+  });
+
+  for (let it = 0; it < iterations; it++) {
+    for (const { wi, wj, xij } of pairs) {
+      const wvi = w.get(wi)!, wtvj = wt.get(wj)!;
+      let dot = 0;
+      for (let d = 0; d < dim; d++) dot += wvi[d] * wtvj[d];
+      const diff = dot + b.get(wi)! + bt.get(wj)! - Math.log(xij);
+      const gradCommon = weightingFn(xij) * diff;
+      for (let d = 0; d < dim; d++) {
+        wvi[d] -= lr * gradCommon * wtvj[d];
+        wtvj[d] -= lr * gradCommon * wvi[d];
+      }
+      b.set(wi, b.get(wi)! - lr * gradCommon);
+      bt.set(wj, bt.get(wj)! - lr * gradCommon);
+    }
+  }
+
+  return new Map(vocab.map((word) => [word, w.get(word)!.map((v, d) => v + wt.get(word)![d])]));
+}
+```
+
+```cpp
+#include <vector>
+#include <string>
+#include <unordered_map>
+#include <cmath>
+
+using Cooc = std::unordered_map<std::string, double>; // key: "wi|wj"
+
+double weightingFn(double x, double xMax = 100.0, double alpha = 0.75) {
+    return x < xMax ? std::pow(x / xMax, alpha) : 1.0;
+}
+
+void gloveStep(
+    std::unordered_map<std::string, std::vector<double>>& w,
+    std::unordered_map<std::string, std::vector<double>>& wt,
+    std::unordered_map<std::string, double>& b,
+    std::unordered_map<std::string, double>& bt,
+    const std::vector<std::tuple<std::string, std::string, double>>& pairs,
+    int dim, double lr) {
+
+    for (const auto& [wi, wj, xij] : pairs) {
+        auto& wvi = w[wi];
+        auto& wtvj = wt[wj];
+        double dot = 0.0;
+        for (int d = 0; d < dim; d++) dot += wvi[d] * wtvj[d];
+        double diff = dot + b[wi] + bt[wj] - std::log(xij);
+        double gradCommon = weightingFn(xij) * diff;
+        for (int d = 0; d < dim; d++) {
+            double gradW = gradCommon * wtvj[d];
+            double gradWt = gradCommon * wvi[d];
+            wvi[d] -= lr * gradW;
+            wtvj[d] -= lr * gradWt;
+        }
+        b[wi] -= lr * gradCommon;
+        bt[wj] -= lr * gradCommon;
+    }
+}
+```
+
+```rust
+use std::collections::HashMap;
+
+fn weighting_fn(x: f64, x_max: f64, alpha: f64) -> f64 {
+    if x < x_max {
+        (x / x_max).powf(alpha)
+    } else {
+        1.0
+    }
+}
+
+fn glove_step(
+    w: &mut HashMap<String, Vec<f64>>,
+    wt: &mut HashMap<String, Vec<f64>>,
+    b: &mut HashMap<String, f64>,
+    bt: &mut HashMap<String, f64>,
+    pairs: &[(String, String, f64)],
+    dim: usize,
+    lr: f64,
+) {
+    for (wi, wj, xij) in pairs {
+        let dot: f64 = (0..dim).map(|d| w[wi][d] * wt[wj][d]).sum();
+        let diff = dot + b[wi] + bt[wj] - xij.ln();
+        let grad_common = weighting_fn(*xij, 100.0, 0.75) * diff;
+
+        let wvi_old = w[wi].clone();
+        let wtvj_old = wt[wj].clone();
+        for d in 0..dim {
+            w.get_mut(wi).unwrap()[d] -= lr * grad_common * wtvj_old[d];
+            wt.get_mut(wj).unwrap()[d] -= lr * grad_common * wvi_old[d];
+        }
+        *b.get_mut(wi).unwrap() -= lr * grad_common;
+        *bt.get_mut(wj).unwrap() -= lr * grad_common;
+    }
+}
+```
+
+```csharp
+static double WeightingFn(double x, double xMax = 100.0, double alpha = 0.75) =>
+    x < xMax ? Math.Pow(x / xMax, alpha) : 1.0;
+
+static void GloveStep(
+    Dictionary<string, double[]> w, Dictionary<string, double[]> wt,
+    Dictionary<string, double> b, Dictionary<string, double> bt,
+    List<(string wi, string wj, double xij)> pairs, int dim, double lr)
+{
+    foreach (var (wi, wj, xij) in pairs)
+    {
+        var wvi = w[wi];
+        var wtvj = wt[wj];
+        double dot = 0;
+        for (int d = 0; d < dim; d++) dot += wvi[d] * wtvj[d];
+        double diff = dot + b[wi] + bt[wj] - Math.Log(xij);
+        double gradCommon = WeightingFn(xij) * diff;
+        for (int d = 0; d < dim; d++)
+        {
+            double gradW = gradCommon * wtvj[d];
+            double gradWt = gradCommon * wvi[d];
+            wvi[d] -= lr * gradW;
+            wtvj[d] -= lr * gradWt;
+        }
+        b[wi] -= lr * gradCommon;
+        bt[wj] -= lr * gradCommon;
+    }
+}
+```

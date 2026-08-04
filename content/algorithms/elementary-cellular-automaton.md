@@ -24,3 +24,123 @@ summary: 1次元に並んだ白黒2状態のセルが、自分と両隣3セル�
 - **ウルフラムによる4つのクラス分類**: 256通りの規則は、その振る舞いによって「クラス1(すぐに単調な状態に収束)」「クラス2(単純な周期パターンを繰り返す)」「クラス3(ランダムに見えるカオス的な模様)」「クラス4(局所的な構造が複雑に相互作用し続ける、Rule 110のように計算能力を持つ)」の4つに分類できることが示されており、単純な規則から複雑さがどう生まれるかを研究する複雑系科学の基礎的な分類法になっている
 - **決定論的な規則から予測不可能な複雑さが生まれるという逆説**: Rule 30は完全に決定論的(乱数を一切使わない)であるにもかかわらず、生成されるパターンは統計的検定をパスするほど「ランダムに見える」——実際にMathematica(ウルフラムが開発した数式処理システム)の擬似乱数生成器の一部として実際に採用されたことがある
 - **使いどころ**: 複雑系科学・人工生命の研究(単純な局所規則から創発する複雑さの研究)、暗号学における擬似乱数生成(Rule 30ベース)、計算理論の教育教材(Rule 110のチューリング完全性証明)、テクスチャ生成(貝殻の模様の一部はセルオートマトンに似た化学反応で形成されることが知られている)
+
+## 実装例
+
+```python
+def elementary_ca(rule: int, initial: list[int], generations: int) -> list[list[int]]:
+    rule_bits = [(rule >> i) & 1 for i in range(8)]
+    rows = [initial]
+    current = initial
+    n = len(initial)
+    for _ in range(generations - 1):
+        nxt = [0] * n
+        for i in range(n):
+            left = current[i - 1] if i > 0 else 0
+            mid = current[i]
+            right = current[i + 1] if i < n - 1 else 0
+            pattern = (left << 2) | (mid << 1) | right
+            nxt[i] = rule_bits[pattern]
+        rows.append(nxt)
+        current = nxt
+    return rows
+```
+
+```typescript
+function elementaryCA(rule: number, initial: number[], generations: number): number[][] {
+  const ruleBits = Array.from({ length: 8 }, (_, i) => (rule >> i) & 1);
+  const rows: number[][] = [initial];
+  let current = initial;
+  const n = initial.length;
+  for (let g = 0; g < generations - 1; g++) {
+    const next = new Array(n).fill(0);
+    for (let i = 0; i < n; i++) {
+      const left = i > 0 ? current[i - 1] : 0;
+      const mid = current[i];
+      const right = i < n - 1 ? current[i + 1] : 0;
+      const pattern = (left << 2) | (mid << 1) | right;
+      next[i] = ruleBits[pattern];
+    }
+    rows.push(next);
+    current = next;
+  }
+  return rows;
+}
+```
+
+```cpp
+#include <vector>
+
+std::vector<std::vector<int>> elementaryCA(int rule, const std::vector<int>& initial, int generations) {
+    std::vector<int> ruleBits(8);
+    for (int i = 0; i < 8; i++) ruleBits[i] = (rule >> i) & 1;
+
+    std::vector<std::vector<int>> rows;
+    rows.push_back(initial);
+    std::vector<int> current = initial;
+    int n = static_cast<int>(initial.size());
+
+    for (int g = 0; g < generations - 1; g++) {
+        std::vector<int> next(n, 0);
+        for (int i = 0; i < n; i++) {
+            int left = i > 0 ? current[i - 1] : 0;
+            int mid = current[i];
+            int right = i < n - 1 ? current[i + 1] : 0;
+            int pattern = (left << 2) | (mid << 1) | right;
+            next[i] = ruleBits[pattern];
+        }
+        rows.push_back(next);
+        current = next;
+    }
+    return rows;
+}
+```
+
+```rust
+fn elementary_ca(rule: u8, initial: &[u8], generations: usize) -> Vec<Vec<u8>> {
+    let rule_bits: Vec<u8> = (0..8).map(|i| (rule >> i) & 1).collect();
+    let n = initial.len();
+    let mut rows = vec![initial.to_vec()];
+    let mut current = initial.to_vec();
+
+    for _ in 0..generations.saturating_sub(1) {
+        let mut next = vec![0u8; n];
+        for i in 0..n {
+            let left = if i > 0 { current[i - 1] } else { 0 };
+            let mid = current[i];
+            let right = if i < n - 1 { current[i + 1] } else { 0 };
+            let pattern = (left << 2) | (mid << 1) | right;
+            next[i] = rule_bits[pattern as usize];
+        }
+        rows.push(next.clone());
+        current = next;
+    }
+    rows
+}
+```
+
+```csharp
+static List<int[]> ElementaryCa(int rule, int[] initial, int generations)
+{
+    var ruleBits = Enumerable.Range(0, 8).Select(i => (rule >> i) & 1).ToArray();
+    var rows = new List<int[]> { initial };
+    var current = initial;
+    int n = initial.Length;
+
+    for (int g = 0; g < generations - 1; g++)
+    {
+        var next = new int[n];
+        for (int i = 0; i < n; i++)
+        {
+            int left = i > 0 ? current[i - 1] : 0;
+            int mid = current[i];
+            int right = i < n - 1 ? current[i + 1] : 0;
+            int pattern = (left << 2) | (mid << 1) | right;
+            next[i] = ruleBits[pattern];
+        }
+        rows.Add(next);
+        current = next;
+    }
+    return rows;
+}
+```

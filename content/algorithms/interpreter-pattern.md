@@ -23,3 +23,217 @@ summary: 文法規則をクラス階層として表現し、構文木をたど�
 - **複雑な文法には向かない**: 文法規則ごとにクラスが必要になるため、規則の数が多い(実用的なプログラミング言語のような)複雑な文法では、クラス数が爆発的に増え管理が困難になる。この場合は構文解析専用のツール(パーサジェネレータ、パーサコンビネータ)を使う方が現実的
 - **実行効率が高くない**: 木構造を再帰的にたどるインタプリタ方式は、コンパイル方式に比べて実行速度が劣ることが多い
 - **使いどころ**: 単純な数式パーサー、検索クエリのミニ言語(SQL WHERE句のような条件式)、設定ファイルの条件分岐記法、正規表現エンジンの内部実装、ゲームのスクリプトDSLなど、限定的で単純な文法を扱う場面
+
+## 実装例
+
+文法規則(数値・加算・乗算)をそれぞれクラスとして表現し、構文木「3 + 4 * 2」を直接組み立てて`interpret()`で評価する最小構成。
+
+```python
+from abc import ABC, abstractmethod
+
+class Expression(ABC):
+    @abstractmethod
+    def interpret(self) -> int: ...
+
+class NumberExpression(Expression):
+    def __init__(self, value: int):
+        self.value = value
+    def interpret(self) -> int:
+        return self.value
+
+class AddExpression(Expression):
+    def __init__(self, left: Expression, right: Expression):
+        self.left = left
+        self.right = right
+    def interpret(self) -> int:
+        return self.left.interpret() + self.right.interpret()
+
+class MultiplyExpression(Expression):
+    def __init__(self, left: Expression, right: Expression):
+        self.left = left
+        self.right = right
+    def interpret(self) -> int:
+        return self.left.interpret() * self.right.interpret()
+
+def demo() -> int:
+    # "3 + 4 * 2" を構文木として直接組み立てる
+    tree = AddExpression(
+        NumberExpression(3),
+        MultiplyExpression(NumberExpression(4), NumberExpression(2)),
+    )
+    return tree.interpret()
+```
+
+```typescript
+interface Expression {
+  interpret(): number;
+}
+
+class NumberExpression implements Expression {
+  private value: number;
+  constructor(value: number) {
+    this.value = value;
+  }
+  interpret(): number {
+    return this.value;
+  }
+}
+
+class AddExpression implements Expression {
+  private left: Expression;
+  private right: Expression;
+  constructor(left: Expression, right: Expression) {
+    this.left = left;
+    this.right = right;
+  }
+  interpret(): number {
+    return this.left.interpret() + this.right.interpret();
+  }
+}
+
+class MultiplyExpression implements Expression {
+  private left: Expression;
+  private right: Expression;
+  constructor(left: Expression, right: Expression) {
+    this.left = left;
+    this.right = right;
+  }
+  interpret(): number {
+    return this.left.interpret() * this.right.interpret();
+  }
+}
+
+function demo(): number {
+  const tree = new AddExpression(
+    new NumberExpression(3),
+    new MultiplyExpression(new NumberExpression(4), new NumberExpression(2))
+  );
+  return tree.interpret();
+}
+```
+
+```cpp
+#include <memory>
+
+class Expression {
+public:
+    virtual ~Expression() = default;
+    virtual int interpret() const = 0;
+};
+
+class NumberExpression : public Expression {
+public:
+    explicit NumberExpression(int value) : value_(value) {}
+    int interpret() const override { return value_; }
+private:
+    int value_;
+};
+
+class AddExpression : public Expression {
+public:
+    AddExpression(std::unique_ptr<Expression> left, std::unique_ptr<Expression> right)
+        : left_(std::move(left)), right_(std::move(right)) {}
+    int interpret() const override { return left_->interpret() + right_->interpret(); }
+private:
+    std::unique_ptr<Expression> left_;
+    std::unique_ptr<Expression> right_;
+};
+
+class MultiplyExpression : public Expression {
+public:
+    MultiplyExpression(std::unique_ptr<Expression> left, std::unique_ptr<Expression> right)
+        : left_(std::move(left)), right_(std::move(right)) {}
+    int interpret() const override { return left_->interpret() * right_->interpret(); }
+private:
+    std::unique_ptr<Expression> left_;
+    std::unique_ptr<Expression> right_;
+};
+
+int demo() {
+    auto tree = std::make_unique<AddExpression>(
+        std::make_unique<NumberExpression>(3),
+        std::make_unique<MultiplyExpression>(
+            std::make_unique<NumberExpression>(4), std::make_unique<NumberExpression>(2)));
+    return tree->interpret();
+}
+```
+
+```rust
+trait Expression {
+    fn interpret(&self) -> i32;
+}
+
+struct NumberExpression {
+    value: i32,
+}
+impl Expression for NumberExpression {
+    fn interpret(&self) -> i32 {
+        self.value
+    }
+}
+
+struct AddExpression {
+    left: Box<dyn Expression>,
+    right: Box<dyn Expression>,
+}
+impl Expression for AddExpression {
+    fn interpret(&self) -> i32 {
+        self.left.interpret() + self.right.interpret()
+    }
+}
+
+struct MultiplyExpression {
+    left: Box<dyn Expression>,
+    right: Box<dyn Expression>,
+}
+impl Expression for MultiplyExpression {
+    fn interpret(&self) -> i32 {
+        self.left.interpret() * self.right.interpret()
+    }
+}
+
+fn demo() -> i32 {
+    let tree = AddExpression {
+        left: Box::new(NumberExpression { value: 3 }),
+        right: Box::new(MultiplyExpression {
+            left: Box::new(NumberExpression { value: 4 }),
+            right: Box::new(NumberExpression { value: 2 }),
+        }),
+    };
+    tree.interpret()
+}
+```
+
+```csharp
+interface IExpression { int Interpret(); }
+
+class NumberExpression : IExpression
+{
+    private readonly int value;
+    public NumberExpression(int value) { this.value = value; }
+    public int Interpret() => value;
+}
+
+class AddExpression : IExpression
+{
+    private readonly IExpression left, right;
+    public AddExpression(IExpression left, IExpression right) { this.left = left; this.right = right; }
+    public int Interpret() => left.Interpret() + right.Interpret();
+}
+
+class MultiplyExpression : IExpression
+{
+    private readonly IExpression left, right;
+    public MultiplyExpression(IExpression left, IExpression right) { this.left = left; this.right = right; }
+    public int Interpret() => left.Interpret() * right.Interpret();
+}
+
+static int Demo()
+{
+    IExpression tree = new AddExpression(
+        new NumberExpression(3),
+        new MultiplyExpression(new NumberExpression(4), new NumberExpression(2))
+    );
+    return tree.Interpret();
+}
+```
