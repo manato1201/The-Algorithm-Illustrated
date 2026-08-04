@@ -24,3 +24,204 @@ summary: 複雑なオブジェクトの生成手順を段階的なメソッド�
 - **オプションの多いオブジェクトに強い**: 必須項目だけ設定してデフォルト値に任せる、といった柔軟な組み立てが自然に書ける。コンストラクタのオーバーロード地獄を回避できる
 - **クラス数増加というコスト**: シンプルなオブジェクトにまでBuilderを適用すると、本体クラスに加えてビルダークラスも必要になり、かえって冗長になる。「設定項目が数個程度」ならコンストラクタや素直な設定用オブジェクト(オプションオブジェクト)で十分なことが多い
 - **使いどころ**: 設定項目が多く、その大半がオプショナルなオブジェクト(HTTPクライアントの設定、UIのレイアウト定義、テストデータのファクトリなど)、および不変オブジェクトを安全に段階的構築したい場面
+
+## 実装例
+
+```python
+class House:
+    def __init__(self):
+        self.walls = None
+        self.roof = None
+        self.windows = 0
+
+    def __repr__(self):
+        return f"House(walls={self.walls}, roof={self.roof}, windows={self.windows})"
+
+class HouseBuilder:
+    def __init__(self):
+        self.house = House()
+
+    def set_walls(self, walls: str) -> "HouseBuilder":
+        self.house.walls = walls
+        return self
+
+    def set_roof(self, roof: str) -> "HouseBuilder":
+        self.house.roof = roof
+        return self
+
+    def set_windows(self, count: int) -> "HouseBuilder":
+        self.house.windows = count
+        return self
+
+    def build(self) -> House:
+        return self.house
+
+def builder_demo() -> str:
+    house = (
+        HouseBuilder()
+        .set_walls("concrete")
+        .set_roof("tile")
+        .set_windows(4)
+        .build()
+    )
+    return str(house)
+```
+
+```typescript
+class House {
+  walls: string | null = null;
+  roof: string | null = null;
+  windows = 0;
+
+  toString(): string {
+    return `House(walls=${this.walls}, roof=${this.roof}, windows=${this.windows})`;
+  }
+}
+
+class HouseBuilder {
+  private house = new House();
+
+  setWalls(walls: string): HouseBuilder {
+    this.house.walls = walls;
+    return this;
+  }
+
+  setRoof(roof: string): HouseBuilder {
+    this.house.roof = roof;
+    return this;
+  }
+
+  setWindows(count: number): HouseBuilder {
+    this.house.windows = count;
+    return this;
+  }
+
+  build(): House {
+    return this.house;
+  }
+}
+
+function builderDemo(): string {
+  const house = new HouseBuilder().setWalls("concrete").setRoof("tile").setWindows(4).build();
+  return house.toString();
+}
+```
+
+```cpp
+#include <string>
+#include <sstream>
+
+class House {
+public:
+    std::string walls;
+    std::string roof;
+    int windows = 0;
+
+    std::string toString() const {
+        std::ostringstream oss;
+        oss << "House(walls=" << walls << ", roof=" << roof << ", windows=" << windows << ")";
+        return oss.str();
+    }
+};
+
+class HouseBuilder {
+    House house;
+public:
+    HouseBuilder& setWalls(const std::string& walls) { house.walls = walls; return *this; }
+    HouseBuilder& setRoof(const std::string& roof) { house.roof = roof; return *this; }
+    HouseBuilder& setWindows(int count) { house.windows = count; return *this; }
+    House build() const { return house; }
+};
+
+std::string builderDemo() {
+    House house = HouseBuilder().setWalls("concrete").setRoof("tile").setWindows(4).build();
+    return house.toString();
+}
+```
+
+```rust
+struct House {
+    walls: Option<String>,
+    roof: Option<String>,
+    windows: i32,
+}
+
+impl std::fmt::Display for House {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        write!(
+            f,
+            "House(walls={}, roof={}, windows={})",
+            self.walls.as_deref().unwrap_or("None"),
+            self.roof.as_deref().unwrap_or("None"),
+            self.windows
+        )
+    }
+}
+
+struct HouseBuilder {
+    house: House,
+}
+
+impl HouseBuilder {
+    fn new() -> Self {
+        HouseBuilder { house: House { walls: None, roof: None, windows: 0 } }
+    }
+
+    fn set_walls(mut self, walls: &str) -> Self {
+        self.house.walls = Some(walls.to_string());
+        self
+    }
+
+    fn set_roof(mut self, roof: &str) -> Self {
+        self.house.roof = Some(roof.to_string());
+        self
+    }
+
+    fn set_windows(mut self, count: i32) -> Self {
+        self.house.windows = count;
+        self
+    }
+
+    fn build(self) -> House {
+        self.house
+    }
+}
+
+fn builder_demo() -> String {
+    let house = HouseBuilder::new()
+        .set_walls("concrete")
+        .set_roof("tile")
+        .set_windows(4)
+        .build();
+    house.to_string()
+}
+```
+
+```csharp
+class House
+{
+    public string? Walls;
+    public string? Roof;
+    public int Windows;
+    public override string ToString() => $"House(walls={Walls}, roof={Roof}, windows={Windows})";
+}
+
+class HouseBuilder
+{
+    private readonly House _house = new House();
+
+    public HouseBuilder SetWalls(string walls) { _house.Walls = walls; return this; }
+    public HouseBuilder SetRoof(string roof) { _house.Roof = roof; return this; }
+    public HouseBuilder SetWindows(int count) { _house.Windows = count; return this; }
+    public House Build() => _house;
+}
+
+static class BuilderDemo
+{
+    public static string Run()
+    {
+        var house = new HouseBuilder().SetWalls("concrete").SetRoof("tile").SetWindows(4).Build();
+        return house.ToString()!;
+    }
+}
+```

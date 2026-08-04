@@ -25,3 +25,148 @@ summary: 幅優先探索が「全ての候補」を保持し続けるのに対�
 - **貪欲法・幅優先探索との位置づけ**: ビーム幅`k=1`にすると各段階で最良の1候補しか残さない[貪欲法](/algorithms/hill-climbing)そのものになり、`k=∞`(制限なし)にすると通常の幅優先探索(コスト最小化ならダイクストラ法的な全候補保持)に一致する——ビームサーチはこの2つの極端な戦略を1つのパラメータで滑らかに繋ぐ枠組みになっている
 - **最適解を保証しない近似性**: 各段階で切り捨てられた候補の中に、実は最終的に最良の解へつながる経路が含まれていた可能性は排除されない——ビームサーチは効率と解の質のトレードオフを`k`で調整する近似アルゴリズムであり、厳密な最適解を保証する探索アルゴリズムではない点に注意が必要
 - **使いどころ**: 機械翻訳・文章要約・音声認識における出力文のデコーディング(各ステップで語彙全体から次の単語を選ぶ探索空間を実用的なサイズに抑える)、大規模言語モデルのテキスト生成、音声合成における音素列の探索
+
+## 実装例
+
+```python
+from typing import Callable, TypeVar
+
+T = TypeVar("T")
+
+
+def beam_search(
+    vocab: list[T],
+    transition_score: Callable[[T | None, T], float],
+    length: int,
+    beam_width: int,
+) -> tuple[list[T], float]:
+    beams: list[tuple[float, list[T]]] = [(0.0, [])]
+    for _ in range(length):
+        candidates: list[tuple[float, list[T]]] = []
+        for score, seq in beams:
+            last = seq[-1] if seq else None
+            for sym in vocab:
+                candidates.append((score + transition_score(last, sym), seq + [sym]))
+        candidates.sort(key=lambda c: c[0], reverse=True)
+        beams = candidates[:beam_width]
+    best_score, best_seq = max(beams, key=lambda c: c[0])
+    return best_seq, best_score
+```
+
+```typescript
+function beamSearch<T>(
+  vocab: T[],
+  transitionScore: (prev: T | null, sym: T) => number,
+  length: number,
+  beamWidth: number
+): { seq: T[]; score: number } {
+  let beams: { score: number; seq: T[] }[] = [{ score: 0, seq: [] }];
+  for (let step = 0; step < length; step++) {
+    const candidates: { score: number; seq: T[] }[] = [];
+    for (const { score, seq } of beams) {
+      const last = seq.length > 0 ? seq[seq.length - 1] : null;
+      for (const sym of vocab) {
+        candidates.push({ score: score + transitionScore(last, sym), seq: [...seq, sym] });
+      }
+    }
+    candidates.sort((a, b) => b.score - a.score);
+    beams = candidates.slice(0, beamWidth);
+  }
+  const best = beams.reduce((a, b) => (b.score > a.score ? b : a));
+  return { seq: best.seq, score: best.score };
+}
+```
+
+```cpp
+#include <algorithm>
+#include <functional>
+#include <optional>
+#include <vector>
+
+template <typename T>
+struct BeamCandidate {
+    double score;
+    std::vector<T> seq;
+};
+
+template <typename T>
+BeamCandidate<T> beamSearch(const std::vector<T>& vocab,
+                             const std::function<double(const std::optional<T>&, const T&)>& transitionScore,
+                             int length, int beamWidth) {
+    std::vector<BeamCandidate<T>> beams = {{0.0, {}}};
+    for (int step = 0; step < length; step++) {
+        std::vector<BeamCandidate<T>> candidates;
+        for (const auto& beam : beams) {
+            std::optional<T> last = beam.seq.empty() ? std::nullopt : std::optional<T>(beam.seq.back());
+            for (const auto& sym : vocab) {
+                auto newSeq = beam.seq;
+                newSeq.push_back(sym);
+                candidates.push_back({beam.score + transitionScore(last, sym), newSeq});
+            }
+        }
+        std::sort(candidates.begin(), candidates.end(),
+                  [](const auto& a, const auto& b) { return a.score > b.score; });
+        if (static_cast<int>(candidates.size()) > beamWidth) candidates.resize(beamWidth);
+        beams = candidates;
+    }
+    return *std::max_element(beams.begin(), beams.end(),
+                              [](const auto& a, const auto& b) { return a.score < b.score; });
+}
+```
+
+```rust
+fn beam_search<T: Clone>(
+    vocab: &[T],
+    transition_score: impl Fn(Option<&T>, &T) -> f64,
+    length: usize,
+    beam_width: usize,
+) -> (Vec<T>, f64) {
+    let mut beams: Vec<(f64, Vec<T>)> = vec![(0.0, Vec::new())];
+    for _ in 0..length {
+        let mut candidates: Vec<(f64, Vec<T>)> = Vec::new();
+        for (score, seq) in &beams {
+            let last = seq.last();
+            for sym in vocab {
+                let mut new_seq = seq.clone();
+                new_seq.push(sym.clone());
+                candidates.push((score + transition_score(last, sym), new_seq));
+            }
+        }
+        candidates.sort_by(|a, b| b.0.partial_cmp(&a.0).unwrap());
+        candidates.truncate(beam_width);
+        beams = candidates;
+    }
+    beams
+        .into_iter()
+        .max_by(|a, b| a.0.partial_cmp(&b.0).unwrap())
+        .map(|(score, seq)| (seq, score))
+        .unwrap()
+}
+```
+
+```csharp
+static class BeamSearch
+{
+    public static (List<T> seq, double score) Run<T>(List<T> vocab, Func<T?, T, double> transitionScore,
+        int length, int beamWidth) where T : notnull
+    {
+        var beams = new List<(double score, List<T> seq)> { (0.0, new List<T>()) };
+        for (int step = 0; step < length; step++)
+        {
+            var candidates = new List<(double score, List<T> seq)>();
+            foreach (var (score, seq) in beams)
+            {
+                T? last = seq.Count > 0 ? seq[^1] : default;
+                foreach (var sym in vocab)
+                {
+                    var newSeq = new List<T>(seq) { sym };
+                    candidates.Add((score + transitionScore(last, sym), newSeq));
+                }
+            }
+            beams = candidates.OrderByDescending(c => c.score).Take(beamWidth).ToList();
+        }
+        var best = beams.OrderByDescending(c => c.score).First();
+        return (best.seq, best.score);
+    }
+}
+```

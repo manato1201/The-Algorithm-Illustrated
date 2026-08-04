@@ -25,3 +25,156 @@ summary: ループの本体を複数回分まとめて複製することで、�
 - **ベクトル化(SIMD命令の活用)との相性**: ループアンローリングによって明示的に並んだ複数の同種の演算は、SIMD命令(1つの命令で複数のデータに同じ演算を同時に適用する)へのベクトル化のパターンとしてコンパイラに認識されやすくなる——現代のコンパイラの自動ベクトル化パスは、しばしばループアンローリングと組み合わせて実装されている
 - **展開しすぎることの弊害**: 展開係数`k`を大きくしすぎるとコードサイズが膨れ上がり、命令キャッシュに収まらなくなって逆に性能が悪化する「コードブロート」を招くことがある——最適な展開係数はターゲットCPUのキャッシュサイズやパイプライン構造に依存するため、コンパイラは通常ヒューリスティックや実測データに基づいて判断する
 - **使いどころ**: 数値計算・画像処理のような単純な演算を大量に繰り返すホットループの最適化、組み込みシステムにおける手動でのパフォーマンスチューニング、GPU・SIMDプロセッサ向けのコード生成における自動ベクトル化の前段階
+
+## 実装例
+
+配列の総和を計算するループを展開係数4で展開し、4で割り切れない残りを末尾の余り処理ループで処理する。展開後も展開前(素朴なループ)と全く同じ結果を返すことが最適化として成立する必要条件になる。
+
+```python
+def sum_rolled(arr: list[int]) -> int:
+    """展開前の素朴なループ。"""
+    total = 0
+    for i in range(len(arr)):
+        total += arr[i]
+    return total
+
+
+def sum_unrolled4(arr: list[int]) -> int:
+    """4回分をまとめて展開し、割り切れない残りは末尾の余り処理ループで処理する。"""
+    n = len(arr)
+    total = 0
+    i = 0
+    limit = n - (n % 4)
+    while i < limit:
+        total += arr[i]
+        total += arr[i + 1]
+        total += arr[i + 2]
+        total += arr[i + 3]
+        i += 4
+    while i < n:  # 余り処理: 4で割り切れなかった分
+        total += arr[i]
+        i += 1
+    return total
+```
+
+```typescript
+function sumRolled(arr: number[]): number {
+  let total = 0;
+  for (let i = 0; i < arr.length; i++) total += arr[i];
+  return total;
+}
+
+// 4回分をまとめて展開し、割り切れない残りは末尾の余り処理ループで処理する
+function sumUnrolled4(arr: number[]): number {
+  const n = arr.length;
+  let total = 0;
+  let i = 0;
+  const limit = n - (n % 4);
+  while (i < limit) {
+    total += arr[i];
+    total += arr[i + 1];
+    total += arr[i + 2];
+    total += arr[i + 3];
+    i += 4;
+  }
+  while (i < n) {
+    // 余り処理: 4で割り切れなかった分
+    total += arr[i];
+    i++;
+  }
+  return total;
+}
+```
+
+```cpp
+#include <vector>
+
+int sumRolled(const std::vector<int>& arr) {
+    int total = 0;
+    for (size_t i = 0; i < arr.size(); i++) total += arr[i];
+    return total;
+}
+
+// 4回分をまとめて展開し、割り切れない残りは末尾の余り処理ループで処理する
+int sumUnrolled4(const std::vector<int>& arr) {
+    size_t n = arr.size();
+    int total = 0;
+    size_t i = 0;
+    size_t limit = n - (n % 4);
+    while (i < limit) {
+        total += arr[i];
+        total += arr[i + 1];
+        total += arr[i + 2];
+        total += arr[i + 3];
+        i += 4;
+    }
+    while (i < n) { // 余り処理: 4で割り切れなかった分
+        total += arr[i];
+        i++;
+    }
+    return total;
+}
+```
+
+```rust
+fn sum_rolled(arr: &[i32]) -> i32 {
+    let mut total = 0;
+    for i in 0..arr.len() {
+        total += arr[i];
+    }
+    total
+}
+
+// 4回分をまとめて展開し、割り切れない残りは末尾の余り処理ループで処理する
+fn sum_unrolled4(arr: &[i32]) -> i32 {
+    let n = arr.len();
+    let mut total = 0;
+    let mut i = 0;
+    let limit = n - (n % 4);
+    while i < limit {
+        total += arr[i];
+        total += arr[i + 1];
+        total += arr[i + 2];
+        total += arr[i + 3];
+        i += 4;
+    }
+    while i < n {
+        // 余り処理: 4で割り切れなかった分
+        total += arr[i];
+        i += 1;
+    }
+    total
+}
+```
+
+```csharp
+static int SumRolled(int[] arr)
+{
+    int total = 0;
+    for (int i = 0; i < arr.Length; i++) total += arr[i];
+    return total;
+}
+
+// 4回分をまとめて展開し、割り切れない残りは末尾の余り処理ループで処理する
+static int SumUnrolled4(int[] arr)
+{
+    int n = arr.Length;
+    int total = 0;
+    int i = 0;
+    int limit = n - (n % 4);
+    while (i < limit)
+    {
+        total += arr[i];
+        total += arr[i + 1];
+        total += arr[i + 2];
+        total += arr[i + 3];
+        i += 4;
+    }
+    while (i < n) // 余り処理: 4で割り切れなかった分
+    {
+        total += arr[i];
+        i++;
+    }
+    return total;
+}
+```

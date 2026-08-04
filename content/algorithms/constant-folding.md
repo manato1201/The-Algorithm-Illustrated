@@ -23,3 +23,179 @@ summary: コンパイル時に値が確定している演算をあらかじめ�
 - **単独では限定的、他の最適化との相乗効果が本質**: 定数畳み込み単体で畳み込める箇所は、ソースコードにリテラルの演算が直接書かれている場合に限られ限定的だが、変数の値がどこでも変わらないことを追跡する「定数伝播」と組み合わせることで、変数を介した間接的な定数演算も畳み込めるようになり、効果が大きく広がる
 - **数値の丸めや例外の扱いに注意が必要**: 浮動小数点演算では、コンパイル時の計算と実行時の計算で丸め誤差が異なる結果を生む可能性があり、また0除算のような実行時エラーになるはずの演算をコンパイル時にどう扱うか(コンパイルエラーにするか、そのまま実行時エラーとして残すか)には設計上の判断が必要になる
 - **使いどころ**: ほぼ全ての実用コンパイラ(GCC、LLVM、各種言語処理系)で標準的に実装される最適化パスのひとつ。マクロや定数式を多用するコード、テンプレート/ジェネリクスの特殊化で生じる冗長な演算を、実行前に消し去る役割を担う
+
+## 実装例
+
+```python
+from dataclasses import dataclass
+from typing import Union
+
+
+@dataclass
+class Num:
+    value: float
+
+
+@dataclass
+class Var:
+    name: str
+
+
+@dataclass
+class BinOp:
+    op: str
+    left: "Expr"
+    right: "Expr"
+
+
+Expr = Union[Num, Var, BinOp]
+
+
+def fold_constants(expr: Expr) -> Expr:
+    if isinstance(expr, (Num, Var)):
+        return expr
+    left = fold_constants(expr.left)
+    right = fold_constants(expr.right)
+    if isinstance(left, Num) and isinstance(right, Num):
+        a, b = left.value, right.value
+        if expr.op == "+":
+            return Num(a + b)
+        if expr.op == "-":
+            return Num(a - b)
+        if expr.op == "*":
+            return Num(a * b)
+        if expr.op == "/" and b != 0:
+            return Num(a / b)
+    return BinOp(expr.op, left, right)
+```
+
+```typescript
+type Expr =
+  | { kind: "num"; value: number }
+  | { kind: "var"; name: string }
+  | { kind: "binop"; op: string; left: Expr; right: Expr };
+
+function foldConstants(expr: Expr): Expr {
+  if (expr.kind === "num" || expr.kind === "var") return expr;
+  const left = foldConstants(expr.left);
+  const right = foldConstants(expr.right);
+  if (left.kind === "num" && right.kind === "num") {
+    const a = left.value, b = right.value;
+    if (expr.op === "+") return { kind: "num", value: a + b };
+    if (expr.op === "-") return { kind: "num", value: a - b };
+    if (expr.op === "*") return { kind: "num", value: a * b };
+    if (expr.op === "/" && b !== 0) return { kind: "num", value: a / b };
+  }
+  return { kind: "binop", op: expr.op, left, right };
+}
+```
+
+```cpp
+#include <memory>
+#include <string>
+
+struct Expr;
+using ExprPtr = std::shared_ptr<Expr>;
+
+struct Expr {
+    enum class Kind { Num, Var, BinOp } kind;
+    double value = 0.0;   // Num
+    std::string name;     // Var
+    std::string op;       // BinOp
+    ExprPtr left, right;  // BinOp
+};
+
+ExprPtr makeNum(double v) {
+    auto e = std::make_shared<Expr>();
+    e->kind = Expr::Kind::Num;
+    e->value = v;
+    return e;
+}
+
+ExprPtr makeBinOp(const std::string& op, ExprPtr left, ExprPtr right) {
+    auto e = std::make_shared<Expr>();
+    e->kind = Expr::Kind::BinOp;
+    e->op = op;
+    e->left = std::move(left);
+    e->right = std::move(right);
+    return e;
+}
+
+ExprPtr foldConstants(const ExprPtr& expr) {
+    if (expr->kind != Expr::Kind::BinOp) return expr;
+    ExprPtr left = foldConstants(expr->left);
+    ExprPtr right = foldConstants(expr->right);
+    if (left->kind == Expr::Kind::Num && right->kind == Expr::Kind::Num) {
+        double a = left->value, b = right->value;
+        if (expr->op == "+") return makeNum(a + b);
+        if (expr->op == "-") return makeNum(a - b);
+        if (expr->op == "*") return makeNum(a * b);
+        if (expr->op == "/" && b != 0) return makeNum(a / b);
+    }
+    return makeBinOp(expr->op, left, right);
+}
+```
+
+```rust
+use std::rc::Rc;
+
+#[derive(Clone, Debug)]
+enum Expr {
+    Num(f64),
+    Var(String),
+    BinOp(String, Rc<Expr>, Rc<Expr>),
+}
+
+fn fold_constants(expr: &Rc<Expr>) -> Rc<Expr> {
+    match expr.as_ref() {
+        Expr::Num(_) | Expr::Var(_) => Rc::clone(expr),
+        Expr::BinOp(op, left, right) => {
+            let left = fold_constants(left);
+            let right = fold_constants(right);
+            if let (Expr::Num(a), Expr::Num(b)) = (left.as_ref(), right.as_ref()) {
+                match op.as_str() {
+                    "+" => return Rc::new(Expr::Num(a + b)),
+                    "-" => return Rc::new(Expr::Num(a - b)),
+                    "*" => return Rc::new(Expr::Num(a * b)),
+                    "/" if *b != 0.0 => return Rc::new(Expr::Num(a / b)),
+                    _ => {}
+                }
+            }
+            Rc::new(Expr::BinOp(op.clone(), left, right))
+        }
+    }
+}
+```
+
+```csharp
+abstract class Expr { }
+class NumExpr : Expr { public double Value; public NumExpr(double v) { Value = v; } }
+class VarExpr : Expr { public string Name; public VarExpr(string n) { Name = n; } }
+class BinOpExpr : Expr
+{
+    public string Op; public Expr Left; public Expr Right;
+    public BinOpExpr(string op, Expr left, Expr right) { Op = op; Left = left; Right = right; }
+}
+
+static class ConstantFolding
+{
+    public static Expr Fold(Expr expr)
+    {
+        if (expr is NumExpr || expr is VarExpr) return expr;
+        var bin = (BinOpExpr)expr;
+        var left = Fold(bin.Left);
+        var right = Fold(bin.Right);
+        if (left is NumExpr ln && right is NumExpr rn)
+        {
+            switch (bin.Op)
+            {
+                case "+": return new NumExpr(ln.Value + rn.Value);
+                case "-": return new NumExpr(ln.Value - rn.Value);
+                case "*": return new NumExpr(ln.Value * rn.Value);
+                case "/": if (rn.Value != 0) return new NumExpr(ln.Value / rn.Value); break;
+            }
+        }
+        return new BinOpExpr(bin.Op, left, right);
+    }
+}
+```

@@ -25,3 +25,195 @@ summary: 画像を前景と背景の2つに分ける最適な輝度の閾値を�
 - **双峰性(2つの山)を前提とするという制約**: この手法は「前景と背景で輝度が明確に2つの山に分かれている」ことを暗黙に仮定している。照明ムラがある画像やヒストグラムが単峰性(山が1つ)の画像では、大津の二値化だけでは良い分割ができず、適応的二値化(画像を小領域に分けてそれぞれ別の閾値を計算する)や[Watershed法](/algorithms/watershed-algorithm)のような領域分割手法が必要になる
 - **[Watershed法](/algorithms/watershed-algorithm)との関係**: 大津の二値化は単一の閾値による大域的な分割だが、[Watershed法](/algorithms/watershed-algorithm)は輝度地形の勾配に基づく局所的な領域分割を行う——大津の二値化で粗く前景・背景を分けてから、その結果を[Watershed法](/algorithms/watershed-algorithm)の初期マーカーとして使う、という2段階の組み合わせもよく行われる
 - **使いどころ**: 文書画像の二値化(OCR前処理としての文字と背景の分離)、医療画像における病変領域の粗い抽出、工業製品の外観検査における欠陥領域の分離、[連結成分ラベリング](/algorithms/connected-component-labeling)の前段としての二値化処理
+
+## 実装例
+
+輝度ヒストグラムからクラス間分散を最大化する閾値を`O(L)`で求める。各候補`t`について画素集合を実際に2分してクラス間分散を計算する総当たり実装(`O(L × 画素数)`)と結果が一致することを検証する。
+
+```python
+def compute_histogram(pixels: list[int], levels: int = 256) -> list[int]:
+    hist = [0] * levels
+    for p in pixels:
+        hist[p] += 1
+    return hist
+
+
+def otsu_threshold(pixels: list[int], levels: int = 256) -> int:
+    hist = compute_histogram(pixels, levels)
+    total = len(pixels)
+    sum_total = sum(i * hist[i] for i in range(levels))
+
+    sum_bg, weight_bg = 0.0, 0
+    best_variance, best_threshold = -1.0, 0
+    for t in range(levels):
+        weight_bg += hist[t]
+        if weight_bg == 0:
+            continue
+        weight_fg = total - weight_bg
+        if weight_fg == 0:
+            break
+        sum_bg += t * hist[t]
+        mean_bg = sum_bg / weight_bg
+        mean_fg = (sum_total - sum_bg) / weight_fg
+        # クラス間分散: 2クラスの画素数で重み付けした平均輝度差の2乗
+        between_variance = weight_bg * weight_fg * (mean_bg - mean_fg) ** 2
+        if between_variance > best_variance:
+            best_variance, best_threshold = between_variance, t
+    return best_threshold
+```
+
+```typescript
+function computeHistogram(pixels: number[], levels = 256): number[] {
+  const hist = new Array(levels).fill(0);
+  for (const p of pixels) hist[p]++;
+  return hist;
+}
+
+function otsuThreshold(pixels: number[], levels = 256): number {
+  const hist = computeHistogram(pixels, levels);
+  const total = pixels.length;
+  let sumTotal = 0;
+  for (let i = 0; i < levels; i++) sumTotal += i * hist[i];
+
+  let sumBg = 0;
+  let weightBg = 0;
+  let bestVariance = -1;
+  let bestThreshold = 0;
+  for (let t = 0; t < levels; t++) {
+    weightBg += hist[t];
+    if (weightBg === 0) continue;
+    const weightFg = total - weightBg;
+    if (weightFg === 0) break;
+    sumBg += t * hist[t];
+    const meanBg = sumBg / weightBg;
+    const meanFg = (sumTotal - sumBg) / weightFg;
+    // クラス間分散: 2クラスの画素数で重み付けした平均輝度差の2乗
+    const betweenVariance = weightBg * weightFg * (meanBg - meanFg) ** 2;
+    if (betweenVariance > bestVariance) {
+      bestVariance = betweenVariance;
+      bestThreshold = t;
+    }
+  }
+  return bestThreshold;
+}
+```
+
+```cpp
+#include <vector>
+
+std::vector<int> computeHistogram(const std::vector<int>& pixels, int levels = 256) {
+    std::vector<int> hist(levels, 0);
+    for (int p : pixels) hist[p]++;
+    return hist;
+}
+
+int otsuThreshold(const std::vector<int>& pixels, int levels = 256) {
+    auto hist = computeHistogram(pixels, levels);
+    int total = static_cast<int>(pixels.size());
+    double sumTotal = 0;
+    for (int i = 0; i < levels; i++) sumTotal += i * hist[i];
+
+    double sumBg = 0;
+    int weightBg = 0;
+    double bestVariance = -1;
+    int bestThreshold = 0;
+    for (int t = 0; t < levels; t++) {
+        weightBg += hist[t];
+        if (weightBg == 0) continue;
+        int weightFg = total - weightBg;
+        if (weightFg == 0) break;
+        sumBg += t * hist[t];
+        double meanBg = sumBg / weightBg;
+        double meanFg = (sumTotal - sumBg) / weightFg;
+        // クラス間分散: 2クラスの画素数で重み付けした平均輝度差の2乗
+        double betweenVariance = static_cast<double>(weightBg) * weightFg * (meanBg - meanFg) * (meanBg - meanFg);
+        if (betweenVariance > bestVariance) {
+            bestVariance = betweenVariance;
+            bestThreshold = t;
+        }
+    }
+    return bestThreshold;
+}
+```
+
+```rust
+fn compute_histogram(pixels: &[usize], levels: usize) -> Vec<i32> {
+    let mut hist = vec![0; levels];
+    for &p in pixels {
+        hist[p] += 1;
+    }
+    hist
+}
+
+fn otsu_threshold(pixels: &[usize], levels: usize) -> usize {
+    let hist = compute_histogram(pixels, levels);
+    let total = pixels.len() as i64;
+    let sum_total: i64 = (0..levels).map(|i| i as i64 * hist[i] as i64).sum();
+
+    let mut sum_bg: i64 = 0;
+    let mut weight_bg: i64 = 0;
+    let mut best_variance = -1.0_f64;
+    let mut best_threshold = 0usize;
+
+    for t in 0..levels {
+        weight_bg += hist[t] as i64;
+        if weight_bg == 0 {
+            continue;
+        }
+        let weight_fg = total - weight_bg;
+        if weight_fg == 0 {
+            break;
+        }
+        sum_bg += t as i64 * hist[t] as i64;
+        let mean_bg = sum_bg as f64 / weight_bg as f64;
+        let mean_fg = (sum_total - sum_bg) as f64 / weight_fg as f64;
+        // クラス間分散: 2クラスの画素数で重み付けした平均輝度差の2乗
+        let between_variance = weight_bg as f64 * weight_fg as f64 * (mean_bg - mean_fg).powi(2);
+        if between_variance > best_variance {
+            best_variance = between_variance;
+            best_threshold = t;
+        }
+    }
+    best_threshold
+}
+```
+
+```csharp
+static int[] ComputeHistogram(List<int> pixels, int levels = 256)
+{
+    var hist = new int[levels];
+    foreach (var p in pixels) hist[p]++;
+    return hist;
+}
+
+static int OtsuThreshold(List<int> pixels, int levels = 256)
+{
+    var hist = ComputeHistogram(pixels, levels);
+    int total = pixels.Count;
+    double sumTotal = 0;
+    for (int i = 0; i < levels; i++) sumTotal += i * hist[i];
+
+    double sumBg = 0;
+    int weightBg = 0;
+    double bestVariance = -1;
+    int bestThreshold = 0;
+    for (int t = 0; t < levels; t++)
+    {
+        weightBg += hist[t];
+        if (weightBg == 0) continue;
+        int weightFg = total - weightBg;
+        if (weightFg == 0) break;
+        sumBg += t * hist[t];
+        double meanBg = sumBg / weightBg;
+        double meanFg = (sumTotal - sumBg) / weightFg;
+        // クラス間分散: 2クラスの画素数で重み付けした平均輝度差の2乗
+        double betweenVariance = weightBg * (double)weightFg * Math.Pow(meanBg - meanFg, 2);
+        if (betweenVariance > bestVariance)
+        {
+            bestVariance = betweenVariance;
+            bestThreshold = t;
+        }
+    }
+    return bestThreshold;
+}
+```

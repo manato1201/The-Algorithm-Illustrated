@@ -23,3 +23,204 @@ summary: リード同士の重なりを直接検出してグラフを作り、�
 - **長いリードとの相性**: k-merに分解する[de Bruijnグラフ法](/algorithms/de-bruijn-graph-assembly)は短く正確なリードに向くが、OLC法はリード全体を直接扱うため、長いが誤りを含みやすい第3世代シーケンサーのリードのアセンブリに適している——重なりの検出時にある程度のエラーを許容するアラインメントを使えるため
 - **反復配列への対応の違い**: OLC法は個々のリードが十分長ければ、反復配列全体を1本のリードでカバーできることがあり、その場合はde Bruijnグラフ法よりも反復配列由来の曖昧さを解消しやすい——「リードが反復配列より長いか」が両手法の得意・不得意を分ける重要な要因になる
 - **使いどころ**: サンガー法時代の初期ゲノムプロジェクト(ヒトゲノム計画の一部でも使用)、PacBio・Oxford Nanoporeのような長リードシーケンサーによる高精度なゲノムアセンブリ、反復配列の多い複雑なゲノム領域の解決
+
+## 実装例
+
+短い塩基配列のリード集合から、最大重なりのペアを貪欲に選んで結合していく単純化されたOLC法。オーバーラップ検出とレイアウトを1つのループに統合し、重なり合う複数リードを結合していくことで元の配列が正しく再構築されることを検証する(コンセンサスは重複領域が完全一致する前提で結合そのものが担う)。
+
+```python
+def overlap_len(a: str, b: str, min_overlap: int = 3) -> int:
+    # aの末尾とbの先頭が重なる最大の長さkを探す
+    max_k = min(len(a), len(b))
+    for k in range(max_k, min_overlap - 1, -1):
+        if a[-k:] == b[:k]:
+            return k
+    return 0
+
+
+def olc_assemble(reads: list[str], min_overlap: int = 3) -> str:
+    current = list(reads)
+    while len(current) > 1:
+        # オーバーラップ検出: 全ペアの中で最大重なりを持つものを探す(レイアウト)
+        best_k, best_i, best_j = -1, -1, -1
+        for i in range(len(current)):
+            for j in range(len(current)):
+                if i == j:
+                    continue
+                k = overlap_len(current[i], current[j], min_overlap)
+                if k > best_k:
+                    best_k, best_i, best_j = k, i, j
+        if best_k == 0:
+            merged = current[0] + current[1]
+            current = [merged] + current[2:]
+            continue
+        # コンセンサス: 重なり部分をそのまま繋げて1本にまとめる
+        merged = current[best_i] + current[best_j][best_k:]
+        rest = [r for idx, r in enumerate(current) if idx != best_i and idx != best_j]
+        current = [merged] + rest
+    return current[0]
+```
+
+```typescript
+function overlapLen(a: string, b: string, minOverlap = 3): number {
+  // aの末尾とbの先頭が重なる最大の長さkを探す
+  const maxK = Math.min(a.length, b.length);
+  for (let k = maxK; k >= minOverlap; k--) {
+    if (a.slice(-k) === b.slice(0, k)) return k;
+  }
+  return 0;
+}
+
+function olcAssemble(reads: string[], minOverlap = 3): string {
+  let current = [...reads];
+  while (current.length > 1) {
+    // オーバーラップ検出: 全ペアの中で最大重なりを持つものを探す(レイアウト)
+    let bestK = -1, bestI = -1, bestJ = -1;
+    for (let i = 0; i < current.length; i++) {
+      for (let j = 0; j < current.length; j++) {
+        if (i === j) continue;
+        const k = overlapLen(current[i], current[j], minOverlap);
+        if (k > bestK) { bestK = k; bestI = i; bestJ = j; }
+      }
+    }
+    if (bestK === 0) {
+      current = [current[0] + current[1], ...current.slice(2)];
+      continue;
+    }
+    // コンセンサス: 重なり部分をそのまま繋げて1本にまとめる
+    const merged = current[bestI] + current[bestJ].slice(bestK);
+    const rest = current.filter((_, idx) => idx !== bestI && idx !== bestJ);
+    current = [merged, ...rest];
+  }
+  return current[0];
+}
+```
+
+```cpp
+#include <vector>
+#include <string>
+
+int overlapLen(const std::string& a, const std::string& b, int minOverlap = 3) {
+    int maxK = std::min(a.size(), b.size());
+    for (int k = maxK; k >= minOverlap; k--) {
+        if (a.substr(a.size() - k) == b.substr(0, k)) return k;
+    }
+    return 0;
+}
+
+std::string olcAssemble(std::vector<std::string> reads, int minOverlap = 3) {
+    while (reads.size() > 1) {
+        int bestK = -1, bestI = -1, bestJ = -1;
+        for (size_t i = 0; i < reads.size(); i++) {
+            for (size_t j = 0; j < reads.size(); j++) {
+                if (i == j) continue;
+                int k = overlapLen(reads[i], reads[j], minOverlap);
+                if (k > bestK) { bestK = k; bestI = static_cast<int>(i); bestJ = static_cast<int>(j); }
+            }
+        }
+        std::vector<std::string> next;
+        if (bestK == 0) {
+            next.push_back(reads[0] + reads[1]);
+            for (size_t idx = 2; idx < reads.size(); idx++) next.push_back(reads[idx]);
+        } else {
+            next.push_back(reads[bestI] + reads[bestJ].substr(bestK));
+            for (size_t idx = 0; idx < reads.size(); idx++) {
+                if (static_cast<int>(idx) != bestI && static_cast<int>(idx) != bestJ) next.push_back(reads[idx]);
+            }
+        }
+        reads = next;
+    }
+    return reads[0];
+}
+```
+
+```rust
+fn overlap_len(a: &str, b: &str, min_overlap: usize) -> usize {
+    let (ab, bb) = (a.as_bytes(), b.as_bytes());
+    let max_k = ab.len().min(bb.len());
+    let mut k = max_k;
+    while k >= min_overlap {
+        if &ab[ab.len() - k..] == &bb[..k] {
+            return k;
+        }
+        k -= 1;
+    }
+    0
+}
+
+fn olc_assemble(reads: Vec<String>, min_overlap: usize) -> String {
+    let mut current = reads;
+    while current.len() > 1 {
+        let mut best_k = 0usize;
+        let mut found = false;
+        let (mut best_i, mut best_j) = (0usize, 0usize);
+        for i in 0..current.len() {
+            for j in 0..current.len() {
+                if i == j {
+                    continue;
+                }
+                let k = overlap_len(&current[i], &current[j], min_overlap);
+                if !found || k > best_k {
+                    best_k = k;
+                    best_i = i;
+                    best_j = j;
+                    found = true;
+                }
+            }
+        }
+        let mut next = Vec::new();
+        if best_k == 0 {
+            next.push(format!("{}{}", current[0], current[1]));
+            next.extend(current.into_iter().skip(2));
+        } else {
+            let merged = format!("{}{}", current[best_i], &current[best_j][best_k..]);
+            next.push(merged);
+            for (idx, r) in current.into_iter().enumerate() {
+                if idx != best_i && idx != best_j {
+                    next.push(r);
+                }
+            }
+        }
+        current = next;
+    }
+    current.into_iter().next().unwrap()
+}
+```
+
+```csharp
+static int OverlapLen(string a, string b, int minOverlap = 3)
+{
+    int maxK = Math.Min(a.Length, b.Length);
+    for (int k = maxK; k >= minOverlap; k--)
+        if (a.Substring(a.Length - k) == b.Substring(0, k)) return k;
+    return 0;
+}
+
+static string OlcAssemble(List<string> reads, int minOverlap = 3)
+{
+    var current = new List<string>(reads);
+    while (current.Count > 1)
+    {
+        int bestK = -1, bestI = -1, bestJ = -1;
+        for (int i = 0; i < current.Count; i++)
+        {
+            for (int j = 0; j < current.Count; j++)
+            {
+                if (i == j) continue;
+                int k = OverlapLen(current[i], current[j], minOverlap);
+                if (k > bestK) { bestK = k; bestI = i; bestJ = j; }
+            }
+        }
+        if (bestK == 0)
+        {
+            var merged0 = current[0] + current[1];
+            current = new List<string> { merged0 }.Concat(current.Skip(2)).ToList();
+            continue;
+        }
+        var merged = current[bestI] + current[bestJ].Substring(bestK);
+        var rest = current.Where((_, idx) => idx != bestI && idx != bestJ).ToList();
+        current = new List<string> { merged }.Concat(rest).ToList();
+    }
+    return current[0];
+}
+```

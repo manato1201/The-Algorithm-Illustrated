@@ -25,3 +25,271 @@ summary: 画像をぼかしてから半分に縮小する操作を繰り返す�
 - **ラプラシアンピラミッドとの関係**: ガウシアンピラミッドの隣接層の差分を取ったもの(ラプラシアンピラミッド)は、元画像を各スケールの「詳細情報」に分解したものとみなせ、画像の多重解像度合成(パノラマ画像の継ぎ目をなめらかにするブレンディング等)に使われる
 - **先にぼかしてから縮小するという順序の重要性**: ぼかさずに単純に間引くと、画像の細かい模様が縮小後に本来存在しないはずの偽の縞模様(モアレ)として現れてしまう——ガウシアンフィルタによる平滑化は、この標本化定理(ナイキスト周波数)の観点から見て理論的に必要な前処理になっている
 - **使いどころ**: [SIFT](/algorithms/sift)・SURF等のスケール不変特徴点検出の内部処理、物体検出におけるマルチスケール探索(異なるサイズの物体を同じ検出窓で見つける)、画像のマルチ解像度合成・ブレンディング、動画圧縮における階層的な符号化
+
+## 実装例
+
+5×5のガウシアンカーネル(重み合計256)で画像をぼかしてから縦横半分に間引く処理を繰り返す。境界は最近傍画素をクランプして扱う。
+
+```python
+def gaussian_blur(image: list[list[float]]) -> list[list[float]]:
+    kernel = [
+        [1, 4, 6, 4, 1],
+        [4, 16, 24, 16, 4],
+        [6, 24, 36, 24, 6],
+        [4, 16, 24, 16, 4],
+        [1, 4, 6, 4, 1],
+    ]
+    ksum = 256
+    h, w = len(image), len(image[0])
+    out = [[0.0] * w for _ in range(h)]
+    for y in range(h):
+        for x in range(w):
+            acc = 0.0
+            for ky in range(5):
+                for kx in range(5):
+                    sy = min(max(y + ky - 2, 0), h - 1)
+                    sx = min(max(x + kx - 2, 0), w - 1)
+                    acc += image[sy][sx] * kernel[ky][kx]
+            out[y][x] = acc / ksum
+    return out
+
+
+def downsample(image: list[list[float]]) -> list[list[float]]:
+    h, w = len(image), len(image[0])
+    return [[image[y][x] for x in range(0, w, 2)] for y in range(0, h, 2)]
+
+
+def gaussian_pyramid(image: list[list[float]], levels: int) -> list[list[list[float]]]:
+    pyramid = [image]
+    current = image
+    for _ in range(levels - 1):
+        current = downsample(gaussian_blur(current))
+        pyramid.append(current)
+    return pyramid
+```
+
+```typescript
+function gaussianBlur(image: number[][]): number[][] {
+  const kernel = [
+    [1, 4, 6, 4, 1],
+    [4, 16, 24, 16, 4],
+    [6, 24, 36, 24, 6],
+    [4, 16, 24, 16, 4],
+    [1, 4, 6, 4, 1],
+  ];
+  const ksum = 256;
+  const h = image.length, w = image[0].length;
+  const out = Array.from({ length: h }, () => new Array(w).fill(0));
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      let acc = 0;
+      for (let ky = 0; ky < 5; ky++) {
+        for (let kx = 0; kx < 5; kx++) {
+          const sy = Math.min(Math.max(y + ky - 2, 0), h - 1);
+          const sx = Math.min(Math.max(x + kx - 2, 0), w - 1);
+          acc += image[sy][sx] * kernel[ky][kx];
+        }
+      }
+      out[y][x] = acc / ksum;
+    }
+  }
+  return out;
+}
+
+function downsample(image: number[][]): number[][] {
+  const h = image.length, w = image[0].length;
+  const out: number[][] = [];
+  for (let y = 0; y < h; y += 2) {
+    const row: number[] = [];
+    for (let x = 0; x < w; x += 2) row.push(image[y][x]);
+    out.push(row);
+  }
+  return out;
+}
+
+function gaussianPyramid(image: number[][], levels: number): number[][][] {
+  const pyramid = [image];
+  let current = image;
+  for (let i = 0; i < levels - 1; i++) {
+    current = downsample(gaussianBlur(current));
+    pyramid.push(current);
+  }
+  return pyramid;
+}
+```
+
+```cpp
+#include <vector>
+#include <algorithm>
+
+using Image = std::vector<std::vector<double>>;
+
+Image gaussianBlur(const Image& image) {
+    static const int kernel[5][5] = {
+        {1, 4, 6, 4, 1},
+        {4, 16, 24, 16, 4},
+        {6, 24, 36, 24, 6},
+        {4, 16, 24, 16, 4},
+        {1, 4, 6, 4, 1},
+    };
+    const int ksum = 256;
+    int h = static_cast<int>(image.size());
+    int w = static_cast<int>(image[0].size());
+    Image out(h, std::vector<double>(w, 0.0));
+    for (int y = 0; y < h; y++) {
+        for (int x = 0; x < w; x++) {
+            double acc = 0.0;
+            for (int ky = 0; ky < 5; ky++) {
+                for (int kx = 0; kx < 5; kx++) {
+                    int sy = std::min(std::max(y + ky - 2, 0), h - 1);
+                    int sx = std::min(std::max(x + kx - 2, 0), w - 1);
+                    acc += image[sy][sx] * kernel[ky][kx];
+                }
+            }
+            out[y][x] = acc / ksum;
+        }
+    }
+    return out;
+}
+
+Image downsample(const Image& image) {
+    int h = static_cast<int>(image.size());
+    int w = static_cast<int>(image[0].size());
+    Image out;
+    for (int y = 0; y < h; y += 2) {
+        std::vector<double> row;
+        for (int x = 0; x < w; x += 2) row.push_back(image[y][x]);
+        out.push_back(row);
+    }
+    return out;
+}
+
+std::vector<Image> gaussianPyramid(const Image& image, int levels) {
+    std::vector<Image> pyramid{image};
+    Image current = image;
+    for (int i = 0; i < levels - 1; i++) {
+        current = downsample(gaussianBlur(current));
+        pyramid.push_back(current);
+    }
+    return pyramid;
+}
+```
+
+```rust
+type Image = Vec<Vec<f64>>;
+
+fn gaussian_blur(image: &Image) -> Image {
+    let kernel = [
+        [1.0, 4.0, 6.0, 4.0, 1.0],
+        [4.0, 16.0, 24.0, 16.0, 4.0],
+        [6.0, 24.0, 36.0, 24.0, 6.0],
+        [4.0, 16.0, 24.0, 16.0, 4.0],
+        [1.0, 4.0, 6.0, 4.0, 1.0],
+    ];
+    let ksum = 256.0;
+    let h = image.len();
+    let w = image[0].len();
+    let mut out = vec![vec![0.0; w]; h];
+    for y in 0..h {
+        for x in 0..w {
+            let mut acc = 0.0;
+            for ky in 0..5 {
+                for kx in 0..5 {
+                    let sy = (y as i32 + ky - 2).clamp(0, h as i32 - 1) as usize;
+                    let sx = (x as i32 + kx - 2).clamp(0, w as i32 - 1) as usize;
+                    acc += image[sy][sx] * kernel[ky as usize][kx as usize];
+                }
+            }
+            out[y][x] = acc / ksum;
+        }
+    }
+    out
+}
+
+fn downsample(image: &Image) -> Image {
+    let h = image.len();
+    let w = image[0].len();
+    let mut out = Vec::new();
+    let mut y = 0;
+    while y < h {
+        let mut row = Vec::new();
+        let mut x = 0;
+        while x < w {
+            row.push(image[y][x]);
+            x += 2;
+        }
+        out.push(row);
+        y += 2;
+    }
+    out
+}
+
+fn gaussian_pyramid(image: &Image, levels: usize) -> Vec<Image> {
+    let mut pyramid = vec![image.clone()];
+    let mut current = image.clone();
+    for _ in 0..levels.saturating_sub(1) {
+        current = downsample(&gaussian_blur(&current));
+        pyramid.push(current.clone());
+    }
+    pyramid
+}
+```
+
+```csharp
+static double[][] GaussianBlur(double[][] image)
+{
+    int[][] kernel =
+    {
+        new[] {1,4,6,4,1},
+        new[] {4,16,24,16,4},
+        new[] {6,24,36,24,6},
+        new[] {4,16,24,16,4},
+        new[] {1,4,6,4,1},
+    };
+    const int ksum = 256;
+    int h = image.Length, w = image[0].Length;
+    var outImg = new double[h][];
+    for (int y = 0; y < h; y++)
+    {
+        outImg[y] = new double[w];
+        for (int x = 0; x < w; x++)
+        {
+            double acc = 0;
+            for (int ky = 0; ky < 5; ky++)
+                for (int kx = 0; kx < 5; kx++)
+                {
+                    int sy = Math.Min(Math.Max(y + ky - 2, 0), h - 1);
+                    int sx = Math.Min(Math.Max(x + kx - 2, 0), w - 1);
+                    acc += image[sy][sx] * kernel[ky][kx];
+                }
+            outImg[y][x] = acc / ksum;
+        }
+    }
+    return outImg;
+}
+
+static double[][] Downsample(double[][] image)
+{
+    int h = image.Length, w = image[0].Length;
+    var rows = new List<double[]>();
+    for (int y = 0; y < h; y += 2)
+    {
+        var row = new List<double>();
+        for (int x = 0; x < w; x += 2) row.Add(image[y][x]);
+        rows.Add(row.ToArray());
+    }
+    return rows.ToArray();
+}
+
+static List<double[][]> GaussianPyramid(double[][] image, int levels)
+{
+    var pyramid = new List<double[][]> { image };
+    var current = image;
+    for (int i = 0; i < levels - 1; i++)
+    {
+        current = Downsample(GaussianBlur(current));
+        pyramid.Add(current);
+    }
+    return pyramid;
+}
+```

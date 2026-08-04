@@ -24,3 +24,148 @@ summary: 「どちらの文書がより関連度が高いか」というペア�
 - **[RRF](/algorithms/rrf)のような手作りの統合手法との対比**: [RRF(Reciprocal Rank Fusion)](/algorithms/rrf)が「複数のランキングの順位だけを使って統合する」パラメータフリーな手法であるのに対し、ペアワイズ・ランク学習は「大量のペア比較データから最適な統合の仕方そのものを学習する」点で対照的——データが豊富にあり継続的に改善したい実務の検索エンジンではランク学習が、データが少なく安定した統合が欲しい場面では[RRF](/algorithms/rrf)のような手作り手法が選ばれやすい
 - **ポイントワイズ・リストワイズとの違い**: ランク学習には「各文書に絶対スコアを直接回帰する」ポイントワイズ、「ペア単位の相対比較を学習する」ペアワイズ、「候補リスト全体の順位を一度に最適化する」リストワイズの3つのアプローチがあり、ペアワイズはその中間的な複雑さと精度のバランスを取る、最も広く実用化されている手法群である
 - **使いどころ**: 大規模検索エンジンのランキング学習(検索ログのクリックデータを教師信号として活用)、ECサイトの商品検索・レコメンデーション、広告配信システムにおける入札順位の最適化、[BM25](/algorithms/bm25)等の伝統的手法を初期スコアの1つの特徴量として取り込むハイブリッド構成
+
+## 実装例
+
+線形スコア関数`f(x) = w · x`をRankNet流のペアワイズ損失で学習する。「文書Aは文書Bより関連度が高い」というペアの集合から重みを勾配降下法で更新し、学習後に`f(高関連度の特徴)  > f(低関連度の特徴)`となることを検証する。
+
+```python
+import math
+
+
+def sigmoid(x: float) -> float:
+    return 1.0 / (1.0 + math.exp(-x))
+
+
+def train_ranknet(
+    pairs: list[tuple[list[float], list[float]]],
+    n_features: int,
+    lr: float = 0.1,
+    epochs: int = 500,
+) -> list[float]:
+    w = [0.0] * n_features
+
+    def score(x: list[float]) -> float:
+        return sum(wi * xi for wi, xi in zip(w, x))
+
+    for _ in range(epochs):
+        for x_pos, x_neg in pairs:  # x_posはx_negより関連度が高いペア
+            p = sigmoid(score(x_pos) - score(x_neg))
+            # 交差エントロピー損失の勾配: 正解ラベルは常に1なので (p - 1)
+            grad_coeff = (p - 1.0) * lr
+            for f in range(n_features):
+                w[f] -= grad_coeff * (x_pos[f] - x_neg[f])
+    return w
+```
+
+```typescript
+function sigmoid(x: number): number {
+  return 1 / (1 + Math.exp(-x));
+}
+
+function trainRanknet(
+  pairs: [number[], number[]][],
+  nFeatures: number,
+  lr = 0.1,
+  epochs = 500,
+): number[] {
+  const w = new Array(nFeatures).fill(0);
+  const score = (x: number[]) => w.reduce((s, wi, f) => s + wi * x[f], 0);
+
+  for (let e = 0; e < epochs; e++) {
+    for (const [xPos, xNeg] of pairs) {
+      // xPosはxNegより関連度が高いペア
+      const p = sigmoid(score(xPos) - score(xNeg));
+      // 交差エントロピー損失の勾配: 正解ラベルは常に1なので (p - 1)
+      const gradCoeff = (p - 1) * lr;
+      for (let f = 0; f < nFeatures; f++) {
+        w[f] -= gradCoeff * (xPos[f] - xNeg[f]);
+      }
+    }
+  }
+  return w;
+}
+```
+
+```cpp
+#include <vector>
+#include <cmath>
+#include <utility>
+
+double sigmoid(double x) {
+    return 1.0 / (1.0 + std::exp(-x));
+}
+
+std::vector<double> trainRanknet(
+    const std::vector<std::pair<std::vector<double>, std::vector<double>>>& pairs,
+    int nFeatures,
+    double lr = 0.1,
+    int epochs = 500) {
+    std::vector<double> w(nFeatures, 0.0);
+    auto score = [&](const std::vector<double>& x) {
+        double s = 0.0;
+        for (int f = 0; f < nFeatures; f++) s += w[f] * x[f];
+        return s;
+    };
+
+    for (int e = 0; e < epochs; e++) {
+        for (const auto& [xPos, xNeg] : pairs) {
+            double p = sigmoid(score(xPos) - score(xNeg));
+            // 交差エントロピー損失の勾配: 正解ラベルは常に1なので (p - 1)
+            double gradCoeff = (p - 1.0) * lr;
+            for (int f = 0; f < nFeatures; f++) {
+                w[f] -= gradCoeff * (xPos[f] - xNeg[f]);
+            }
+        }
+    }
+    return w;
+}
+```
+
+```rust
+fn sigmoid(x: f64) -> f64 {
+    1.0 / (1.0 + (-x).exp())
+}
+
+fn train_ranknet(pairs: &[(Vec<f64>, Vec<f64>)], n_features: usize, lr: f64, epochs: usize) -> Vec<f64> {
+    let mut w = vec![0.0; n_features];
+    let score = |w: &[f64], x: &[f64]| -> f64 { w.iter().zip(x.iter()).map(|(wi, xi)| wi * xi).sum() };
+
+    for _ in 0..epochs {
+        for (x_pos, x_neg) in pairs {
+            // x_posはx_negより関連度が高いペア
+            let p = sigmoid(score(&w, x_pos) - score(&w, x_neg));
+            // 交差エントロピー損失の勾配: 正解ラベルは常に1なので (p - 1)
+            let grad_coeff = (p - 1.0) * lr;
+            for f in 0..n_features {
+                w[f] -= grad_coeff * (x_pos[f] - x_neg[f]);
+            }
+        }
+    }
+    w
+}
+```
+
+```csharp
+static double Sigmoid(double x) => 1.0 / (1.0 + Math.Exp(-x));
+
+static double[] TrainRanknet(List<(double[] Pos, double[] Neg)> pairs, int nFeatures, double lr = 0.1, int epochs = 500)
+{
+    var w = new double[nFeatures];
+    double Score(double[] x) => w.Zip(x, (wi, xi) => wi * xi).Sum();
+
+    for (int e = 0; e < epochs; e++)
+    {
+        foreach (var (xPos, xNeg) in pairs)
+        {
+            // xPosはxNegより関連度が高いペア
+            double p = Sigmoid(Score(xPos) - Score(xNeg));
+            // 交差エントロピー損失の勾配: 正解ラベルは常に1なので (p - 1)
+            double gradCoeff = (p - 1.0) * lr;
+            for (int f = 0; f < nFeatures; f++)
+                w[f] -= gradCoeff * (xPos[f] - xNeg[f]);
+        }
+    }
+    return w;
+}
+```
