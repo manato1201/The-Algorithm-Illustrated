@@ -2,13 +2,18 @@
 
 状態分離型 インタラクティブ・アルゴリズム図鑑 — アルゴリズムがどのような目的で生まれ、どう動くのかを可視化・時間巻き戻し可能な形で学べる学習ダッシュボード。速さを競うランキングではなく、なぜ生まれ・どう動き・どこで報われるのかを理解することを目的とする。
 
+**公開URL**: [the-algorithm-illustrated.vercel.app](https://the-algorithm-illustrated.vercel.app)(誰でもアクセス可能、`git push`のたびに自動再デプロイ)
+
 ## ドキュメント
 
-| ドキュメント                                           | 内容                                                                               |
-| ------------------------------------------------------ | ---------------------------------------------------------------------------------- |
-| [docs/design/ui-design.md](docs/design/ui-design.md)   | UI/デザインシステム仕様(ダーク×発光/サイバーHUDトーン、デザイントークン、画面構成) |
-| [docs/design/design-log.md](docs/design/design-log.md) | デザイン方向の決定ログ(反復防止用)                                                 |
-| [docs/progress.md](docs/progress.md)                   | 実装状況ノート(何が実装済みで何がプレースホルダか、次にやること)                   |
+| ドキュメント                                           | 内容                                                                                                     |
+| ------------------------------------------------------ | -------------------------------------------------------------------------------------------------------- |
+| [docs/technical-guide.md](docs/technical-guide.md)     | 技術解説書。データモデル・可視化アーキテクチャ・カテゴリ分類・検証体制などを項目別に整理したリファレンス |
+| [docs/architecture.md](docs/architecture.md)           | アーキテクチャ図解(Mermaid記法、GitHub上でそのままレンダリングされる)                                    |
+| [docs/report.html](docs/report.html)                   | ブラウザで直接開けるスタンドアロンHTML版サマリーレポート(統計・図解・実装状況)                           |
+| [docs/design/ui-design.md](docs/design/ui-design.md)   | UI/デザインシステム仕様(ダーク×発光/サイバーHUDトーン、デザイントークン、画面構成)                       |
+| [docs/design/design-log.md](docs/design/design-log.md) | デザイン方向の決定ログ(反復防止用)                                                                       |
+| [docs/progress.md](docs/progress.md)                   | 実装状況ノート(セッションごとの来歴。何が実装済みで何がプレースホルダか、次にやること)                   |
 
 ## 技術スタック
 
@@ -56,6 +61,7 @@ src/
     page.tsx           トップページ(カタログ画面を呼び出すだけ)
     globals.css         デザイントークン(:root)とベーススタイル
     algorithms/[id]/    アルゴリズム詳細ページ(動的ルート、367件を静的生成)
+    basics/              「アルゴリズムとは/Big-O記法とは」入門ページ
     compare/            比較画面(最大4件のアルゴリズムを並べて比較、可視化対応済みなら実行の可視化も並べて表示)
     updates/            更新情報画面(RSSフィードのカード表示)
     about/               Aboutページ
@@ -83,7 +89,10 @@ src/
     algorithm-worker.ts  可視化のステップ列生成を実行するWeb Worker(単一インスタンスを使い回す設計)
 docs/
   design/               デザイン仕様・決定ログ
-  progress.md            実装状況ノート
+  progress.md            実装状況ノート(セッションごとの来歴)
+  technical-guide.md      技術解説書(項目別リファレンス)
+  architecture.md          アーキテクチャ図解(Mermaid記法)
+  report.html              スタンドアロンHTML版サマリーレポート
 web-production-skill/    参考にしたClaude Codeスキル一式(gitignore対象、pushされない)
 ```
 
@@ -103,6 +112,8 @@ web-production-skill/    参考にしたClaude Codeスキル一式(gitignore対�
 - ⬜ アルゴリズム数を10倍規模(約1600件超)に拡大(課題a、着手済み・367件。新カテゴリ追加フェーズ(全24カテゴリ)は一区切り、深堀りバッチ1・2(既存カテゴリに計104件)完了、デザインパターンを除く23カテゴリ全てに最低1回は深堀りが入った。以降は既存カテゴリの深堀り2巡目と可視化(課題b)の2軸を反復。詳細は[docs/progress.md](docs/progress.md)のロードマップ参照)
 - ✅ 各アルゴリズム記事に`## 実装例`(Python/TypeScript/C++/Rust/C#の5言語)を追加(課題d、2026-07-14着手、2026-08-04に**367件全件完了**、1835スニペット)。Python/TypeScript/C#は実行検証、C++/Rustはコンパイラ未インストールのため手動レビューのみ(既知の制約)
 - ✅ Vercelへのデプロイ・公開(2026-08-04): [the-algorithm-illustrated.vercel.app](https://the-algorithm-illustrated.vercel.app) でどこからでもアクセス可能。GitHub連携により`git push`のたびに自動再デプロイ
+- ✅ 「アルゴリズムとは/Big-O記法とは」入門ページ(/basics、2026-08-04追加)。O(1)〜O(n!)の主要な計算量クラスを、サイト内の実例へのリンクと所要時間の目安つきで解説
+- ✅ ドキュメント整備(2026-08-04): 技術解説書([docs/technical-guide.md](docs/technical-guide.md))・Mermaidアーキテクチャ図解([docs/architecture.md](docs/architecture.md))・スタンドアロンHTMLレポート([docs/report.html](docs/report.html))を新設
 - ⬜ モーション停止ボタンUI、比較画面の特性トレードオフ深掘り
 
 詳細・既知の制約は [docs/progress.md](docs/progress.md) を参照。
