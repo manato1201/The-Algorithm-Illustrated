@@ -9,8 +9,8 @@ type AppShellProps = {
 };
 
 const NAV_ITEMS: { href: string; label: string }[] = [
+  { href: "/basics", label: "アルゴリズムとは?" },
   { href: "/", label: "カタログ" },
-  { href: "/basics", label: "入門" },
   { href: "/compare", label: "比較" },
   { href: "/updates", label: "更新情報" },
   { href: "/about", label: "About" },
