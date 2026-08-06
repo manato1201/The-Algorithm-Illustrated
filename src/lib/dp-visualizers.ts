@@ -5285,6 +5285,1691 @@ export function fractionalKnapsackSteps(): DPFrame[] {
   return frames;
 }
 
+export type RRProcess = { name: string; burst: number };
+export const ROUND_ROBIN_PROCESSES: RRProcess[] = [
+  { name: "P1", burst: 5 },
+  { name: "P2", burst: 3 },
+  { name: "P3", burst: 4 },
+];
+export const ROUND_ROBIN_QUANTUM = 2;
+
+function computeRoundRobinTurns(): { proc: number; run: number; remainingAfter: number }[] {
+  const procs = ROUND_ROBIN_PROCESSES;
+  const quantum = ROUND_ROBIN_QUANTUM;
+  const rem = procs.map((p) => p.burst);
+  const queue: number[] = procs.map((_, i) => i);
+  const turns: { proc: number; run: number; remainingAfter: number }[] = [];
+  while (queue.length > 0) {
+    const p = queue.shift()!;
+    const run = Math.min(quantum, rem[p]);
+    rem[p] -= run;
+    turns.push({ proc: p, run, remainingAfter: rem[p] });
+    if (rem[p] > 0) queue.push(p);
+  }
+  return turns;
+}
+
+const ROUND_ROBIN_TURNS = computeRoundRobinTurns();
+
+/**
+ * ラウンドロビンスケジューリングのステップ列を生成する。行=プロセス、列=キューを一巡する「ターン」として、
+ * 各ターンでどのプロセスがどれだけ実行されたかをテーブルに埋めていく(assembly-line-schedulingと同じ
+ * 複数行タイムライン型のテーブル)。
+ */
+export function roundRobinSchedulingSteps(): DPFrame[] {
+  const procs = ROUND_ROBIN_PROCESSES;
+  const quantum = ROUND_ROBIN_QUANTUM;
+  const turns = ROUND_ROBIN_TURNS;
+  const cols = turns.length;
+  const table: (number | null)[][] = procs.map(() => new Array(cols).fill(null));
+  const state: DPCellState[][] = procs.map(() => new Array(cols).fill("idle"));
+
+  const frames: DPFrame[] = [];
+  const snapshot = (description: string): DPFrame => ({
+    table: table.map((row, r) => row.map((value, c) => ({ value, state: state[r][c] }))),
+    description,
+  });
+
+  frames.push(
+    snapshot(
+      `ラウンドロビン開始(タイムスライス=${quantum})。キュー: ${procs.map((p) => `${p.name}(バースト${p.burst})`).join(" → ")}`,
+    ),
+  );
+
+  for (let t = 0; t < cols; t++) {
+    const { proc, run, remainingAfter } = turns[t];
+    table[proc][t] = run;
+    state[proc][t] = "pivot";
+    frames.push(snapshot(`第${t + 1}ターン: ${procs[proc].name}を${run}単位実行(残りバースト${remainingAfter})`));
+    state[proc][t] = "settled";
+  }
+
+  frames.push(snapshot(`計算完了。全プロセスが完了(${cols}ターンでキューを巡回した)`));
+  return frames;
+}
+
+export type SJFProcess = { name: string; arrival: number; burst: number };
+export const SJF_PROCESSES: SJFProcess[] = [
+  { name: "P1", arrival: 0, burst: 7 },
+  { name: "P2", arrival: 2, burst: 4 },
+  { name: "P3", arrival: 4, burst: 1 },
+  { name: "P4", arrival: 5, burst: 4 },
+];
+
+/**
+ * 最短ジョブ優先(SJF、非プリエンプティブ)のステップ列を生成する。到着・バースト時間を属性行、
+ * プロセスを列とするテーブル(interval-scheduling/fractional-knapsackと同じ属性テーブル型)に、
+ * 開始・完了時刻を選択のたびに埋めていく。
+ */
+export function shortestJobFirstSteps(): DPFrame[] {
+  const procs = SJF_PROCESSES;
+  const n = procs.length;
+  const table: (number | null)[][] = [
+    procs.map((p) => p.arrival),
+    procs.map((p) => p.burst),
+    procs.map(() => null),
+    procs.map(() => null),
+  ];
+  const state: DPCellState[][] = [
+    procs.map(() => "settled"),
+    procs.map(() => "settled"),
+    procs.map(() => "idle"),
+    procs.map(() => "idle"),
+  ];
+
+  const frames: DPFrame[] = [];
+  const snapshot = (description: string): DPFrame => ({
+    table: table.map((row, r) => row.map((value, c) => ({ value, state: state[r][c] }))),
+    description,
+  });
+
+  frames.push(
+    snapshot(
+      `SJF(非プリエンプティブ)を開始。到着時刻・バースト時間: ${procs.map((p) => `${p.name}(到着${p.arrival}/バースト${p.burst})`).join(", ")}`,
+    ),
+  );
+
+  const done = new Array(n).fill(false);
+  let time = Math.min(...procs.map((p) => p.arrival));
+  for (let step = 0; step < n; step++) {
+    const readyIdx: number[] = [];
+    for (let i = 0; i < n; i++) if (!done[i] && procs[i].arrival <= time) readyIdx.push(i);
+    if (readyIdx.length === 0) {
+      time = Math.min(...procs.filter((_, i) => !done[i]).map((p) => p.arrival));
+      for (let i = 0; i < n; i++) if (!done[i] && procs[i].arrival <= time) readyIdx.push(i);
+    }
+    for (const i of readyIdx) state[1][i] = "comparing";
+    frames.push(
+      snapshot(
+        `時刻${time}: 到着済みで未実行のプロセス(${readyIdx.map((i) => procs[i].name).join(",")})の中からバースト時間が最短のものを選ぶ`,
+      ),
+    );
+    for (const i of readyIdx) state[1][i] = "settled";
+
+    let chosen = readyIdx[0];
+    for (const i of readyIdx) {
+      if (
+        procs[i].burst < procs[chosen].burst ||
+        (procs[i].burst === procs[chosen].burst && procs[i].arrival < procs[chosen].arrival)
+      ) {
+        chosen = i;
+      }
+    }
+    const start = time;
+    const completion = start + procs[chosen].burst;
+    table[2][chosen] = start;
+    table[3][chosen] = completion;
+    state[2][chosen] = "pivot";
+    state[3][chosen] = "pivot";
+    frames.push(snapshot(`${procs[chosen].name}(バースト${procs[chosen].burst})を選択して実行: 開始${start} → 完了${completion}`));
+    state[2][chosen] = "settled";
+    state[3][chosen] = "settled";
+    done[chosen] = true;
+    time = completion;
+  }
+
+  const avgWait = procs.reduce((sum, p, i) => sum + ((table[2][i] as number) - p.arrival), 0) / n;
+  frames.push(
+    snapshot(`計算完了。平均待ち時間=${avgWait.toFixed(2)}(SJFは平均待ち時間を最小化することが理論的に証明されている)`),
+  );
+  return frames;
+}
+
+export type PriorityProcess = { name: string; arrival: number; burst: number; priority: number };
+export const PRIORITY_SCHEDULING_PROCESSES: PriorityProcess[] = [
+  { name: "P1", arrival: 0, burst: 5, priority: 3 },
+  { name: "P2", arrival: 1, burst: 3, priority: 1 },
+  { name: "P3", arrival: 2, burst: 8, priority: 4 },
+  { name: "P4", arrival: 3, burst: 2, priority: 2 },
+];
+
+/**
+ * 優先度スケジューリング(非プリエンプティブ)のステップ列を生成する。到着済みの未実行プロセスの中から
+ * 優先度の数値が最も小さい(=最も優先度が高い)ものを選んで実行する。エイジングは簡略化のため省略し、
+ * 静的優先度による選択そのものの可視化に焦点を当てる。
+ */
+export function prioritySchedulingSteps(): DPFrame[] {
+  const procs = PRIORITY_SCHEDULING_PROCESSES;
+  const n = procs.length;
+  const table: (number | null)[][] = [
+    procs.map((p) => p.arrival),
+    procs.map((p) => p.burst),
+    procs.map((p) => p.priority),
+    procs.map(() => null),
+    procs.map(() => null),
+  ];
+  const state: DPCellState[][] = [
+    procs.map(() => "settled"),
+    procs.map(() => "settled"),
+    procs.map(() => "settled"),
+    procs.map(() => "idle"),
+    procs.map(() => "idle"),
+  ];
+
+  const frames: DPFrame[] = [];
+  const snapshot = (description: string): DPFrame => ({
+    table: table.map((row, r) => row.map((value, c) => ({ value, state: state[r][c] }))),
+    description,
+  });
+
+  frames.push(
+    snapshot(
+      `優先度スケジューリング(非プリエンプティブ)を開始。プロセス: ${procs.map((p) => `${p.name}(到着${p.arrival}/バースト${p.burst}/優先度${p.priority})`).join(", ")}(エイジングは省略し静的優先度のみで可視化)`,
+    ),
+  );
+
+  const done = new Array(n).fill(false);
+  let time = Math.min(...procs.map((p) => p.arrival));
+  for (let step = 0; step < n; step++) {
+    const readyIdx: number[] = [];
+    for (let i = 0; i < n; i++) if (!done[i] && procs[i].arrival <= time) readyIdx.push(i);
+    if (readyIdx.length === 0) {
+      time = Math.min(...procs.filter((_, i) => !done[i]).map((p) => p.arrival));
+      for (let i = 0; i < n; i++) if (!done[i] && procs[i].arrival <= time) readyIdx.push(i);
+    }
+    for (const i of readyIdx) state[2][i] = "comparing";
+    frames.push(
+      snapshot(
+        `時刻${time}: 到着済みで未実行のプロセス(${readyIdx.map((i) => procs[i].name).join(",")})の中から優先度が最も高い(数値が最小の)ものを選ぶ`,
+      ),
+    );
+    for (const i of readyIdx) state[2][i] = "settled";
+
+    let chosen = readyIdx[0];
+    for (const i of readyIdx) {
+      if (
+        procs[i].priority < procs[chosen].priority ||
+        (procs[i].priority === procs[chosen].priority && procs[i].arrival < procs[chosen].arrival)
+      ) {
+        chosen = i;
+      }
+    }
+    const start = time;
+    const completion = start + procs[chosen].burst;
+    table[3][chosen] = start;
+    table[4][chosen] = completion;
+    state[3][chosen] = "pivot";
+    state[4][chosen] = "pivot";
+    frames.push(snapshot(`${procs[chosen].name}(優先度${procs[chosen].priority})を選択して実行: 開始${start} → 完了${completion}`));
+    state[3][chosen] = "settled";
+    state[4][chosen] = "settled";
+    done[chosen] = true;
+    time = completion;
+  }
+
+  frames.push(snapshot(`計算完了。実行順序は優先度に従うため、到着順(P1→P2→P3→P4)とは異なる順番で処理された`));
+  return frames;
+}
+
+export type EDFTask = { name: string; arrival: number; burst: number; deadline: number };
+export const EDF_TASKS: EDFTask[] = [
+  { name: "T1", arrival: 0, burst: 4, deadline: 10 },
+  { name: "T2", arrival: 2, burst: 2, deadline: 5 },
+  { name: "T3", arrival: 4, burst: 3, deadline: 9 },
+];
+
+function edfSimulateTicks(): (number | null)[] {
+  const tasks = EDF_TASKS;
+  const n = tasks.length;
+  const remaining = tasks.map((t) => t.burst);
+  const totalBurst = tasks.reduce((s, t) => s + t.burst, 0);
+  const horizon = totalBurst + 2;
+  const ticks: (number | null)[] = [];
+  for (let now = 0; now < horizon; now++) {
+    if (remaining.every((r) => r === 0)) break;
+    let chosen = -1;
+    for (let i = 0; i < n; i++) {
+      if (tasks[i].arrival <= now && remaining[i] > 0) {
+        if (chosen === -1 || tasks[i].deadline < tasks[chosen].deadline) chosen = i;
+      }
+    }
+    if (chosen === -1) {
+      ticks.push(null);
+      continue;
+    }
+    remaining[chosen]--;
+    ticks.push(chosen);
+  }
+  return ticks;
+}
+
+const EDF_TICKS = edfSimulateTicks();
+
+/**
+ * 最早期限順(EDF)スケジューリングのステップ列を生成する。行=タスク、列=時刻ティックのガントチャート
+ * として、ティックごとに「到着済みで残り実行時間があるタスクのうち締切が最も近いもの」を選び続ける
+ * (新しい到着があれば即座に切り替わりうる動的優先度方式であることをティック単位の判定で表現する)。
+ */
+export function earliestDeadlineFirstSteps(): DPFrame[] {
+  const tasks = EDF_TASKS;
+  const ticks = EDF_TICKS;
+  const cols = ticks.length;
+  const table: (number | null)[][] = tasks.map(() => new Array(cols).fill(null));
+  const state: DPCellState[][] = tasks.map(() => new Array(cols).fill("idle"));
+
+  const frames: DPFrame[] = [];
+  const snapshot = (description: string): DPFrame => ({
+    table: table.map((row, r) => row.map((value, c) => ({ value, state: state[r][c] }))),
+    description,
+  });
+
+  frames.push(
+    snapshot(
+      `EDFを開始。タスク: ${tasks.map((t) => `${t.name}(到着${t.arrival}/バースト${t.burst}/締切${t.deadline})`).join(", ")}`,
+    ),
+  );
+
+  const remaining = tasks.map((t) => t.burst);
+  for (let tick = 0; tick < cols; tick++) {
+    const chosen = ticks[tick];
+    if (chosen === null) {
+      frames.push(snapshot(`時刻${tick}: 実行可能なタスクがなくCPUがアイドル`));
+      continue;
+    }
+    table[chosen][tick] = 1;
+    state[chosen][tick] = "pivot";
+    remaining[chosen]--;
+    frames.push(
+      snapshot(`時刻${tick}: 締切が最も近い${tasks[chosen].name}(締切${tasks[chosen].deadline}、残り実行${remaining[chosen]})を実行`),
+    );
+    state[chosen][tick] = "settled";
+  }
+
+  frames.push(snapshot(`計算完了。全タスクが締切内に完了(動的優先度方式のEDFは締切遵守率を理論的に最大化する)`));
+  return frames;
+}
+
+export type MLFQProcess = { name: string; burst: number };
+export const MLFQ_PROCESSES: MLFQProcess[] = [
+  { name: "P1", burst: 3 },
+  { name: "P2", burst: 9 },
+  { name: "P3", burst: 6 },
+];
+export const MLFQ_TIME_SLICES = [2, 4, 8];
+
+function mlfqSimulate(): { proc: number; level: number; run: number }[] {
+  const procs = MLFQ_PROCESSES;
+  const timeSlices = MLFQ_TIME_SLICES;
+  const queues: { proc: number; remaining: number }[][] = timeSlices.map(() => []);
+  procs.forEach((p, i) => queues[0].push({ proc: i, remaining: p.burst }));
+  const log: { proc: number; level: number; run: number }[] = [];
+  const maxLevel = timeSlices.length - 1;
+  while (queues.some((q) => q.length > 0)) {
+    const level = queues.findIndex((q) => q.length > 0);
+    const entry = queues[level].shift()!;
+    const sliceLen = timeSlices[level];
+    const run = Math.min(sliceLen, entry.remaining);
+    entry.remaining -= run;
+    log.push({ proc: entry.proc, level, run });
+    if (entry.remaining > 0) {
+      if (run >= sliceLen && level < maxLevel) queues[level + 1].push(entry);
+      else queues[level].push(entry);
+    }
+  }
+  return log;
+}
+
+const MLFQ_LOG = mlfqSimulate();
+
+/**
+ * マルチレベルフィードバックキューのステップ列を生成する。行=プロセス、列=実行ログのエントリとして、
+ * どのプロセスがどのレベル(タイムスライス)でどれだけ実行され、使い切ったら降格する様子を可視化する。
+ */
+export function multilevelFeedbackQueueSteps(): DPFrame[] {
+  const procs = MLFQ_PROCESSES;
+  const log = MLFQ_LOG;
+  const cols = log.length;
+  const table: (number | null)[][] = procs.map(() => new Array(cols).fill(null));
+  const state: DPCellState[][] = procs.map(() => new Array(cols).fill("idle"));
+
+  const frames: DPFrame[] = [];
+  const snapshot = (description: string): DPFrame => ({
+    table: table.map((row, r) => row.map((value, c) => ({ value, state: state[r][c] }))),
+    description,
+  });
+
+  frames.push(
+    snapshot(
+      `マルチレベルフィードバックキュー開始。レベルごとのタイムスライス: ${MLFQ_TIME_SLICES.join(", ")}(レベル0が最高優先度)。全プロセスはレベル0から開始: ${procs.map((p) => `${p.name}(バースト${p.burst})`).join(", ")}`,
+    ),
+  );
+
+  for (let c = 0; c < cols; c++) {
+    const { proc, level, run } = log[c];
+    table[proc][c] = run;
+    state[proc][c] = "pivot";
+    frames.push(snapshot(`${procs[proc].name}をレベル${level}(タイムスライス${MLFQ_TIME_SLICES[level]})で${run}単位実行`));
+    state[proc][c] = "settled";
+  }
+
+  frames.push(
+    snapshot(`計算完了。タイムスライスを使い切ったプロセスは1つ下のレベルへ降格し、短時間で完了するプロセスは高優先度のまま処理された`),
+  );
+  return frames;
+}
+
+export type CPMTask = { name: string; duration: number; deps: string[] };
+export const CPM_TASKS: CPMTask[] = [
+  { name: "A", duration: 3, deps: [] },
+  { name: "B", duration: 2, deps: [] },
+  { name: "C", duration: 4, deps: ["A"] },
+  { name: "D", duration: 2, deps: ["A", "B"] },
+  { name: "E", duration: 3, deps: ["C", "D"] },
+  { name: "F", duration: 2, deps: ["E"] },
+];
+
+/**
+ * クリティカルパス法(CPM)のステップ列を生成する。行=[ES,EF,LS,LF,フロート]、列=作業として、
+ * 前進パス(ES/EF)・後退パス(LS/LF)を順に埋め、最後にフロート(LS-ES)が0の作業(クリティカルパス)を
+ * 特定する。CPM_TASKSは既にトポロジカル順に並んでいるため、そのまま前進・後退の走査順序として使える。
+ */
+export function criticalPathMethodSteps(): DPFrame[] {
+  const tasks = CPM_TASKS;
+  const names = tasks.map((t) => t.name);
+  const n = tasks.length;
+  const idxOf = (name: string) => names.indexOf(name);
+  const successors: number[][] = tasks.map(() => []);
+  tasks.forEach((t, i) => t.deps.forEach((d) => successors[idxOf(d)].push(i)));
+
+  const rowLabels = ["ES", "EF", "LS", "LF", "フロート"];
+  const table: (number | null)[][] = rowLabels.map(() => new Array(n).fill(null));
+  const state: DPCellState[][] = rowLabels.map(() => new Array(n).fill("idle"));
+
+  const frames: DPFrame[] = [];
+  const snapshot = (description: string): DPFrame => ({
+    table: table.map((row, r) => row.map((value, c) => ({ value, state: state[r][c] }))),
+    description,
+  });
+
+  frames.push(
+    snapshot(
+      `クリティカルパス法(CPM)を開始。作業: ${tasks.map((t) => `${t.name}(所要${t.duration}, 依存:${t.deps.join(",") || "なし"})`).join(", ")}`,
+    ),
+  );
+
+  const ES = new Array(n).fill(0);
+  const EF = new Array(n).fill(0);
+  for (let i = 0; i < n; i++) {
+    const preds = tasks[i].deps.map(idxOf);
+    if (preds.length > 0) {
+      for (const p of preds) state[1][p] = "comparing";
+      frames.push(snapshot(`${tasks[i].name}のES(最早開始)を計算: 先行作業(${tasks[i].deps.join(",")})のEFの最大値を参照`));
+      for (const p of preds) state[1][p] = "settled";
+    }
+    ES[i] = preds.length > 0 ? Math.max(...preds.map((p) => EF[p])) : 0;
+    EF[i] = ES[i] + tasks[i].duration;
+    table[0][i] = ES[i];
+    table[1][i] = EF[i];
+    state[0][i] = "pivot";
+    state[1][i] = "pivot";
+    frames.push(snapshot(`${tasks[i].name}: ES=${ES[i]}, EF=${EF[i]}(所要時間${tasks[i].duration})を確定`));
+    state[0][i] = "settled";
+    state[1][i] = "settled";
+  }
+
+  const duration = Math.max(...EF);
+  frames.push(snapshot(`前進パス完了。プロジェクト全体の最短完了時間=${duration}`));
+
+  const LS = new Array(n).fill(0);
+  const LF = new Array(n).fill(0);
+  for (let i = n - 1; i >= 0; i--) {
+    const succ = successors[i];
+    if (succ.length > 0) {
+      for (const s of succ) state[2][s] = "comparing";
+      frames.push(
+        snapshot(`${tasks[i].name}のLF(最遅終了)を計算: 後続作業(${succ.map((s) => tasks[s].name).join(",")})のLSの最小値を参照`),
+      );
+      for (const s of succ) state[2][s] = "settled";
+    }
+    LF[i] = succ.length > 0 ? Math.min(...succ.map((s) => LS[s])) : duration;
+    LS[i] = LF[i] - tasks[i].duration;
+    table[2][i] = LS[i];
+    table[3][i] = LF[i];
+    state[2][i] = "pivot";
+    state[3][i] = "pivot";
+    frames.push(snapshot(`${tasks[i].name}: LS=${LS[i]}, LF=${LF[i]}を確定`));
+    state[2][i] = "settled";
+    state[3][i] = "settled";
+  }
+
+  frames.push(snapshot(`後退パス完了。各作業のフロート(LS-ES)を計算する`));
+
+  const critical: string[] = [];
+  for (let i = 0; i < n; i++) {
+    const floatTime = LS[i] - ES[i];
+    table[4][i] = floatTime;
+    if (floatTime === 0) {
+      state[4][i] = "pivot";
+      critical.push(tasks[i].name);
+    } else {
+      state[4][i] = "settled";
+    }
+  }
+  frames.push(snapshot(`計算完了。フロートが0の作業がクリティカルパス: ${critical.join(" → ")}(プロジェクト期間=${duration})`));
+
+  return frames;
+}
+
+export type ListSchedulingTask = { name: string; duration: number; deps: string[] };
+export const LIST_SCHEDULING_TASKS: ListSchedulingTask[] = [
+  { name: "T1", duration: 3, deps: [] },
+  { name: "T2", duration: 2, deps: [] },
+  { name: "T3", duration: 4, deps: ["T1"] },
+  { name: "T4", duration: 1, deps: ["T1", "T2"] },
+  { name: "T5", duration: 2, deps: ["T3", "T4"] },
+];
+export const LIST_SCHEDULING_PRIORITY = ["T1", "T2", "T3", "T4", "T5"];
+export const LIST_SCHEDULING_PROCESSORS = 2;
+
+function listSchedulingSimulate(): (number | null)[][] {
+  const tasks = LIST_SCHEDULING_TASKS;
+  const names = tasks.map((t) => t.name);
+  const priority = LIST_SCHEDULING_PRIORITY.map((name) => names.indexOf(name));
+  const m = LIST_SCHEDULING_PROCESSORS;
+  const n = tasks.length;
+  const remaining = tasks.map((t) => t.duration);
+  const completed = new Array(n).fill(false);
+  const assignedOrRunning = new Array(n).fill(false);
+  const procTask: (number | null)[] = new Array(m).fill(null);
+  const schedule: (number | null)[][] = Array.from({ length: m }, () => []);
+  let tick = 0;
+  const maxTicks = tasks.reduce((s, t) => s + t.duration, 0) + 1;
+
+  while (!completed.every(Boolean) && tick < maxTicks) {
+    for (let p = 0; p < m; p++) {
+      if (procTask[p] !== null && remaining[procTask[p]!] === 0) {
+        completed[procTask[p]!] = true;
+        procTask[p] = null;
+      }
+    }
+    if (completed.every(Boolean)) break; // 全タスク完了直後の無駄なアイドルティックを記録しない
+    for (let p = 0; p < m; p++) {
+      if (procTask[p] !== null) continue;
+      const readyTask = priority.find(
+        (i) => !completed[i] && !assignedOrRunning[i] && tasks[i].deps.every((d) => completed[names.indexOf(d)]),
+      );
+      if (readyTask !== undefined) {
+        procTask[p] = readyTask;
+        assignedOrRunning[readyTask] = true;
+      }
+    }
+    for (let p = 0; p < m; p++) {
+      if (procTask[p] !== null) {
+        schedule[p].push(procTask[p]);
+        remaining[procTask[p]!]--;
+      } else {
+        schedule[p].push(null);
+      }
+    }
+    tick++;
+  }
+  return schedule;
+}
+
+const LIST_SCHEDULING_RESULT = listSchedulingSimulate();
+
+/**
+ * リストスケジューリングのステップ列を生成する。行=プロセッサ、列=時刻ティックのガントチャートとして、
+ * 各時刻でプロセッサが空くたびに、優先順位リストの先頭から「依存タスクが全て完了している」タスクを
+ * 割り当てていく貪欲な様子を可視化する。
+ */
+export function listSchedulingSteps(): DPFrame[] {
+  const tasks = LIST_SCHEDULING_TASKS;
+  const schedule = LIST_SCHEDULING_RESULT;
+  const m = schedule.length;
+  const cols = schedule[0].length;
+  const table: (number | null)[][] = schedule.map((row) => row.map((t) => (t === null ? null : t + 1)));
+  const state: DPCellState[][] = schedule.map((row) => row.map(() => "idle"));
+
+  const frames: DPFrame[] = [];
+  const snapshot = (description: string): DPFrame => ({
+    table: table.map((row, r) => row.map((value, c) => ({ value, state: state[r][c] }))),
+    description,
+  });
+
+  frames.push(
+    snapshot(
+      `リストスケジューリング開始。優先順位リスト: ${LIST_SCHEDULING_PRIORITY.join(" > ")}、プロセッサ数=${m}。タスク: ${tasks.map((t) => `${t.name}(所要${t.duration}, 依存:${t.deps.join(",") || "なし"})`).join(", ")}`,
+    ),
+  );
+
+  for (let c = 0; c < cols; c++) {
+    for (let p = 0; p < m; p++) {
+      if (table[p][c] !== null) state[p][c] = "pivot";
+    }
+    const running = schedule
+      .map((row, p) => (row[c] !== null ? `プロセッサ${p + 1}=${tasks[row[c]!].name}` : null))
+      .filter((v): v is string => v !== null);
+    frames.push(snapshot(`時刻${c}: ${running.length > 0 ? running.join(", ") : "全プロセッサがアイドル"}`));
+    for (let p = 0; p < m; p++) {
+      if (table[p][c] !== null) state[p][c] = "settled";
+    }
+  }
+
+  frames.push(snapshot(`計算完了。メイクスパン(全タスク完了までの時間)=${cols}`));
+  return frames;
+}
+
+export type JobShopOp = { machine: number; duration: number };
+export const JOB_SHOP_JOBS: JobShopOp[][] = [
+  [
+    { machine: 0, duration: 3 },
+    { machine: 1, duration: 2 },
+  ],
+  [
+    { machine: 1, duration: 2 },
+    { machine: 0, duration: 4 },
+  ],
+  [
+    { machine: 0, duration: 2 },
+    { machine: 1, duration: 3 },
+  ],
+];
+
+function jobShopSimulate(): { job: number; machine: number; start: number; end: number }[] {
+  const jobs = JOB_SHOP_JOBS;
+  const nJobs = jobs.length;
+  const nMachines = Math.max(...jobs.flatMap((j) => j.map((op) => op.machine))) + 1;
+  const jobOpIndex = new Array(nJobs).fill(0);
+  const jobReady = new Array(nJobs).fill(0);
+  const machineReady = new Array(nMachines).fill(0);
+  let remainingOps = jobs.reduce((s, j) => s + j.length, 0);
+  const schedule: { job: number; machine: number; start: number; end: number }[] = [];
+
+  while (remainingOps > 0) {
+    let bestJ = -1;
+    let bestMachine = -1;
+    let bestDuration = -1;
+    let bestStart = -1;
+    let bestKey: [number, number, number] | null = null;
+    for (let j = 0; j < nJobs; j++) {
+      if (jobOpIndex[j] >= jobs[j].length) continue;
+      const { machine, duration } = jobs[j][jobOpIndex[j]];
+      const start = Math.max(jobReady[j], machineReady[machine]);
+      const key: [number, number, number] = [duration, start, j];
+      if (
+        bestKey === null ||
+        key[0] < bestKey[0] ||
+        (key[0] === bestKey[0] && (key[1] < bestKey[1] || (key[1] === bestKey[1] && key[2] < bestKey[2])))
+      ) {
+        bestKey = key;
+        bestJ = j;
+        bestMachine = machine;
+        bestDuration = duration;
+        bestStart = start;
+      }
+    }
+    const end = bestStart + bestDuration;
+    schedule.push({ job: bestJ, machine: bestMachine, start: bestStart, end });
+    jobReady[bestJ] = end;
+    machineReady[bestMachine] = end;
+    jobOpIndex[bestJ]++;
+    remainingOps--;
+  }
+  return schedule;
+}
+
+const JOB_SHOP_RESULT = jobShopSimulate();
+const JOB_SHOP_MACHINE_COUNT = Math.max(...JOB_SHOP_JOBS.flatMap((j) => j.map((op) => op.machine))) + 1;
+const JOB_SHOP_MAKESPAN = Math.max(...JOB_SHOP_RESULT.map((s) => s.end));
+
+/**
+ * ジョブショップスケジューリング(SPTルール)のステップ列を生成する。行=機械、列=時刻ティックの
+ * ガントチャートとして、各機械が空くたびに「実行可能な工程の中で処理時間が最短」のものを選ぶ
+ * ディスパッチングルールで、ジョブが機械をどう取り合うかを可視化する。
+ */
+export function jobShopSchedulingSteps(): DPFrame[] {
+  const jobs = JOB_SHOP_JOBS;
+  const nMachines = JOB_SHOP_MACHINE_COUNT;
+  const schedule = JOB_SHOP_RESULT;
+  const makespan = JOB_SHOP_MAKESPAN;
+  const table: (number | null)[][] = Array.from({ length: nMachines }, () => new Array(makespan).fill(null));
+  const state: DPCellState[][] = Array.from({ length: nMachines }, () => new Array(makespan).fill("idle"));
+
+  const frames: DPFrame[] = [];
+  const snapshot = (description: string): DPFrame => ({
+    table: table.map((row, r) => row.map((value, c) => ({ value, state: state[r][c] }))),
+    description,
+  });
+
+  frames.push(
+    snapshot(
+      `ジョブショップスケジューリング(SPTルール)開始。${jobs.length}ジョブ×${nMachines}機械。各ジョブの工程: ${jobs.map((j, i) => `job${i + 1}=[${j.map((op) => `M${op.machine + 1}:${op.duration}`).join("→")}]`).join(", ")}`,
+    ),
+  );
+
+  for (const entry of schedule) {
+    for (let t = entry.start; t < entry.end; t++) {
+      table[entry.machine][t] = entry.job + 1;
+      state[entry.machine][t] = "pivot";
+    }
+    frames.push(
+      snapshot(
+        `job${entry.job + 1}をmachine${entry.machine + 1}で時刻${entry.start}〜${entry.end}に処理(SPTルール: 実行可能な工程の中で処理時間が最短のものを選択)`,
+      ),
+    );
+    for (let t = entry.start; t < entry.end; t++) {
+      state[entry.machine][t] = "settled";
+    }
+  }
+
+  frames.push(snapshot(`計算完了。メイクスパン(全ジョブ完了までの時間)=${makespan}`));
+  return frames;
+}
+
+export const CLOCK_ALGORITHM_CAPACITY = 4;
+export const CLOCK_ALGORITHM_ACCESSES = [1, 2, 3, 4, 1, 5, 2, 1, 6];
+
+/**
+ * Clockアルゴリズム(LRU近似)のステップ列を生成する。1行目=フレームのページID、2行目=参照ビットとして、
+ * 針(hand)が円環状のフレームを巡りながら、参照ビットが1なら0にリセットして先へ進み(セカンドチャンス)、
+ * 0のフレームに行き当たったら追い出して置き換える様子を、スロットの走査1回ごとにフレームで可視化する。
+ */
+export function clockAlgorithmSteps(): DPFrame[] {
+  const capacity = CLOCK_ALGORITHM_CAPACITY;
+  const frameArr: (number | null)[] = new Array(capacity).fill(null);
+  const refBits: number[] = new Array(capacity).fill(0);
+  const index = new Map<number, number>();
+  let hand = 0;
+
+  const table: (number | null)[][] = [new Array(capacity).fill(null), new Array(capacity).fill(null)];
+  const state: DPCellState[][] = [new Array(capacity).fill("idle"), new Array(capacity).fill("idle")];
+
+  const frames: DPFrame[] = [];
+  const sync = () => {
+    for (let i = 0; i < capacity; i++) {
+      table[0][i] = frameArr[i];
+      table[1][i] = refBits[i];
+    }
+  };
+  const resetState = () => {
+    for (let i = 0; i < capacity; i++) {
+      state[0][i] = "idle";
+      state[1][i] = "idle";
+    }
+  };
+  const snapshot = (description: string): DPFrame => ({
+    table: table.map((row, r) => row.map((value, c) => ({ value, state: state[r][c] }))),
+    description,
+  });
+
+  sync();
+  frames.push(snapshot(`Clockアルゴリズム開始(容量${capacity})。1行目=ページID、2行目=参照ビット`));
+
+  for (const page of CLOCK_ALGORITHM_ACCESSES) {
+    resetState();
+    if (index.has(page)) {
+      const slot = index.get(page)!;
+      refBits[slot] = 1;
+      sync();
+      state[1][slot] = "pivot";
+      frames.push(snapshot(`ページ${page}を参照: ヒット。参照ビットを1にセット(スロット${slot})`));
+      continue;
+    }
+    for (;;) {
+      resetState();
+      if (frameArr[hand] === null) {
+        frameArr[hand] = page;
+        refBits[hand] = 1;
+        index.set(page, hand);
+        sync();
+        state[0][hand] = "pivot";
+        state[1][hand] = "pivot";
+        frames.push(snapshot(`ページ${page}: ミス。空きスロット${hand}に配置`));
+        hand = (hand + 1) % capacity;
+        break;
+      }
+      if (refBits[hand] === 0) {
+        const evicted = frameArr[hand]!;
+        index.delete(evicted);
+        frameArr[hand] = page;
+        refBits[hand] = 1;
+        index.set(page, hand);
+        sync();
+        state[0][hand] = "pivot";
+        state[1][hand] = "pivot";
+        frames.push(snapshot(`ページ${page}: ミス。針がスロット${hand}(ページ${evicted}、参照ビット0)を追い出して配置`));
+        hand = (hand + 1) % capacity;
+        break;
+      }
+      refBits[hand] = 0;
+      sync();
+      state[1][hand] = "pivot";
+      frames.push(
+        snapshot(`ページ${page}: スロット${hand}(ページ${frameArr[hand]})は参照ビット1 → セカンドチャンスを与えて0にリセットし、針を進める`),
+      );
+      hand = (hand + 1) % capacity;
+    }
+  }
+
+  resetState();
+  sync();
+  frames.push(snapshot(`計算完了。最終的なフレーム内容: [${frameArr.join(", ")}]`));
+  return frames;
+}
+
+export type LFUOperation = { type: "put" | "get"; key: number; value?: number };
+export const LFU_CAPACITY = 3;
+export const LFU_OPERATIONS: LFUOperation[] = [
+  { type: "put", key: 1, value: 10 },
+  { type: "put", key: 2, value: 20 },
+  { type: "put", key: 3, value: 30 },
+  { type: "get", key: 1 },
+  { type: "put", key: 4, value: 40 },
+  { type: "get", key: 3 },
+  { type: "get", key: 4 },
+  { type: "put", key: 5, value: 50 },
+];
+
+/**
+ * LFUキャッシュのステップ列を生成する。lru-cacheと同じ「キーを並べたテーブル」パターンを使い、
+ * 1行目=キー、2行目=そのキーの参照頻度として、左(次に追い出される候補=頻度最小・同頻度内では最古)
+ * から右(最も安全)の順に並べ替えながら表示する。頻度バケット(FIFO順のキー配列)による管理そのものを可視化する。
+ */
+export function lfuCacheSteps(): DPFrame[] {
+  const capacity = LFU_CAPACITY;
+  const keyToFreq = new Map<number, number>();
+  const keyToVal = new Map<number, number>();
+  const freqToKeys = new Map<number, number[]>();
+  let minFreq = 0;
+
+  const cols = capacity;
+  const table: (number | null)[][] = [new Array(cols).fill(null), new Array(cols).fill(null)];
+  const state: DPCellState[][] = [new Array(cols).fill("idle"), new Array(cols).fill("idle")];
+
+  const frames: DPFrame[] = [];
+  const currentOrder = (): number[] => {
+    const freqs = [...freqToKeys.keys()].sort((a, b) => a - b);
+    const order: number[] = [];
+    for (const f of freqs) order.push(...freqToKeys.get(f)!);
+    return order;
+  };
+  const sync = () => {
+    const order = currentOrder();
+    for (let c = 0; c < cols; c++) {
+      table[0][c] = c < order.length ? order[c] : null;
+      table[1][c] = c < order.length ? keyToFreq.get(order[c])! : null;
+    }
+  };
+  const resetState = () => {
+    for (let c = 0; c < cols; c++) {
+      state[0][c] = "idle";
+      state[1][c] = "idle";
+    }
+  };
+  const snapshot = (description: string): DPFrame => ({
+    table: table.map((row, r) => row.map((value, c) => ({ value, state: state[r][c] }))),
+    description,
+  });
+
+  sync();
+  frames.push(
+    snapshot(`LFUキャッシュ(容量${capacity})を開始。1行目=キー、2行目=参照頻度。左が次に追い出される候補、右が最も安全`),
+  );
+
+  const touch = (key: number) => {
+    const freq = keyToFreq.get(key)!;
+    const bucket = freqToKeys.get(freq)!;
+    bucket.splice(bucket.indexOf(key), 1);
+    if (bucket.length === 0) {
+      freqToKeys.delete(freq);
+      if (minFreq === freq) minFreq++;
+    }
+    const newFreq = freq + 1;
+    keyToFreq.set(key, newFreq);
+    if (!freqToKeys.has(newFreq)) freqToKeys.set(newFreq, []);
+    freqToKeys.get(newFreq)!.push(key);
+  };
+
+  for (const op of LFU_OPERATIONS) {
+    resetState();
+    if (op.type === "put") {
+      if (keyToVal.has(op.key)) {
+        keyToVal.set(op.key, op.value!);
+        touch(op.key);
+        sync();
+        frames.push(snapshot(`put(${op.key}, ${op.value}): 既存キーの値を更新し頻度+1`));
+        continue;
+      }
+      if (keyToVal.size >= capacity) {
+        const bucket = freqToKeys.get(minFreq)!;
+        const evicted = bucket.shift()!;
+        if (bucket.length === 0) freqToKeys.delete(minFreq);
+        keyToVal.delete(evicted);
+        keyToFreq.delete(evicted);
+        sync();
+        frames.push(snapshot(`put(${op.key}, ${op.value}): 容量超過のため最小頻度(${minFreq})かつ最も古いキー${evicted}を追い出す`));
+      }
+      keyToVal.set(op.key, op.value!);
+      keyToFreq.set(op.key, 1);
+      if (!freqToKeys.has(1)) freqToKeys.set(1, []);
+      freqToKeys.get(1)!.push(op.key);
+      minFreq = 1;
+      sync();
+      const pos = currentOrder().indexOf(op.key);
+      state[0][pos] = "pivot";
+      state[1][pos] = "pivot";
+      frames.push(snapshot(`put(${op.key}, ${op.value}): 新規キーを頻度1で挿入`));
+    } else {
+      if (keyToVal.has(op.key)) {
+        touch(op.key);
+        sync();
+        const pos = currentOrder().indexOf(op.key);
+        state[1][pos] = "pivot";
+        frames.push(snapshot(`get(${op.key}): ヒット(値=${keyToVal.get(op.key)})。頻度を+1`));
+      } else {
+        sync();
+        frames.push(snapshot(`get(${op.key}): ミス(キャッシュに存在しない)`));
+      }
+    }
+  }
+
+  sync();
+  frames.push(
+    snapshot(`計算完了。最終的なキャッシュ内容: {${currentOrder().map((k) => `${k}:freq${keyToFreq.get(k)}`).join(", ")}}`),
+  );
+  return frames;
+}
+
+export const FIFO_PAGE_REPLACEMENT_REFERENCE = [1, 2, 3, 4, 1, 2, 5, 1, 2, 3, 4, 5];
+export const FIFO_PAGE_REPLACEMENT_FRAMES = 3;
+
+/**
+ * FIFOページ置換アルゴリズムのステップ列を生成する。1行のテーブルをフレームキューとして、
+ * 最も古いページ(左端)から追い出していく単純さを可視化する。content記事と同じ参照列・フレーム数3を
+ * 使えば9回のページフォールトが発生する(フレーム数4だと10回に増える「ベラディの異常」の反例)。
+ */
+export function fifoPageReplacementSteps(): DPFrame[] {
+  const refs = FIFO_PAGE_REPLACEMENT_REFERENCE;
+  const numFrames = FIFO_PAGE_REPLACEMENT_FRAMES;
+  const queue: number[] = [];
+  const resident = new Set<number>();
+  let faults = 0;
+
+  const table: (number | null)[][] = [new Array(numFrames).fill(null)];
+  const state: DPCellState[][] = [new Array(numFrames).fill("idle")];
+
+  const frames: DPFrame[] = [];
+  const sync = () => {
+    for (let c = 0; c < numFrames; c++) table[0][c] = c < queue.length ? queue[c] : null;
+  };
+  const snapshot = (description: string): DPFrame => ({
+    table: table.map((row, r) => row.map((value, c) => ({ value, state: state[r][c] }))),
+    description,
+  });
+
+  sync();
+  frames.push(
+    snapshot(`FIFOページ置換開始(フレーム数${numFrames})。参照列: ${refs.join(", ")}(左が最も古い=次に追い出される)`),
+  );
+
+  for (const page of refs) {
+    for (let c = 0; c < numFrames; c++) state[0][c] = "idle";
+    if (resident.has(page)) {
+      sync();
+      frames.push(snapshot(`ページ${page}を参照: ヒット(ページフォールトなし)`));
+      continue;
+    }
+    faults++;
+    if (queue.length >= numFrames) {
+      const oldest = queue.shift()!;
+      resident.delete(oldest);
+    }
+    queue.push(page);
+    resident.add(page);
+    sync();
+    state[0][queue.length - 1] = "pivot";
+    frames.push(snapshot(`ページ${page}を参照: ミス(ページフォールト#${faults})。最も古いページを追い出して読み込む`));
+  }
+
+  frames.push(snapshot(`計算完了。参照列${refs.length}件に対してページフォールトは${faults}回発生(フレーム数${numFrames}の場合)`));
+  return frames;
+}
+
+export type RMSTask = { name: string; exec: number; period: number };
+export const RATE_MONOTONIC_TASKS: RMSTask[] = [
+  { name: "T1", exec: 1, period: 4 },
+  { name: "T2", exec: 2, period: 6 },
+];
+
+function rmsGcd(a: number, b: number): number {
+  return b === 0 ? a : rmsGcd(b, a % b);
+}
+function rmsLcm(a: number, b: number): number {
+  return (a * b) / rmsGcd(a, b);
+}
+function rmsHyperperiod(): number {
+  return RATE_MONOTONIC_TASKS.reduce((h, t) => rmsLcm(h, t.period), 1);
+}
+
+const RATE_MONOTONIC_HORIZON = rmsHyperperiod();
+
+/**
+ * レートモノトニックスケジューリング(RMS)のステップ列を生成する。行=タスク(周期の短い順=優先度順)、
+ * 列=時刻ティック(1ハイパー周期分)のガントチャートとして、常に到着済みタスクの中で最高優先度
+ * (周期が最短)のものを実行する静的優先度方式を可視化する。
+ */
+export function rateMonotonicSchedulingSteps(): DPFrame[] {
+  const tasks = [...RATE_MONOTONIC_TASKS].sort((a, b) => a.period - b.period);
+  const n = tasks.length;
+  const horizon = RATE_MONOTONIC_HORIZON;
+
+  const remaining = new Map<string, number>();
+  for (const t of tasks) {
+    for (let release = 0; release < horizon; release += t.period) {
+      remaining.set(`${t.name}:${release}`, t.exec);
+    }
+  }
+
+  const table: (number | null)[][] = tasks.map(() => new Array(horizon).fill(null));
+  const state: DPCellState[][] = tasks.map(() => new Array(horizon).fill("idle"));
+
+  const frames: DPFrame[] = [];
+  const snapshot = (description: string): DPFrame => ({
+    table: table.map((row, r) => row.map((value, c) => ({ value, state: state[r][c] }))),
+    description,
+  });
+
+  const utilization = tasks.reduce((s, t) => s + t.exec / t.period, 0);
+  const bound = n * (2 ** (1 / n) - 1);
+  frames.push(
+    snapshot(
+      `レートモノトニックスケジューリング開始。周期の短い順に静的優先度を割り当て: ${tasks.map((t) => `${t.name}(実行${t.exec}/周期${t.period})`).join(", ")}。CPU使用率=${utilization.toFixed(3)}(リューとレイランドの境界=${bound.toFixed(3)})`,
+    ),
+  );
+
+  for (let time = 0; time < horizon; time++) {
+    let chosen = -1;
+    let chosenRelease = -1;
+    for (let i = 0; i < n; i++) {
+      const release = Math.floor(time / tasks[i].period) * tasks[i].period;
+      const key = `${tasks[i].name}:${release}`;
+      if ((remaining.get(key) ?? 0) > 0) {
+        chosen = i;
+        chosenRelease = release;
+        break;
+      }
+    }
+    for (let i = 0; i < n; i++) state[i][time] = "idle";
+    if (chosen === -1) {
+      frames.push(snapshot(`時刻${time}: 実行可能なタスクがなくCPUがアイドル`));
+      continue;
+    }
+    const key = `${tasks[chosen].name}:${chosenRelease}`;
+    remaining.set(key, remaining.get(key)! - 1);
+    table[chosen][time] = 1;
+    state[chosen][time] = "pivot";
+    frames.push(snapshot(`時刻${time}: 最高優先度の${tasks[chosen].name}(周期${tasks[chosen].period}、リリース${chosenRelease})を実行`));
+  }
+
+  frames.push(
+    snapshot(`計算完了(1ハイパー周期=${horizon})。CPU使用率が境界以下のため全タスクが締切(次の周期開始まで)を守れることが理論的に保証される`),
+  );
+  return frames;
+}
+
+export const LRU_K_CAPACITY = 3;
+export const LRU_K_K = 2;
+export const LRU_K_ACCESSES = [1, 2, 3, 1, 2, 3, 4, 5, 6, 1];
+
+/**
+ * LRU-Kページ置換アルゴリズムのステップ列を生成する。1行目=キャッシュ中のページID、
+ * 2行目=Backward K-distance(K回未満しか参照されていなければnull=∞扱い)として、左=安全(距離が小さい)
+ * 〜右=追い出し候補(距離が最大、K回未満なら最優先で追い出し)の順に並べ替える。頻出ページ1,2,3が、
+ * 一時的な走査(4,5,6)によるキャッシュ汚染に対して優先的に守られる様子を可視化する。
+ */
+export function lruKPageReplacementSteps(): DPFrame[] {
+  const capacity = LRU_K_CAPACITY;
+  const k = LRU_K_K;
+  const cache = new Set<number>();
+  const history = new Map<number, number[]>();
+  let clock = 0;
+
+  const cols = capacity;
+  const table: (number | null)[][] = [new Array(cols).fill(null), new Array(cols).fill(null)];
+  const state: DPCellState[][] = [new Array(cols).fill("idle"), new Array(cols).fill("idle")];
+
+  const frames: DPFrame[] = [];
+  const backwardKDistance = (page: number): number | null => {
+    const hist = history.get(page)!;
+    if (hist.length < k) return null;
+    return clock - hist[hist.length - k];
+  };
+  const sortedOrder = (): number[] =>
+    [...cache].sort((a, b) => {
+      const da = backwardKDistance(a);
+      const db = backwardKDistance(b);
+      if (da === null && db === null) return 0;
+      if (da === null) return 1;
+      if (db === null) return -1;
+      return da - db;
+    });
+  const sync = () => {
+    const order = sortedOrder();
+    for (let c = 0; c < cols; c++) {
+      table[0][c] = c < order.length ? order[c] : null;
+      table[1][c] = c < order.length ? backwardKDistance(order[c]) : null;
+    }
+  };
+  const resetState = () => {
+    for (let c = 0; c < cols; c++) {
+      state[0][c] = "idle";
+      state[1][c] = "idle";
+    }
+  };
+  const snapshot = (description: string): DPFrame => ({
+    table: table.map((row, r) => row.map((value, c) => ({ value, state: state[r][c] }))),
+    description,
+  });
+
+  sync();
+  frames.push(
+    snapshot(
+      `LRU-K(K=${k}, 容量${capacity})開始。1行目=ページID、2行目=Backward K-distance(空欄=まだK回参照されていない=∞)。左が安全、右が追い出し候補`,
+    ),
+  );
+
+  for (const page of LRU_K_ACCESSES) {
+    clock++;
+    const hit = cache.has(page);
+    const hist = history.get(page) ?? [];
+    hist.push(clock);
+    if (hist.length > k) hist.shift();
+    history.set(page, hist);
+
+    resetState();
+    if (!hit) {
+      if (cache.size >= capacity) {
+        const order = sortedOrder();
+        const victim = order[order.length - 1];
+        const dist = backwardKDistance(victim);
+        cache.delete(victim);
+        sync();
+        frames.push(
+          snapshot(`ページ${page}: ミス。Backward K-distanceが最大(${dist === null ? "∞、K回未満の参照" : dist})のページ${victim}を追い出す`),
+        );
+      }
+      cache.add(page);
+      sync();
+      const pos = sortedOrder().indexOf(page);
+      state[0][pos] = "pivot";
+      frames.push(snapshot(`ページ${page}をキャッシュに追加`));
+    } else {
+      sync();
+      const pos = sortedOrder().indexOf(page);
+      state[1][pos] = "pivot";
+      frames.push(snapshot(`ページ${page}: ヒット。参照履歴を更新(直近${k}回分を保持)`));
+    }
+  }
+
+  sync();
+  frames.push(
+    snapshot(`計算完了。一時的な走査(ページ4,5,6)は${k}回参照されるまで最優先で追い出され、繰り返しアクセスされたページ1,2,3が生き残った`),
+  );
+  return frames;
+}
+
+export const BANKERS_PROCESSES = ["P0", "P1", "P2", "P3", "P4"];
+export const BANKERS_ALLOCATION = [
+  [0, 1, 0],
+  [2, 0, 0],
+  [3, 0, 2],
+  [2, 1, 1],
+  [0, 0, 2],
+];
+export const BANKERS_MAX = [
+  [7, 5, 3],
+  [3, 2, 2],
+  [9, 0, 2],
+  [2, 2, 2],
+  [4, 3, 3],
+];
+export const BANKERS_AVAILABLE = [3, 3, 2];
+
+/**
+ * 銀行家のアルゴリズム(デッドロック回避)のステップ列を生成する。行=プロセス、列=[Alloc,Max,Need×3資源
+ * +完了順序]として、安全性アルゴリズム(Need<=Workなら完了させて資源を回収)を繰り返し、安全順序を
+ * 見つける様子を可視化する。Silberschatzの教科書で知られる古典例(安全順序<P1,P3,P4,P0,P2>)を使用。
+ */
+export function bankersAlgorithmSteps(): DPFrame[] {
+  const procNames = BANKERS_PROCESSES;
+  const n = procNames.length;
+  const m = BANKERS_AVAILABLE.length;
+  const alloc = BANKERS_ALLOCATION;
+  const max = BANKERS_MAX;
+  const need = alloc.map((row, i) => row.map((v, j) => max[i][j] - v));
+
+  const colLabels = ["AllocA", "AllocB", "AllocC", "MaxA", "MaxB", "MaxC", "NeedA", "NeedB", "NeedC", "完了順序"];
+  const cols = colLabels.length;
+  const table: (number | null)[][] = procNames.map((_, i) => [
+    alloc[i][0],
+    alloc[i][1],
+    alloc[i][2],
+    max[i][0],
+    max[i][1],
+    max[i][2],
+    need[i][0],
+    need[i][1],
+    need[i][2],
+    null,
+  ]);
+  const state: DPCellState[][] = procNames.map(() => new Array(cols).fill("settled"));
+  for (const row of state) row[cols - 1] = "idle";
+
+  const frames: DPFrame[] = [];
+  const snapshot = (description: string): DPFrame => ({
+    table: table.map((row, r) => row.map((value, c) => ({ value, state: state[r][c] }))),
+    description,
+  });
+
+  frames.push(
+    snapshot(
+      `銀行家のアルゴリズム開始。利用可能資源=(${BANKERS_AVAILABLE.join(",")})。各プロセスのAlloc(現在の割当)・Max(最大要求)・Need(残り必要量=Max-Alloc)を確認`,
+    ),
+  );
+
+  const work = [...BANKERS_AVAILABLE];
+  const finished = new Array(n).fill(false);
+  const safeSequence: number[] = [];
+  let order = 1;
+
+  let changed = true;
+  while (changed && safeSequence.length < n) {
+    changed = false;
+    for (let i = 0; i < n; i++) {
+      if (finished[i]) continue;
+      for (let j = 0; j < m; j++) state[i][6 + j] = "comparing";
+      frames.push(snapshot(`${procNames[i]}のNeed=(${need[i].join(",")})とWork=(${work.join(",")})を比較`));
+      for (let j = 0; j < m; j++) state[i][6 + j] = "settled";
+
+      const canFinish = need[i].every((v, j) => v <= work[j]);
+      if (canFinish) {
+        for (let j = 0; j < m; j++) work[j] += alloc[i][j];
+        finished[i] = true;
+        safeSequence.push(i);
+        table[i][cols - 1] = order++;
+        state[i][cols - 1] = "pivot";
+        frames.push(
+          snapshot(`${procNames[i]}は完了可能(Need<=Work)。資源を解放してWork=(${work.join(",")})に更新。安全順序${safeSequence.length}番目`),
+        );
+        state[i][cols - 1] = "settled";
+        changed = true;
+      }
+    }
+  }
+
+  const safe = finished.every(Boolean);
+  frames.push(
+    snapshot(
+      safe
+        ? `計算完了。安全順序: ${safeSequence.map((i) => procNames[i]).join(" → ")}(この状態は安全)`
+        : `計算完了。安全順序が見つからない(この状態は不安全でデッドロックの危険がある)`,
+    ),
+  );
+  return frames;
+}
+
+export const WORK_STEALING_N = 24;
+export const WORK_STEALING_WORKERS = 3;
+export const WORK_STEALING_THRESHOLD = 6;
+
+type WorkStealingLogEntry = { worker: number; lo: number; hi: number; kind: "leaf" | "split"; stole: boolean };
+
+function workStealingSimulate(): { total: number; leafRanges: [number, number][]; steals: number; log: WorkStealingLogEntry[] } {
+  const n = WORK_STEALING_N;
+  const numWorkers = WORK_STEALING_WORKERS;
+  const threshold = WORK_STEALING_THRESHOLD;
+  const deques: [number, number][][] = Array.from({ length: numWorkers }, () => []);
+  deques[0].push([0, n]);
+
+  const leafRanges: [number, number][] = [];
+  let total = 0;
+  let steals = 0;
+  const log: WorkStealingLogEntry[] = [];
+
+  const rangeSum = (lo: number, hi: number) => {
+    let s = 0;
+    for (let i = lo; i < hi; i++) s += i;
+    return s;
+  };
+
+  const process = (w: number, lo: number, hi: number, stole: boolean) => {
+    if (hi - lo <= threshold) {
+      leafRanges.push([lo, hi]);
+      total += rangeSum(lo, hi);
+      log.push({ worker: w, lo, hi, kind: "leaf", stole });
+    } else {
+      const mid = Math.floor((lo + hi) / 2);
+      deques[w].push([lo, mid]);
+      deques[w].push([mid, hi]);
+      log.push({ worker: w, lo, hi, kind: "split", stole });
+    }
+  };
+
+  while (deques.some((d) => d.length > 0)) {
+    for (let w = 0; w < numWorkers; w++) {
+      if (deques[w].length > 0) {
+        const [lo, hi] = deques[w].pop()!;
+        process(w, lo, hi, false);
+      } else {
+        for (let offset = 1; offset < numWorkers; offset++) {
+          const victim = (w + offset) % numWorkers;
+          if (deques[victim].length > 0) {
+            const [lo, hi] = deques[victim].shift()!;
+            steals++;
+            process(w, lo, hi, true);
+            break;
+          }
+        }
+      }
+    }
+  }
+
+  return { total, leafRanges, steals, log };
+}
+
+const WORK_STEALING_RESULT = workStealingSimulate();
+
+/**
+ * ワークスティーリングスケジューラのステップ列を生成する。行=ワーカー、列=処理ログのエントリとして、
+ * [0, n)の総和を分割統治で計算するタスクを、各ワーカーが自分のデック(底からLIFO)で処理し、
+ * 空になったら他ワーカーのデック(先頭からFIFO)を盗む様子を可視化する。
+ */
+export function workStealingSchedulerSteps(): DPFrame[] {
+  const { total, steals, log } = WORK_STEALING_RESULT;
+  const n = WORK_STEALING_N;
+  const numWorkers = WORK_STEALING_WORKERS;
+  const threshold = WORK_STEALING_THRESHOLD;
+  const cols = log.length;
+
+  const table: (number | null)[][] = Array.from({ length: numWorkers }, () => new Array(cols).fill(null));
+  const state: DPCellState[][] = Array.from({ length: numWorkers }, () => new Array(cols).fill("idle"));
+
+  const frames: DPFrame[] = [];
+  const snapshot = (description: string): DPFrame => ({
+    table: table.map((row, r) => row.map((value, c) => ({ value, state: state[r][c] }))),
+    description,
+  });
+
+  frames.push(
+    snapshot(`ワークスティーリング開始。[0, ${n})の総和を${numWorkers}ワーカー、閾値${threshold}で分割統治(閾値以下になったら葉タスクとして計算)`),
+  );
+
+  for (let c = 0; c < cols; c++) {
+    const entry = log[c];
+    table[entry.worker][c] = entry.hi - entry.lo;
+    state[entry.worker][c] = "pivot";
+    const desc =
+      entry.kind === "split"
+        ? `ワーカー${entry.worker}: 区間[${entry.lo},${entry.hi})を分割${entry.stole ? "(他ワーカーから盗んだタスク)" : ""}`
+        : `ワーカー${entry.worker}: 区間[${entry.lo},${entry.hi})が閾値以下(葉タスク)、総和を計算${entry.stole ? "(他ワーカーから盗んだタスク)" : ""}`;
+    frames.push(snapshot(desc));
+    state[entry.worker][c] = "settled";
+  }
+
+  const expected = (n * (n - 1)) / 2;
+  frames.push(
+    snapshot(`計算完了。全リーフタスクの総和=${total}(正解=${expected})、盗み操作は${steals}回発生`),
+  );
+  return frames;
+}
+
+export const PARALLEL_PREFIX_SUM_ARRAY = [3, 1, 4, 1, 5, 9, 2, 6];
+
+/**
+ * 並列プレフィックス和(Blelloch方式)のステップ列を生成する。1行の配列テーブルとして、
+ * アップスイープ(隣接ペアの和を根に向けて集約)→ダウンスイープ(根から葉へ排他的プレフィックス和を
+ * 伝播)の2段階を可視化する。各階層内の操作は本来互いに独立して並列実行できる。
+ */
+export function parallelPrefixSumSteps(): DPFrame[] {
+  const arr = PARALLEL_PREFIX_SUM_ARRAY;
+  const size = arr.length;
+  const a = [...arr];
+
+  const table: (number | null)[][] = [new Array(size).fill(null)];
+  const state: DPCellState[][] = [new Array(size).fill("idle")];
+
+  const frames: DPFrame[] = [];
+  const sync = () => {
+    for (let i = 0; i < size; i++) table[0][i] = a[i];
+  };
+  const snapshot = (description: string): DPFrame => ({
+    table: table.map((row, r) => row.map((value, c) => ({ value, state: state[r][c] }))),
+    description,
+  });
+
+  sync();
+  frames.push(snapshot(`並列プレフィックス和(Blelloch方式)開始。配列: [${arr.join(", ")}](サイズ${size}は既に2のべき乗)`));
+
+  let d = 1;
+  while (d < size) {
+    for (let i = 0; i < size; i += 2 * d) {
+      const left = i + d - 1;
+      const right = i + 2 * d - 1;
+      state[0][left] = "comparing";
+      a[right] += a[left];
+      sync();
+      state[0][right] = "pivot";
+      frames.push(snapshot(`アップスイープ(幅${d}): a[${right}] += a[${left}]`));
+      state[0][left] = "idle";
+      state[0][right] = "settled";
+    }
+    d *= 2;
+  }
+
+  const total = a[size - 1];
+  a[size - 1] = 0;
+  sync();
+  state[0][size - 1] = "pivot";
+  frames.push(snapshot(`アップスイープ完了。根(末尾)に配列全体の合計${total}が得られた。ダウンスイープのため根を0にリセット`));
+  state[0][size - 1] = "settled";
+
+  d = size / 2;
+  while (d >= 1) {
+    for (let i = 0; i < size; i += 2 * d) {
+      const left = i + d - 1;
+      const right = i + 2 * d - 1;
+      const t = a[left];
+      a[left] = a[right];
+      a[right] += t;
+      sync();
+      state[0][left] = "pivot";
+      state[0][right] = "pivot";
+      frames.push(snapshot(`ダウンスイープ(幅${d}): a[${left}]とa[${right}]を入れ替えて排他的プレフィックス和を伝播`));
+      state[0][left] = "settled";
+      state[0][right] = "settled";
+    }
+    d /= 2;
+  }
+
+  const reference: number[] = [];
+  let running = 0;
+  for (const v of arr) {
+    reference.push(running);
+    running += v;
+  }
+  const matches = a.every((v, i) => v === reference[i]);
+  frames.push(
+    snapshot(`計算完了。排他的プレフィックス和: [${a.join(", ")}](合計=${total})。逐次計算の結果と${matches ? "一致" : "不一致"}`),
+  );
+  return frames;
+}
+
+export const PARALLEL_MERGE_SORT_ARRAY = [5, 3, 8, 1, 9, 2, 7, 4];
+
+function pmsBinarySearchInsertPos(a: number[], x: number): number {
+  let lo = 0;
+  let hi = a.length;
+  while (lo < hi) {
+    const mid = (lo + hi) >> 1;
+    if (a[mid] < x) lo = mid + 1;
+    else hi = mid;
+  }
+  return lo;
+}
+
+function pmsParallelMerge(a: number[], b: number[]): number[] {
+  if (a.length < b.length) [a, b] = [b, a];
+  if (a.length === 0) return [];
+  const midA = Math.floor(a.length / 2);
+  const pivot = a[midA];
+  const midB = pmsBinarySearchInsertPos(b, pivot);
+  const left = pmsParallelMerge(a.slice(0, midA), b.slice(0, midB));
+  const right = pmsParallelMerge(a.slice(midA + 1), b.slice(midB));
+  return [...left, pivot, ...right];
+}
+
+/**
+ * 並列マージソートのステップ列を生成する。1行の配列テーブルとして、ボトムアップに区間幅を倍々に
+ * しながら隣接する2つのソート済み区間をマージしていく。マージ自体は二分探索による分割点特定
+ * (parallel merge)を使い、決定論的な逐次シミュレーションとして可視化する。
+ */
+export function parallelMergeSortSteps(): DPFrame[] {
+  const original = PARALLEL_MERGE_SORT_ARRAY;
+  const n = original.length;
+  const a = [...original];
+
+  const table: (number | null)[][] = [new Array(n).fill(null)];
+  const state: DPCellState[][] = [new Array(n).fill("idle")];
+
+  const frames: DPFrame[] = [];
+  const sync = () => {
+    for (let i = 0; i < n; i++) table[0][i] = a[i];
+  };
+  const snapshot = (description: string): DPFrame => ({
+    table: table.map((row, r) => row.map((value, c) => ({ value, state: state[r][c] }))),
+    description,
+  });
+
+  sync();
+  frames.push(
+    snapshot(`並列マージソート開始。配列: [${original.join(", ")}](分割統治の再帰とマージを、二分探索による分割点特定で並列化する)`),
+  );
+
+  for (let width = 1; width < n; width *= 2) {
+    for (let lo = 0; lo < n; lo += 2 * width) {
+      const mid = Math.min(lo + width, n);
+      const hi = Math.min(lo + 2 * width, n);
+      if (mid >= hi) continue;
+      for (let i = lo; i < hi; i++) state[0][i] = "comparing";
+      frames.push(snapshot(`区間[${lo},${mid})と[${mid},${hi})をマージ対象として選択(それぞれソート済み)`));
+
+      const left = a.slice(lo, mid);
+      const right = a.slice(mid, hi);
+      const merged = pmsParallelMerge(left, right);
+      for (let i = 0; i < merged.length; i++) a[lo + i] = merged[i];
+      sync();
+      for (let i = lo; i < hi; i++) state[0][i] = "pivot";
+      frames.push(snapshot(`マージ完了(中央要素の二分探索による分割点特定を利用): [${a.slice(lo, hi).join(", ")}]`));
+      for (let i = lo; i < hi; i++) state[0][i] = "settled";
+    }
+  }
+
+  const sorted = [...original].sort((x, y) => x - y);
+  const matches = a.every((v, i) => v === sorted[i]);
+  frames.push(snapshot(`計算完了。ソート結果: [${a.join(", ")}]。標準ソートの結果と${matches ? "一致" : "不一致"}`));
+  return frames;
+}
+
+export const CRDT_NODE_COUNT = 3;
+
+type GCounterEvent = { type: "increment"; node: number } | { type: "merge"; into: number; from: number };
+
+export const CRDT_G_COUNTER_EVENTS: GCounterEvent[] = [
+  { type: "increment", node: 0 },
+  { type: "increment", node: 1 },
+  { type: "increment", node: 0 },
+  { type: "increment", node: 2 },
+  { type: "merge", into: 0, from: 1 },
+  { type: "increment", node: 1 },
+  { type: "merge", into: 1, from: 0 },
+  { type: "merge", into: 2, from: 1 },
+];
+
+/**
+ * CRDT(G-Counter)のステップ列を生成する。行=ノード、列=ノードとして、counts[i][j]=ノードiが知っている
+ * ノードjのカウンタ値を表す行列を可視化する。increment操作は対角成分を1増やし、merge操作は
+ * 相手ノードの行と自ノードの行を要素ごとの最大値(max)で更新する——この2つの操作だけで、
+ * マージの順序に関わらず最終的に全ノードが同じ合計値へ収束することを示す。
+ */
+export function crdtGCounterSteps(): DPFrame[] {
+  const n = CRDT_NODE_COUNT;
+  const counts: number[][] = Array.from({ length: n }, () => new Array(n).fill(0));
+
+  const table: (number | null)[][] = Array.from({ length: n }, () => new Array(n).fill(0));
+  const state: DPCellState[][] = Array.from({ length: n }, () => new Array(n).fill("idle"));
+
+  const frames: DPFrame[] = [];
+  const sync = () => {
+    for (let i = 0; i < n; i++) for (let j = 0; j < n; j++) table[i][j] = counts[i][j];
+  };
+  const snapshot = (description: string): DPFrame => ({
+    table: table.map((row, r) => row.map((value, c) => ({ value, state: state[r][c] }))),
+    description,
+  });
+
+  sync();
+  frames.push(snapshot(`CRDT G-Counter開始。${n}ノード、各ノードは自分専用のカウンタ(対角成分)だけを増やせる`));
+
+  const value = (i: number) => counts[i].reduce((s, v) => s + v, 0);
+
+  for (const ev of CRDT_G_COUNTER_EVENTS) {
+    for (let i = 0; i < n; i++) for (let j = 0; j < n; j++) state[i][j] = "idle";
+    if (ev.type === "increment") {
+      counts[ev.node][ev.node]++;
+      sync();
+      state[ev.node][ev.node] = "pivot";
+      frames.push(snapshot(`ノード${ev.node}がカウントアップ: c_${ev.node}=${counts[ev.node][ev.node]}(ローカル値=${value(ev.node)})`));
+    } else {
+      for (let j = 0; j < n; j++) {
+        state[ev.from][j] = "comparing";
+        state[ev.into][j] = "comparing";
+      }
+      frames.push(snapshot(`ノード${ev.into}がノード${ev.from}の状態を取り込みマージ: 各成分の大きい方を採用(max)`));
+      for (let j = 0; j < n; j++) counts[ev.into][j] = Math.max(counts[ev.into][j], counts[ev.from][j]);
+      sync();
+      for (let j = 0; j < n; j++) state[ev.into][j] = "pivot";
+      frames.push(snapshot(`マージ完了。ノード${ev.into}の状態=[${counts[ev.into].join(",")}](ローカル値=${value(ev.into)})`));
+    }
+  }
+
+  const totalIncrements = CRDT_G_COUNTER_EVENTS.filter((e) => e.type === "increment").length;
+  frames.push(
+    snapshot(
+      `計算完了。全増加操作の総数=${totalIncrements}。全ノードが完全にマージすれば、マージの順序に関わらず必ず同じ合計値に収束する(可換・結合的・冪等なmax演算の性質による)`,
+    ),
+  );
+  return frames;
+}
+
+export const NOISY_CHANNEL_WORD = "teh";
+export const NOISY_CHANNEL_DICTIONARY: Record<string, number> = {
+  the: 1000,
+  then: 50,
+  them: 40,
+  tea: 5,
+  ten: 20,
+};
+export const NOISY_CHANNEL_MAX_EDIT_DISTANCE = 2;
+
+function noisyChannelEditDistance(a: string, b: string): number {
+  const n = a.length;
+  const m = b.length;
+  const dp: number[][] = Array.from({ length: n + 1 }, () => new Array(m + 1).fill(0));
+  for (let i = 0; i <= n; i++) dp[i][0] = i;
+  for (let j = 0; j <= m; j++) dp[0][j] = j;
+  for (let i = 1; i <= n; i++) {
+    for (let j = 1; j <= m; j++) {
+      const cost = a[i - 1] === b[j - 1] ? 0 : 1;
+      dp[i][j] = Math.min(dp[i - 1][j] + 1, dp[i][j - 1] + 1, dp[i - 1][j - 1] + cost);
+    }
+  }
+  return dp[n][m];
+}
+
+function noisyChannelBestCandidate(): { word: string; distance: number; score: number } {
+  const word = NOISY_CHANNEL_WORD;
+  const dict = NOISY_CHANNEL_DICTIONARY;
+  const totalFreq = Object.values(dict).reduce((x, y) => x + y, 0);
+  let best = { word, distance: Number.POSITIVE_INFINITY, score: -1 };
+  for (const [candidate, freq] of Object.entries(dict)) {
+    const d = noisyChannelEditDistance(word, candidate);
+    if (d <= NOISY_CHANNEL_MAX_EDIT_DISTANCE) {
+      const prior = freq / totalFreq;
+      const errorProb = d === 0 ? 0.9 : Math.pow(0.1, d);
+      const score = prior * errorProb;
+      if (score > best.score) best = { word: candidate, distance: d, score };
+    }
+  }
+  return best;
+}
+
+const NOISY_CHANNEL_BEST = noisyChannelBestCandidate();
+
+/**
+ * ノイジーチャネルモデルによるスペル訂正のステップ列を生成する。edit-distanceと同型の2次元DPで、
+ * 観測された誤った綴りと(事前確率×誤りモデルのスコアが最大になる)最有力候補との編集距離を計算する
+ * 過程を可視化する。訂正候補の選定自体はテーブル外でP(w)×P(x|w)を全候補について計算して行う。
+ */
+export function noisyChannelSpellingCorrectionSteps(): DPFrame[] {
+  const word = NOISY_CHANNEL_WORD;
+  const best = NOISY_CHANNEL_BEST;
+  const candidate = best.word;
+  const n = word.length;
+  const m = candidate.length;
+  const dp: (number | null)[][] = Array.from({ length: n + 1 }, () => new Array<number | null>(m + 1).fill(null));
+  for (let i = 0; i <= n; i++) dp[i][0] = i;
+  for (let j = 0; j <= m; j++) dp[0][j] = j;
+
+  const settled = new Set<string>();
+  for (let i = 0; i <= n; i++) settled.add(`${i},0`);
+  for (let j = 0; j <= m; j++) settled.add(`0,${j}`);
+
+  const frames: DPFrame[] = [];
+  const snapshot = (extra: Map<string, "comparing" | "pivot">, description: string): DPFrame => {
+    const table: DPCell[][] = dp.map((row, i) =>
+      row.map((value, j) => {
+        const key = `${i},${j}`;
+        return { value, state: extra.get(key) ?? (settled.has(key) ? "settled" : "idle") };
+      }),
+    );
+    return { table, description };
+  };
+
+  frames.push(
+    snapshot(
+      new Map(),
+      `ノイジーチャネルモデルによるスペル訂正開始。観測された誤った綴り="${word}"。事前確率P(w)と誤りモデルP(x|w)から最有力候補として"${candidate}"を選定。この編集距離の計算過程を可視化する`,
+    ),
+  );
+
+  for (let i = 1; i <= n; i++) {
+    for (let j = 1; j <= m; j++) {
+      const highlight = new Map<string, "comparing" | "pivot">();
+      let value: number;
+      if (word[i - 1] === candidate[j - 1]) {
+        highlight.set(`${i - 1},${j - 1}`, "comparing");
+        value = dp[i - 1][j - 1]!;
+        frames.push(snapshot(highlight, `"${word[i - 1]}" と "${candidate[j - 1]}" が一致 → 操作不要で左上を引き継ぐ`));
+      } else {
+        highlight.set(`${i - 1},${j - 1}`, "comparing");
+        highlight.set(`${i - 1},${j}`, "comparing");
+        highlight.set(`${i},${j - 1}`, "comparing");
+        value = 1 + Math.min(dp[i - 1][j - 1]!, dp[i - 1][j]!, dp[i][j - 1]!);
+        frames.push(snapshot(highlight, `"${word[i - 1]}" と "${candidate[j - 1]}" が不一致 → 置換・削除・挿入の最小+1`));
+      }
+      dp[i][j] = value;
+      settled.add(`${i},${j}`);
+      frames.push(snapshot(new Map([[`${i},${j}`, "pivot"]]), `dp[${i}][${j}] = ${value} を確定`));
+    }
+  }
+
+  frames.push(
+    snapshot(new Map(), `計算完了。編集距離=${dp[n][m]}。"${word}"の訂正候補として"${candidate}"を採用(P(w)×P(x|w)が最大)`),
+  );
+  return frames;
+}
+
 export type DPTableMeta = {
   /** テーブル上の情報チップ(品物一覧や対象文字列など)。 */
   chips: string[];
@@ -5820,6 +7505,120 @@ export const DP_TABLE_META: Record<string, DPTableMeta> = {
     rowHeaders: HUNGARIAN_COST_MATRIX.map((_, i) => `作業者${i + 1}`),
     colHeaders: HUNGARIAN_COST_MATRIX[0].map((_, i) => `仕事${i + 1}`),
   },
+  "round-robin-scheduling": {
+    chips: [`タイムスライス=${ROUND_ROBIN_QUANTUM}`, ...ROUND_ROBIN_PROCESSES.map((p) => `${p.name}: バースト${p.burst}`)],
+    cornerLabel: "プロセス \\ ターン",
+    rowHeaders: ROUND_ROBIN_PROCESSES.map((p) => p.name),
+    colHeaders: ROUND_ROBIN_TURNS.map((_, i) => `第${i + 1}ターン`),
+  },
+  "shortest-job-first": {
+    chips: SJF_PROCESSES.map((p) => `${p.name}: 到着${p.arrival}/バースト${p.burst}`),
+    cornerLabel: "属性 \\ プロセス",
+    rowHeaders: ["到着時刻", "バースト時間", "開始時刻", "完了時刻"],
+    colHeaders: SJF_PROCESSES.map((p) => p.name),
+  },
+  "priority-scheduling": {
+    chips: PRIORITY_SCHEDULING_PROCESSES.map((p) => `${p.name}: 到着${p.arrival}/バースト${p.burst}/優先度${p.priority}`),
+    cornerLabel: "属性 \\ プロセス",
+    rowHeaders: ["到着時刻", "バースト時間", "優先度(小=高)", "開始時刻", "完了時刻"],
+    colHeaders: PRIORITY_SCHEDULING_PROCESSES.map((p) => p.name),
+  },
+  "earliest-deadline-first": {
+    chips: EDF_TASKS.map((t) => `${t.name}: 到着${t.arrival}/バースト${t.burst}/締切${t.deadline}`),
+    cornerLabel: "タスク \\ 時刻",
+    rowHeaders: EDF_TASKS.map((t) => t.name),
+    colHeaders: EDF_TICKS.map((_, i) => `t=${i}`),
+  },
+  "multilevel-feedback-queue": {
+    chips: [`レベルごとのタイムスライス: ${MLFQ_TIME_SLICES.join(", ")}`, ...MLFQ_PROCESSES.map((p) => `${p.name}: バースト${p.burst}`)],
+    cornerLabel: "プロセス \\ 実行ログ",
+    rowHeaders: MLFQ_PROCESSES.map((p) => p.name),
+    colHeaders: MLFQ_LOG.map((_, i) => `#${i + 1}`),
+  },
+  "critical-path-method": {
+    chips: CPM_TASKS.map((t) => `${t.name}: 所要${t.duration}, 依存:${t.deps.join(",") || "なし"}`),
+    cornerLabel: "属性 \\ 作業",
+    rowHeaders: ["ES", "EF", "LS", "LF", "フロート"],
+    colHeaders: CPM_TASKS.map((t) => t.name),
+  },
+  "list-scheduling": {
+    chips: [`優先順位リスト: ${LIST_SCHEDULING_PRIORITY.join(" > ")}`, ...LIST_SCHEDULING_TASKS.map((t) => `${t.name}: 所要${t.duration}, 依存:${t.deps.join(",") || "なし"}`)],
+    cornerLabel: "プロセッサ \\ 時刻",
+    rowHeaders: Array.from({ length: LIST_SCHEDULING_PROCESSORS }, (_, i) => `プロセッサ${i + 1}`),
+    colHeaders: LIST_SCHEDULING_RESULT[0].map((_, i) => `t=${i}`),
+  },
+  "job-shop-scheduling": {
+    chips: JOB_SHOP_JOBS.map((j, i) => `job${i + 1}=[${j.map((op) => `M${op.machine + 1}:${op.duration}`).join("→")}]`),
+    cornerLabel: "機械 \\ 時刻",
+    rowHeaders: Array.from({ length: JOB_SHOP_MACHINE_COUNT }, (_, i) => `機械${i + 1}`),
+    colHeaders: Array.from({ length: JOB_SHOP_MAKESPAN }, (_, i) => `t=${i}`),
+  },
+  "clock-algorithm": {
+    chips: [`容量: ${CLOCK_ALGORITHM_CAPACITY}`, `アクセス列: ${CLOCK_ALGORITHM_ACCESSES.join(", ")}`],
+    cornerLabel: "値 \\ スロット",
+    rowHeaders: ["ページID", "参照ビット"],
+    colHeaders: Array.from({ length: CLOCK_ALGORITHM_CAPACITY }, (_, i) => `スロット${i}`),
+  },
+  "lfu-cache": {
+    chips: [`容量: ${LFU_CAPACITY}`, `操作列: ${LFU_OPERATIONS.map((op) => (op.type === "put" ? `put(${op.key},${op.value})` : `get(${op.key})`)).join(" → ")}`],
+    cornerLabel: "値 \\ 位置(左=追い出し候補)",
+    rowHeaders: ["キー", "頻度"],
+    colHeaders: Array.from({ length: LFU_CAPACITY }, (_, i) => `位置${i}`),
+  },
+  "fifo-page-replacement": {
+    chips: [`フレーム数: ${FIFO_PAGE_REPLACEMENT_FRAMES}`, `参照列: ${FIFO_PAGE_REPLACEMENT_REFERENCE.join(", ")}`],
+    cornerLabel: "フレーム(左=最古)",
+    rowHeaders: ["ページID"],
+    colHeaders: Array.from({ length: FIFO_PAGE_REPLACEMENT_FRAMES }, (_, i) => `フレーム${i}`),
+  },
+  "rate-monotonic-scheduling": {
+    chips: RATE_MONOTONIC_TASKS.map((t) => `${t.name}: 実行${t.exec}/周期${t.period}`),
+    cornerLabel: "タスク \\ 時刻",
+    rowHeaders: [...RATE_MONOTONIC_TASKS].sort((a, b) => a.period - b.period).map((t) => t.name),
+    colHeaders: Array.from({ length: RATE_MONOTONIC_HORIZON }, (_, i) => `t=${i}`),
+  },
+  "lru-k-page-replacement": {
+    chips: [`K=${LRU_K_K}`, `容量: ${LRU_K_CAPACITY}`, `アクセス列: ${LRU_K_ACCESSES.join(", ")}`],
+    cornerLabel: "値 \\ 位置(左=安全)",
+    rowHeaders: ["ページID", "Backward K-distance"],
+    colHeaders: Array.from({ length: LRU_K_CAPACITY }, (_, i) => `位置${i}`),
+  },
+  "bankers-algorithm": {
+    chips: [`利用可能資源: (${BANKERS_AVAILABLE.join(",")})`, "Silberschatzの教科書で知られる古典例"],
+    cornerLabel: "プロセス \\ 属性",
+    rowHeaders: BANKERS_PROCESSES,
+    colHeaders: ["AllocA", "AllocB", "AllocC", "MaxA", "MaxB", "MaxC", "NeedA", "NeedB", "NeedC", "完了順序"],
+  },
+  "work-stealing-scheduler": {
+    chips: [`区間[0, ${WORK_STEALING_N})の総和`, `ワーカー数: ${WORK_STEALING_WORKERS}`, `閾値: ${WORK_STEALING_THRESHOLD}`],
+    cornerLabel: "ワーカー \\ 処理ログ",
+    rowHeaders: Array.from({ length: WORK_STEALING_WORKERS }, (_, i) => `ワーカー${i}`),
+    colHeaders: WORK_STEALING_RESULT.log.map((_, i) => `#${i + 1}`),
+  },
+  "parallel-prefix-sum": {
+    chips: [`配列: [${PARALLEL_PREFIX_SUM_ARRAY.join(", ")}]`],
+    cornerLabel: "配列 \\ 添字",
+    rowHeaders: ["値"],
+    colHeaders: PARALLEL_PREFIX_SUM_ARRAY.map((_, i) => `a[${i}]`),
+  },
+  "parallel-merge-sort": {
+    chips: [`配列: [${PARALLEL_MERGE_SORT_ARRAY.join(", ")}]`],
+    cornerLabel: "配列 \\ 添字",
+    rowHeaders: ["値"],
+    colHeaders: PARALLEL_MERGE_SORT_ARRAY.map((_, i) => `a[${i}]`),
+  },
+  "crdt-g-counter": {
+    chips: [`ノード数: ${CRDT_NODE_COUNT}`, "各ノードの視点から見たカウンタ行列(counts[i][j])"],
+    cornerLabel: "ノードの視点 \\ 成分",
+    rowHeaders: Array.from({ length: CRDT_NODE_COUNT }, (_, i) => `ノード${i}の視点`),
+    colHeaders: Array.from({ length: CRDT_NODE_COUNT }, (_, i) => `c_${i}`),
+  },
+  "noisy-channel-spelling-correction": {
+    chips: [`観測された誤字: "${NOISY_CHANNEL_WORD}"`, `最有力候補: "${NOISY_CHANNEL_BEST.word}"`],
+    cornerLabel: "∅ \\ ∅",
+    rowHeaders: ["∅", ...NOISY_CHANNEL_WORD.split("")],
+    colHeaders: ["∅", ...NOISY_CHANNEL_BEST.word.split("")],
+  },
 };
 
 export const DP_VISUALIZERS: Record<string, () => DPFrame[]> = {
@@ -5893,4 +7692,23 @@ export const DP_VISUALIZERS: Record<string, () => DPFrame[]> = {
   "palindrome-partitioning": palindromePartitioningSteps,
   "burst-balloons-dp": burstBalloonsDpSteps,
   "hungarian-algorithm": hungarianAlgorithmSteps,
+  "round-robin-scheduling": roundRobinSchedulingSteps,
+  "shortest-job-first": shortestJobFirstSteps,
+  "priority-scheduling": prioritySchedulingSteps,
+  "earliest-deadline-first": earliestDeadlineFirstSteps,
+  "multilevel-feedback-queue": multilevelFeedbackQueueSteps,
+  "critical-path-method": criticalPathMethodSteps,
+  "list-scheduling": listSchedulingSteps,
+  "job-shop-scheduling": jobShopSchedulingSteps,
+  "clock-algorithm": clockAlgorithmSteps,
+  "lfu-cache": lfuCacheSteps,
+  "fifo-page-replacement": fifoPageReplacementSteps,
+  "rate-monotonic-scheduling": rateMonotonicSchedulingSteps,
+  "lru-k-page-replacement": lruKPageReplacementSteps,
+  "bankers-algorithm": bankersAlgorithmSteps,
+  "work-stealing-scheduler": workStealingSchedulerSteps,
+  "parallel-prefix-sum": parallelPrefixSumSteps,
+  "parallel-merge-sort": parallelMergeSortSteps,
+  "crdt-g-counter": crdtGCounterSteps,
+  "noisy-channel-spelling-correction": noisyChannelSpellingCorrectionSteps,
 };
