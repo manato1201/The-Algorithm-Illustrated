@@ -5960,7 +5960,1429 @@ export const GRAPH_DATASETS: Record<string, GraphDataset> = {
   "suffix-automaton": { nodes: SUFFIX_AUTOMATON_NODES, edges: SUFFIX_AUTOMATON_EDGES, directed: true },
 };
 
+/** 食事する哲学者問題のデモ用データ。5人の哲学者が円卓に座り、隣り合う哲学者と箸(フォーク)を共有する。
+ * フォークiは哲学者iと哲学者(i+1)%5の間にある。 */
+export const DINING_PHILOSOPHERS_NODES: GraphNode[] = circleLayout(["P0", "P1", "P2", "P3", "P4"]);
+export const DINING_PHILOSOPHERS_EDGES: GraphEdge[] = [0, 1, 2, 3, 4].map((i) => ({
+  id: `F${i}`,
+  from: `P${i}`,
+  to: `P${(i + 1) % 5}`,
+  weight: 1,
+}));
+
+type PhilState = "thinking" | "hungry" | "eating";
+
+/**
+ * 食事する哲学者問題のステップ列を生成する。各哲学者は自分の左右のフォークを、
+ * 資源の順序付けルール(番号の小さいフォークから取る)で取得する。ラウンドロビン・
+ * スケジューラで1哲学者ずつ状態遷移させ、「箸を取れなければ待つ、取れれば次のフォークへ、
+ * 両方揃えば食事」を繰り返し、全員が最低1回は食事できること(デッドロックが起きないこと)を
+ * 確認する。
+ */
+export function diningPhilosophersSteps(): GraphFrame[] {
+  const nodes = DINING_PHILOSOPHERS_NODES;
+  const edges = DINING_PHILOSOPHERS_EDGES;
+  const n = nodes.length;
+
+  const forksOf = (i: number): number[] => {
+    const left = (i - 1 + n) % n;
+    const right = i;
+    return left < right ? [left, right] : [right, left];
+  };
+
+  const nodeStates = initNodeStates(nodes, "idle");
+  const edgeStates = initEdgeStates(edges, "idle");
+  const holder: (number | null)[] = new Array(n).fill(null);
+  const state: PhilState[] = new Array(n).fill("thinking");
+  const needIndex: number[] = new Array(n).fill(0);
+  const eatRemain: number[] = new Array(n).fill(0);
+  const eatenCount: number[] = new Array(n).fill(0);
+
+  const frames: GraphFrame[] = [
+    {
+      nodeStates: { ...nodeStates },
+      edgeStates: { ...edgeStates },
+      distances: {},
+      description:
+        "食事する哲学者問題を開始。全員が「考え中」。資源の順序付け(番号の小さいフォークから取る)ルールでデッドロックを回避する",
+    },
+  ];
+
+  const EAT_DURATION = 1;
+  let round = 0;
+  const maxRounds = 60;
+  while (eatenCount.some((c) => c < 1) && round < maxRounds) {
+    round++;
+    for (let i = 0; i < n; i++) {
+      if (state[i] === "thinking") {
+        state[i] = "hungry";
+        needIndex[i] = 0;
+        nodeStates[`P${i}`] = "visited";
+        frames.push({
+          nodeStates: { ...nodeStates },
+          edgeStates: { ...edgeStates },
+          distances: {},
+          description: `P${i}が空腹になり、フォーク${forksOf(i).join(",")}を番号の小さい順に取ろうとする`,
+        });
+      } else if (state[i] === "hungry") {
+        const forks = forksOf(i);
+        const want = forks[needIndex[i]];
+        if (holder[want] === null) {
+          holder[want] = i;
+          edgeStates[`F${want}`] = "tree";
+          needIndex[i]++;
+          if (needIndex[i] === 2) {
+            state[i] = "eating";
+            eatRemain[i] = EAT_DURATION;
+            nodeStates[`P${i}`] = "settled";
+            frames.push({
+              nodeStates: { ...nodeStates },
+              edgeStates: { ...edgeStates },
+              distances: {},
+              description: `P${i}がフォーク${want}を取得し、両方のフォークが揃ったので食事を開始`,
+            });
+          } else {
+            frames.push({
+              nodeStates: { ...nodeStates },
+              edgeStates: { ...edgeStates },
+              distances: {},
+              description: `P${i}がフォーク${want}を取得(1本目)。次にフォーク${forks[1]}を取ろうとする`,
+            });
+          }
+        } else {
+          frames.push({
+            nodeStates: { ...nodeStates },
+            edgeStates: { ...edgeStates },
+            distances: {},
+            description: `P${i}はフォーク${want}が塞がっている(P${holder[want]}が使用中)ので待機`,
+          });
+        }
+      } else {
+        eatRemain[i]--;
+        if (eatRemain[i] <= 0) {
+          const forks = forksOf(i);
+          forks.forEach((f) => {
+            holder[f] = null;
+            edgeStates[`F${f}`] = "idle";
+          });
+          eatenCount[i]++;
+          state[i] = "thinking";
+          nodeStates[`P${i}`] = "idle";
+          frames.push({
+            nodeStates: { ...nodeStates },
+            edgeStates: { ...edgeStates },
+            distances: {},
+            description: `P${i}が食事を終え、フォーク${forks.join(",")}を置いて再び考え始める(食事回数=${eatenCount[i]})`,
+          });
+        }
+      }
+    }
+  }
+
+  frames.push({
+    nodeStates: initNodeStates(nodes, "idle"),
+    edgeStates: initEdgeStates(edges, "idle"),
+    distances: {},
+    description: `計算完了。全${n}人の哲学者がデッドロックなく最低1回は食事できた(各自の食事回数: ${eatenCount
+      .map((c, i) => `P${i}=${c}`)
+      .join(", ")})`,
+  });
+
+  return frames;
+}
+
+/** ピーターソンのアルゴリズムのデモ用データ。2プロセスP0・P1の相互排他。 */
+export const PETERSONS_NODES: GraphNode[] = [
+  { id: "P0", label: "P0", x: 0.3, y: 0.5 },
+  { id: "P1", label: "P1", x: 0.7, y: 0.5 },
+];
+export const PETERSONS_EDGES: GraphEdge[] = [{ id: "P0-P1", from: "P0", to: "P1", weight: 1 }];
+
+/**
+ * ピーターソンのアルゴリズムのステップ列を生成する。2つの共有変数flag[2]とturnだけで
+ * 2プロセス間の相互排他を実現する。P0が先に臨界区間へ入り、その間にP1が入ろうとして
+ * ビジーウェイトする様子、P0が退出した瞬間にP1が入れるようになる様子を確認する。
+ */
+export function petersonsAlgorithmSteps(): GraphFrame[] {
+  const nodes = PETERSONS_NODES;
+  const edges = PETERSONS_EDGES;
+  const nodeStates = initNodeStates(nodes, "idle");
+  const edgeStates = initEdgeStates(edges, "idle");
+  const flag = { P0: 0, P1: 0 };
+
+  const dist = (): Record<string, number | null> => ({ P0: flag.P0, P1: flag.P1 });
+
+  const frames: GraphFrame[] = [
+    {
+      nodeStates: { ...nodeStates },
+      edgeStates: { ...edgeStates },
+      distances: dist(),
+      description:
+        "ピーターソンのアルゴリズムを開始。flag[P0]=flag[P1]=0(頂点下の数字がflag)。まだどちらも臨界区間に興味なし",
+    },
+  ];
+
+  flag.P0 = 1;
+  nodeStates.P0 = "visited";
+  frames.push({
+    nodeStates: { ...nodeStates },
+    edgeStates: { ...edgeStates },
+    distances: dist(),
+    description: "P0: flag[P0]=1(入りたい表明)、turn=P1(相手に順番を譲る)",
+  });
+
+  edgeStates["P0-P1"] = "checking";
+  frames.push({
+    nodeStates: { ...nodeStates },
+    edgeStates: { ...edgeStates },
+    distances: dist(),
+    description:
+      "P0: while(flag[P1] && turn==P1)を確認 → flag[P1]=0なので条件は偽 → 即座に臨界区間へ入る",
+  });
+  nodeStates.P0 = "settled";
+  edgeStates["P0-P1"] = "idle";
+  frames.push({
+    nodeStates: { ...nodeStates },
+    edgeStates: { ...edgeStates },
+    distances: dist(),
+    description: "P0が臨界区間に入った",
+  });
+
+  flag.P1 = 1;
+  nodeStates.P1 = "visited";
+  frames.push({
+    nodeStates: { ...nodeStates },
+    edgeStates: { ...edgeStates },
+    distances: dist(),
+    description: "P1: flag[P1]=1(入りたい表明)、turn=P0(相手に順番を譲る)",
+  });
+
+  edgeStates["P0-P1"] = "checking";
+  frames.push({
+    nodeStates: { ...nodeStates },
+    edgeStates: { ...edgeStates },
+    distances: dist(),
+    description:
+      "P1: while(flag[P0] && turn==P0)を確認 → flag[P0]=1かつturn=P0なので条件は真 → ビジーウェイトで待機(P0はまだ臨界区間内)",
+  });
+
+  flag.P0 = 0;
+  nodeStates.P0 = "idle";
+  frames.push({
+    nodeStates: { ...nodeStates },
+    edgeStates: { ...edgeStates },
+    distances: dist(),
+    description: "P0が臨界区間を退出。flag[P0]=0に戻す",
+  });
+
+  edgeStates["P0-P1"] = "idle";
+  nodeStates.P1 = "settled";
+  frames.push({
+    nodeStates: { ...nodeStates },
+    edgeStates: { ...edgeStates },
+    distances: dist(),
+    description: "P1: 条件(flag[P0] && turn==P0)が偽になった(flag[P0]=0) → 待機を終え臨界区間へ入る",
+  });
+
+  flag.P1 = 0;
+  nodeStates.P1 = "idle";
+  frames.push({
+    nodeStates: { ...nodeStates },
+    edgeStates: { ...edgeStates },
+    distances: dist(),
+    description:
+      "計算完了。P1も臨界区間を退出しflag[P1]=0に戻した。2プロセス間の相互排他とデッドロックフリー性が確認できた",
+  });
+
+  return frames;
+}
+
+/** ベーカリーアルゴリズムのデモ用データ。3プロセスP0・P1・P2。 */
+export const BAKERY_NODES: GraphNode[] = circleLayout(["P0", "P1", "P2"]);
+export const BAKERY_EDGES: GraphEdge[] = [
+  { id: "P0-P1", from: "P0", to: "P1", weight: 1 },
+  { id: "P1-P2", from: "P1", to: "P2", weight: 1 },
+  { id: "P0-P2", from: "P0", to: "P2", weight: 1 },
+];
+
+/**
+ * ベーカリーアルゴリズムのステップ列を生成する。P0とP2が「同時に」整理券を発行し
+ * (両者ともmax=0を見て同じ番号1を引いてしまう)、番号が同点の場合はプロセスIDの
+ * 小さい方を優先する辞書式順序の比較によって同点が正しく解決される様子を示す。
+ * その後P1が新たに整理券(番号2)を引き、既存の2人より後回しになる。
+ */
+export function bakeryAlgorithmSteps(): GraphFrame[] {
+  const nodes = BAKERY_NODES;
+  const edges = BAKERY_EDGES;
+  const nodeStates = initNodeStates(nodes, "idle");
+  const edgeStates = initEdgeStates(edges, "idle");
+  const number: Record<string, number> = { P0: 0, P1: 0, P2: 0 };
+
+  const dist = (): Record<string, number | null> => ({ ...number });
+
+  const frames: GraphFrame[] = [
+    {
+      nodeStates: { ...nodeStates },
+      edgeStates: { ...edgeStates },
+      distances: dist(),
+      description: "ベーカリーアルゴリズムを開始。全プロセスのnumber=0(整理券なし)",
+    },
+  ];
+
+  nodeStates.P0 = "visited";
+  nodeStates.P2 = "visited";
+  frames.push({
+    nodeStates: { ...nodeStates },
+    edgeStates: { ...edgeStates },
+    distances: dist(),
+    description:
+      "P0とP2が同時に臨界区間を要求。choosing[P0]=choosing[P2]=trueにして、現在の最大numberを調べる(まだ誰も持っていないので最大値=0)",
+  });
+  number.P0 = 1;
+  number.P2 = 1;
+  frames.push({
+    nodeStates: { ...nodeStates },
+    edgeStates: { ...edgeStates },
+    distances: dist(),
+    description: "P0とP2がどちらも番号1を引いてしまう(同点)。choosingをfalseに戻す",
+  });
+
+  nodeStates.P1 = "visited";
+  number.P1 = 2;
+  frames.push({
+    nodeStates: { ...nodeStates },
+    edgeStates: { ...edgeStates },
+    distances: dist(),
+    description: "P1が要求。現在の最大number(P0=1,P2=1)+1で番号2を引く",
+  });
+
+  edgeStates["P0-P1"] = "checking";
+  frames.push({
+    nodeStates: { ...nodeStates },
+    edgeStates: { ...edgeStates },
+    distances: dist(),
+    description: "P0がP1と比較: (number=1,id=0) < (number=2,id=1) → P0はP1を待たなくてよい",
+  });
+  edgeStates["P0-P1"] = "tree";
+
+  edgeStates["P0-P2"] = "checking";
+  frames.push({
+    nodeStates: { ...nodeStates },
+    edgeStates: { ...edgeStates },
+    distances: dist(),
+    description:
+      "P0がP2と比較: numberが同点(1=1)なのでプロセスIDで比較 → id 0 < 2 なのでP0の勝ち。P0が先に入れる",
+  });
+  edgeStates["P0-P2"] = "tree";
+
+  nodeStates.P0 = "settled";
+  frames.push({
+    nodeStates: { ...nodeStates },
+    edgeStates: { ...edgeStates },
+    distances: dist(),
+    description: "P0が全プロセスに対して自分の番号が最小(またはID勝ち)であることを確認し、臨界区間へ入る",
+  });
+
+  number.P0 = 0;
+  nodeStates.P0 = "idle";
+  edgeStates["P0-P1"] = "idle";
+  edgeStates["P0-P2"] = "idle";
+  frames.push({
+    nodeStates: { ...nodeStates },
+    edgeStates: { ...edgeStates },
+    distances: dist(),
+    description: "P0が臨界区間を退出し、number[P0]=0にリセット",
+  });
+
+  edgeStates["P0-P2"] = "checking";
+  frames.push({
+    nodeStates: { ...nodeStates },
+    edgeStates: { ...edgeStates },
+    distances: dist(),
+    description: "P2がP0を再確認: number[P0]=0(整理券なし)になったので、もう待つ必要はない",
+  });
+  edgeStates["P0-P2"] = "idle";
+  edgeStates["P1-P2"] = "checking";
+  frames.push({
+    nodeStates: { ...nodeStates },
+    edgeStates: { ...edgeStates },
+    distances: dist(),
+    description: "P2がP1と比較: (number=1,id=2) < (number=2,id=1) → P2の勝ち",
+  });
+  edgeStates["P1-P2"] = "tree";
+  nodeStates.P2 = "settled";
+  frames.push({
+    nodeStates: { ...nodeStates },
+    edgeStates: { ...edgeStates },
+    distances: dist(),
+    description: "P2が臨界区間へ入る",
+  });
+
+  number.P2 = 0;
+  nodeStates.P2 = "idle";
+  edgeStates["P1-P2"] = "idle";
+  frames.push({
+    nodeStates: { ...nodeStates },
+    edgeStates: { ...edgeStates },
+    distances: dist(),
+    description: "P2が臨界区間を退出し、number[P2]=0にリセット",
+  });
+
+  edgeStates["P0-P1"] = "checking";
+  edgeStates["P1-P2"] = "checking";
+  frames.push({
+    nodeStates: { ...nodeStates },
+    edgeStates: { ...edgeStates },
+    distances: dist(),
+    description: "P1がP0・P2を再確認: どちらもnumber=0(整理券なし)になったので、もう待つ必要はない",
+  });
+  edgeStates["P0-P1"] = "idle";
+  edgeStates["P1-P2"] = "idle";
+  nodeStates.P1 = "settled";
+  frames.push({
+    nodeStates: { ...nodeStates },
+    edgeStates: { ...edgeStates },
+    distances: dist(),
+    description: "P1が臨界区間へ入る",
+  });
+
+  number.P1 = 0;
+  nodeStates.P1 = "idle";
+  frames.push({
+    nodeStates: { ...nodeStates },
+    edgeStates: { ...edgeStates },
+    distances: dist(),
+    description:
+      "計算完了。実行順序はP0→P2→P1(整理券番号の同点はプロセスIDの小さい方が優先され、正しく解決された)",
+  });
+
+  return frames;
+}
+
+/** 生産者消費者問題(セマフォ版)のデモ用データ。バッファサイズ2。 */
+export const PRODUCER_CONSUMER_NODES: GraphNode[] = [
+  { id: "Producer", label: "Producer", x: 0.15, y: 0.5 },
+  { id: "Buffer", label: "Buffer", x: 0.5, y: 0.5 },
+  { id: "Consumer", label: "Consumer", x: 0.85, y: 0.5 },
+];
+export const PRODUCER_CONSUMER_EDGES: GraphEdge[] = [
+  { id: "Producer-Buffer", from: "Producer", to: "Buffer", weight: 1 },
+  { id: "Buffer-Consumer", from: "Buffer", to: "Consumer", weight: 1 },
+];
+export const PRODUCER_CONSUMER_BUFFER_SIZE = 2;
+
+/**
+ * 生産者消費者問題(セマフォ版)のステップ列を生成する。empty(空きスロット数)・full(データ数)・
+ * mutex(排他制御)の3つのセマフォを使い、バッファサイズ2に対して3個のアイテムを生産・消費する
+ * シナリオを実行する。emptyが0になった時点で生産者が待たされる(バッファが満杯)様子を確認する。
+ */
+export function producerConsumerSemaphoreSteps(): GraphFrame[] {
+  const nodes = PRODUCER_CONSUMER_NODES;
+  const edges = PRODUCER_CONSUMER_EDGES;
+  const bufferSize = PRODUCER_CONSUMER_BUFFER_SIZE;
+  let empty = bufferSize;
+  let full = 0;
+  const buffer: string[] = [];
+
+  const nodeStates = initNodeStates(nodes, "idle");
+  const edgeStates = initEdgeStates(edges, "idle");
+  const dist = (): Record<string, number | null> => ({
+    Producer: empty,
+    Buffer: buffer.length,
+    Consumer: full,
+  });
+
+  const frames: GraphFrame[] = [
+    {
+      nodeStates: { ...nodeStates },
+      edgeStates: { ...edgeStates },
+      distances: dist(),
+      description: `生産者消費者問題を開始。バッファサイズ=${bufferSize}。empty=${empty}(Producer下の数字), full=${full}(Consumer下の数字)`,
+    },
+  ];
+
+  const produce = (item: string) => {
+    nodeStates.Producer = "visited";
+    frames.push({
+      nodeStates: { ...nodeStates },
+      edgeStates: { ...edgeStates },
+      distances: dist(),
+      description: `生産者: empty(${empty})をP操作で確保 → データ${item}を作成`,
+    });
+    empty--;
+    buffer.push(item);
+    edgeStates["Producer-Buffer"] = "tree";
+    full++;
+    nodeStates.Buffer = "visited";
+    frames.push({
+      nodeStates: { ...nodeStates },
+      edgeStates: { ...edgeStates },
+      distances: dist(),
+      description: `生産者: mutexを取得しバッファに${item}を追加、mutexを解放。fullをV操作(full=${full})で消費者に通知`,
+    });
+    nodeStates.Producer = "idle";
+    edgeStates["Producer-Buffer"] = "idle";
+  };
+
+  const consume = () => {
+    nodeStates.Consumer = "visited";
+    const item = buffer.shift()!;
+    full--;
+    edgeStates["Buffer-Consumer"] = "tree";
+    frames.push({
+      nodeStates: { ...nodeStates },
+      edgeStates: { ...edgeStates },
+      distances: dist(),
+      description: `消費者: full(${full + 1})をP操作で確保 → mutexを取得しバッファから${item}を取り出す、mutexを解放`,
+    });
+    empty++;
+    frames.push({
+      nodeStates: { ...nodeStates },
+      edgeStates: { ...edgeStates },
+      distances: dist(),
+      description: `消費者: emptyをV操作(empty=${empty})で生産者に通知`,
+    });
+    nodeStates.Consumer = "idle";
+    edgeStates["Buffer-Consumer"] = "idle";
+  };
+
+  produce("A");
+  produce("B");
+  frames.push({
+    nodeStates: { ...nodeStates },
+    edgeStates: { ...edgeStates },
+    distances: dist(),
+    description: "empty=0になりバッファが満杯。これ以上生産者がproduceを呼ぶとempty(0)のP操作でブロックされる",
+  });
+  consume();
+  produce("C");
+  consume();
+  consume();
+
+  frames.push({
+    nodeStates: { ...nodeStates },
+    edgeStates: { ...edgeStates },
+    distances: dist(),
+    description:
+      "計算完了。3個のアイテムを生産・消費し、バッファサイズの上限(empty=0での生産者ブロック)を守りながらデータ破損なく受け渡しできた",
+  });
+
+  return frames;
+}
+
+/** 読者・書込者問題のデモ用データ。読者R1・R2と書込者W。 */
+export const READERS_WRITERS_NODES: GraphNode[] = [
+  { id: "R1", label: "R1", x: 0.15, y: 0.2 },
+  { id: "R2", label: "R2", x: 0.15, y: 0.8 },
+  { id: "W", label: "W", x: 0.15, y: 0.5 },
+  { id: "Data", label: "Data", x: 0.75, y: 0.5 },
+];
+export const READERS_WRITERS_EDGES: GraphEdge[] = [
+  { id: "R1-Data", from: "R1", to: "Data", weight: 1 },
+  { id: "R2-Data", from: "R2", to: "Data", weight: 1 },
+  { id: "W-Data", from: "W", to: "Data", weight: 1 },
+];
+
+/**
+ * 読者・書込者問題のステップ列を生成する。readCount(現在読み取り中の人数)とwriteLockを使い、
+ * 「最初の読者だけがwriteLockを取得して書込みをブロックし、最後の読者だけがそれを解放する」
+ * という設計により、複数の読者が同時にデータへアクセスできる(読み取りの並行性)様子と、
+ * 書込者は読者が誰もいない排他的な状態でのみアクセスできる様子を確認する。
+ */
+export function readersWritersProblemSteps(): GraphFrame[] {
+  const nodes = READERS_WRITERS_NODES;
+  const edges = READERS_WRITERS_EDGES;
+  let readCount = 0;
+
+  const nodeStates = initNodeStates(nodes, "idle");
+  const edgeStates = initEdgeStates(edges, "idle");
+  const dist = (): Record<string, number | null> => ({ R1: null, R2: null, W: null, Data: readCount });
+
+  const frames: GraphFrame[] = [
+    {
+      nodeStates: { ...nodeStates },
+      edgeStates: { ...edgeStates },
+      distances: dist(),
+      description: "読者・書込者問題を開始。readCount=0(Data下の数字)、writeLockは未取得",
+    },
+  ];
+
+  readCount++;
+  nodeStates.R1 = "visited";
+  edgeStates["R1-Data"] = "tree";
+  frames.push({
+    nodeStates: { ...nodeStates },
+    edgeStates: { ...edgeStates },
+    distances: dist(),
+    description: "R1が読み取り開始。readCount=1(自分が最初の読者)なのでwriteLockを取得し、書込みをブロックする",
+  });
+
+  readCount++;
+  nodeStates.R2 = "visited";
+  edgeStates["R2-Data"] = "tree";
+  frames.push({
+    nodeStates: { ...nodeStates },
+    edgeStates: { ...edgeStates },
+    distances: dist(),
+    description: "R2も読み取り開始。readCount=2。writeLockは既にR1が取得済みなので、R2は取得せずそのまま並行して読み取る",
+  });
+
+  nodeStates.W = "visited";
+  edgeStates["W-Data"] = "rejected";
+  frames.push({
+    nodeStates: { ...nodeStates },
+    edgeStates: { ...edgeStates },
+    distances: dist(),
+    description: "Wが書き込みを試みるが、writeLockが読者側に取得されているためブロックされて待機",
+  });
+
+  readCount--;
+  nodeStates.R1 = "idle";
+  edgeStates["R1-Data"] = "idle";
+  frames.push({
+    nodeStates: { ...nodeStates },
+    edgeStates: { ...edgeStates },
+    distances: dist(),
+    description: "R1が読み取り終了。readCount=1(まだR2が読み取り中なのでwriteLockは解放しない)",
+  });
+
+  readCount--;
+  nodeStates.R2 = "idle";
+  edgeStates["R2-Data"] = "idle";
+  frames.push({
+    nodeStates: { ...nodeStates },
+    edgeStates: { ...edgeStates },
+    distances: dist(),
+    description: "R2が読み取り終了。readCount=0(自分が最後の読者)なのでwriteLockを解放",
+  });
+
+  edgeStates["W-Data"] = "checking";
+  frames.push({
+    nodeStates: { ...nodeStates },
+    edgeStates: { ...edgeStates },
+    distances: dist(),
+    description: "writeLockが解放されたのでWが取得し、排他的にデータへ書き込みを行う",
+  });
+  nodeStates.W = "settled";
+  edgeStates["W-Data"] = "tree";
+  frames.push({
+    nodeStates: { ...nodeStates },
+    edgeStates: { ...edgeStates },
+    distances: dist(),
+    description: "Wが書き込みを実行中(この間、他の読者も書込者もアクセスできない)",
+  });
+
+  nodeStates.W = "idle";
+  edgeStates["W-Data"] = "idle";
+  frames.push({
+    nodeStates: { ...nodeStates },
+    edgeStates: { ...edgeStates },
+    distances: dist(),
+    description:
+      "計算完了。Wが書き込みを終えwriteLockを解放。複数読者の並行アクセスと書込者の排他アクセスが両立できた",
+  });
+
+  return frames;
+}
+
+/** 眠れる理髪師問題のデモ用データ。待合室の椅子数2、客4人。 */
+export const SLEEPING_BARBER_NODES: GraphNode[] = [
+  { id: "Barber", label: "Barber", x: 0.5, y: 0.5 },
+  { id: "C1", label: "C1", x: 0.5, y: 0.1 },
+  { id: "C2", label: "C2", x: 0.85, y: 0.35 },
+  { id: "C3", label: "C3", x: 0.85, y: 0.65 },
+  { id: "C4", label: "C4", x: 0.5, y: 0.9 },
+];
+export const SLEEPING_BARBER_WAITING_CHAIRS = 2;
+export const SLEEPING_BARBER_EDGES: GraphEdge[] = ["C1", "C2", "C3", "C4"].map((c) => ({
+  id: `${c}-Barber`,
+  from: c,
+  to: "Barber",
+  weight: 1,
+}));
+
+/**
+ * 眠れる理髪師問題のステップ列を生成する。待合室の椅子数を2とし、4人の客が順番に到着する
+ * シナリオを実行する。床屋は客がいなければ眠り(customersセマフォで待機)、椅子が満席のときに
+ * 到着した客はサービスを受けずに帰る(C4が対象)様子を確認する。
+ */
+export function sleepingBarberProblemSteps(): GraphFrame[] {
+  const nodes = SLEEPING_BARBER_NODES;
+  const edges = SLEEPING_BARBER_EDGES;
+  const chairs = SLEEPING_BARBER_WAITING_CHAIRS;
+
+  const nodeStates = initNodeStates(nodes, "idle");
+  const edgeStates = initEdgeStates(edges, "idle");
+  const waitingRoom: string[] = [];
+
+  const frames: GraphFrame[] = [
+    {
+      nodeStates: { ...nodeStates },
+      edgeStates: { ...edgeStates },
+      distances: {},
+      description: `眠れる理髪師問題を開始。待合室の椅子数=${chairs}。床屋は客がいないので眠っている(idle)`,
+    },
+  ];
+
+  nodeStates.Barber = "visited";
+  edgeStates["C1-Barber"] = "tree";
+  frames.push({
+    nodeStates: { ...nodeStates },
+    edgeStates: { ...edgeStates },
+    distances: {},
+    description: "C1が到着。床屋は眠っていたが、customersセマフォのシグナルで起床し、即座にC1の散髪を開始",
+  });
+
+  waitingRoom.push("C2");
+  nodeStates.C2 = "visited";
+  edgeStates["C2-Barber"] = "checking";
+  frames.push({
+    nodeStates: { ...nodeStates },
+    edgeStates: { ...edgeStates },
+    distances: {},
+    description: `C2が到着。床屋はC1を散髪中。待合室に空きがある(0/${chairs})ので着席して待つ(${waitingRoom.length}/${chairs})`,
+  });
+
+  waitingRoom.push("C3");
+  nodeStates.C3 = "visited";
+  edgeStates["C3-Barber"] = "checking";
+  frames.push({
+    nodeStates: { ...nodeStates },
+    edgeStates: { ...edgeStates },
+    distances: {},
+    description: `C3が到着。待合室にまだ空きがある(1/${chairs})ので着席して待つ(${waitingRoom.length}/${chairs}、満席)`,
+  });
+
+  nodeStates.C4 = "idle";
+  edgeStates["C4-Barber"] = "rejected";
+  frames.push({
+    nodeStates: { ...nodeStates },
+    edgeStates: { ...edgeStates },
+    distances: {},
+    description: `C4が到着。待合室が満席(${waitingRoom.length}/${chairs})のため、サービスを受けずにそのまま帰る`,
+  });
+
+  nodeStates.C1 = "idle";
+  edgeStates["C1-Barber"] = "idle";
+  waitingRoom.shift();
+  nodeStates.C2 = "settled";
+  edgeStates["C2-Barber"] = "tree";
+  frames.push({
+    nodeStates: { ...nodeStates },
+    edgeStates: { ...edgeStates },
+    distances: {},
+    description: `床屋がC1の散髪を終える。待合室からC2を呼び、散髪を開始(待合室 ${waitingRoom.length}/${chairs})`,
+  });
+
+  nodeStates.C2 = "idle";
+  edgeStates["C2-Barber"] = "idle";
+  waitingRoom.shift();
+  nodeStates.C3 = "settled";
+  edgeStates["C3-Barber"] = "tree";
+  frames.push({
+    nodeStates: { ...nodeStates },
+    edgeStates: { ...edgeStates },
+    distances: {},
+    description: `床屋がC2の散髪を終える。待合室からC3を呼び、散髪を開始(待合室 ${waitingRoom.length}/${chairs})`,
+  });
+
+  nodeStates.C3 = "idle";
+  edgeStates["C3-Barber"] = "idle";
+  nodeStates.Barber = "idle";
+  frames.push({
+    nodeStates: { ...nodeStates },
+    edgeStates: { ...edgeStates },
+    distances: {},
+    description:
+      "床屋がC3の散髪を終える。待合室に客がいないので、床屋は再び眠りにつく。計算完了(C1〜C3はサービスを受け、C4だけが待合室満席のため帰された)",
+  });
+
+  return frames;
+}
+
+/** Chang-Robertsリーダー選出のデモ用データ。単方向リング上の5プロセス。 */
+export const CHANG_ROBERTS_NODES: GraphNode[] = circleLayout(["P0", "P1", "P2", "P3", "P4"]);
+export const CHANG_ROBERTS_IDS: Record<string, number> = { P0: 3, P1: 7, P2: 1, P3: 9, P4: 4 };
+export const CHANG_ROBERTS_EDGES: GraphEdge[] = [0, 1, 2, 3, 4].map((i) => ({
+  id: `P${i}-P${(i + 1) % 5}`,
+  from: `P${i}`,
+  to: `P${(i + 1) % 5}`,
+  weight: 1,
+}));
+
+/**
+ * Chang-Robertsリーダー選出アルゴリズムのステップ列を生成する。単方向リング上の5プロセス
+ * (ID: P0=3, P1=7, P2=1, P3=9, P4=4)が、まず自分のIDを次のプロセスへ送信する。
+ * 受信したIDが自分より大きければ転送、小さければ破棄、自分自身のIDが一周して戻ってきたら
+ * リーダー宣言、という規則により、最大ID(P3=9)だけが生き残ってリーダーに選出される様子を
+ * FIFOキューによる確定的なメッセージ処理シミュレーションで示す。
+ */
+export function changRobertsLeaderElectionSteps(): GraphFrame[] {
+  const nodes = CHANG_ROBERTS_NODES;
+  const edges = CHANG_ROBERTS_EDGES;
+  const ids = CHANG_ROBERTS_IDS;
+  const n = nodes.length;
+
+  const nodeStates = initNodeStates(nodes, "idle");
+  const edgeStates = initEdgeStates(edges, "idle");
+  const edgeLabels: Record<string, string> = Object.fromEntries(edges.map((e) => [e.id, ""]));
+
+  const frames: GraphFrame[] = [
+    {
+      nodeStates: { ...nodeStates },
+      edgeStates: { ...edgeStates },
+      distances: {},
+      edgeLabels: { ...edgeLabels },
+      description: `Chang-Robertsリーダー選出を開始。リング上のID: ${nodes
+        .map((nd) => `${nd.id}=${ids[nd.id]}`)
+        .join(", ")}`,
+    },
+  ];
+
+  const edgeIdFrom = (i: number) => `P${i}-P${(i + 1) % n}`;
+  type Msg = { from: number; value: number };
+  const queue: Msg[] = [];
+  for (let i = 0; i < n; i++) queue.push({ from: i, value: ids[`P${i}`] });
+
+  for (let i = 0; i < n; i++) {
+    edgeStates[edgeIdFrom(i)] = "checking";
+    edgeLabels[edgeIdFrom(i)] = String(ids[`P${i}`]);
+  }
+  frames.push({
+    nodeStates: { ...nodeStates },
+    edgeStates: { ...edgeStates },
+    distances: {},
+    edgeLabels: { ...edgeLabels },
+    description: "各プロセスが自分自身のIDを次のプロセスへ送信",
+  });
+
+  let leader: number | null = null;
+  let guard = 0;
+  while (queue.length > 0 && guard < 100) {
+    guard++;
+    const msg = queue.shift()!;
+    const to = (msg.from + 1) % n;
+    const eId = edgeIdFrom(msg.from);
+    const toId = `P${to}`;
+    const ownId = ids[toId];
+
+    if (msg.value === ownId) {
+      leader = to;
+      edgeStates[eId] = "tree";
+      edgeLabels[eId] = `${msg.value}(一致)`;
+      nodeStates[toId] = "settled";
+      frames.push({
+        nodeStates: { ...nodeStates },
+        edgeStates: { ...edgeStates },
+        distances: {},
+        edgeLabels: { ...edgeLabels },
+        description: `${toId}が自分自身のID(${msg.value})を受け取った → 自分の主張が一周した唯一の生き残り → ${toId}をリーダーとして宣言`,
+      });
+      break;
+    } else if (msg.value > ownId) {
+      edgeStates[eId] = "tree";
+      edgeLabels[eId] = String(msg.value);
+      nodeStates[toId] = "visited";
+      frames.push({
+        nodeStates: { ...nodeStates },
+        edgeStates: { ...edgeStates },
+        distances: {},
+        edgeLabels: { ...edgeLabels },
+        description: `${toId}(ID=${ownId})がID ${msg.value}を受信。自分より大きいので次のプロセスへ転送`,
+      });
+      queue.push({ from: to, value: msg.value });
+    } else {
+      edgeStates[eId] = "rejected";
+      edgeLabels[eId] = `${msg.value}(破棄)`;
+      frames.push({
+        nodeStates: { ...nodeStates },
+        edgeStates: { ...edgeStates },
+        distances: {},
+        edgeLabels: { ...edgeLabels },
+        description: `${toId}(ID=${ownId})がID ${msg.value}を受信。自分より小さいので破棄`,
+      });
+    }
+  }
+
+  if (leader !== null) {
+    let cur = leader;
+    for (let step = 0; step < n - 1; step++) {
+      const next = (cur + 1) % n;
+      const eId = edgeIdFrom(cur);
+      edgeStates[eId] = "tree";
+      edgeLabels[eId] = "COORDINATOR";
+      nodeStates[`P${next}`] = "settled";
+      frames.push({
+        nodeStates: { ...nodeStates },
+        edgeStates: { ...edgeStates },
+        distances: {},
+        edgeLabels: { ...edgeLabels },
+        description: `リーダー宣言メッセージ(COORDINATOR)がP${cur}からP${next}へ伝播`,
+      });
+      cur = next;
+    }
+  }
+
+  frames.push({
+    nodeStates: { ...nodeStates },
+    edgeStates: { ...edgeStates },
+    distances: {},
+    edgeLabels: { ...edgeLabels },
+    description: `計算完了。最大ID(${leader !== null ? ids[`P${leader}`] : "?"})を持つP${leader}がリーダーに選出された`,
+  });
+
+  return frames;
+}
+
+/** MapReduceのデモ用データ(単語カウント)。3スプリット→3マッパー→2リデューサー→出力。 */
+export const MAPREDUCE_NODES: GraphNode[] = [
+  { id: "Split1", label: "Split1", x: 0.05, y: 0.15 },
+  { id: "Split2", label: "Split2", x: 0.05, y: 0.5 },
+  { id: "Split3", label: "Split3", x: 0.05, y: 0.85 },
+  { id: "M1", label: "M1", x: 0.35, y: 0.15 },
+  { id: "M2", label: "M2", x: 0.35, y: 0.5 },
+  { id: "M3", label: "M3", x: 0.35, y: 0.85 },
+  { id: "R1", label: "R1", x: 0.68, y: 0.3 },
+  { id: "R2", label: "R2", x: 0.68, y: 0.7 },
+  { id: "Output", label: "Output", x: 0.92, y: 0.5 },
+];
+export const MAPREDUCE_SPLITS: Record<string, string[]> = {
+  Split1: ["the", "cat", "sat"],
+  Split2: ["the", "dog", "ran"],
+  Split3: ["cat", "ran", "fast"],
+};
+export const MAPREDUCE_REDUCER_OF: Record<string, "R1" | "R2"> = {
+  the: "R1",
+  cat: "R1",
+  ran: "R1",
+  sat: "R2",
+  dog: "R2",
+  fast: "R2",
+};
+export const MAPREDUCE_EDGES: GraphEdge[] = [
+  { id: "Split1-M1", from: "Split1", to: "M1", weight: 1 },
+  { id: "Split2-M2", from: "Split2", to: "M2", weight: 1 },
+  { id: "Split3-M3", from: "Split3", to: "M3", weight: 1 },
+  { id: "M1-R1", from: "M1", to: "R1", weight: 1 },
+  { id: "M1-R2", from: "M1", to: "R2", weight: 1 },
+  { id: "M2-R1", from: "M2", to: "R1", weight: 1 },
+  { id: "M2-R2", from: "M2", to: "R2", weight: 1 },
+  { id: "M3-R1", from: "M3", to: "R1", weight: 1 },
+  { id: "M3-R2", from: "M3", to: "R2", weight: 1 },
+  { id: "R1-Output", from: "R1", to: "Output", weight: 1 },
+  { id: "R2-Output", from: "R2", to: "Output", weight: 1 },
+];
+
+/**
+ * MapReduceのステップ列を生成する。単語カウントの例で、3つの入力スプリットをMapフェーズで
+ * (単語,1)のペアに変換し、シャッフルフェーズで同じキーが同じReducerに集まるよう再配置し、
+ * Reduceフェーズで合計する、という3段階のパイプラインを実行する。
+ */
+export function mapreduceSteps(): GraphFrame[] {
+  const nodes = MAPREDUCE_NODES;
+  const edges = MAPREDUCE_EDGES;
+  const splits = MAPREDUCE_SPLITS;
+  const reducerOf = MAPREDUCE_REDUCER_OF;
+
+  const nodeStates = initNodeStates(nodes, "idle");
+  const edgeStates = initEdgeStates(edges, "idle");
+
+  const frames: GraphFrame[] = [
+    {
+      nodeStates: { ...nodeStates },
+      edgeStates: { ...edgeStates },
+      distances: {},
+      description: `MapReduceを開始(単語カウント)。入力: Split1="${splits.Split1.join(
+        " ",
+      )}", Split2="${splits.Split2.join(" ")}", Split3="${splits.Split3.join(" ")}"`,
+    },
+  ];
+
+  const splitNames = ["Split1", "Split2", "Split3"] as const;
+  const mapperOf: Record<string, string> = { Split1: "M1", Split2: "M2", Split3: "M3" };
+  const emitted: Record<string, [string, number][]> = {};
+  for (const s of splitNames) {
+    const m = mapperOf[s];
+    nodeStates[s] = "settled";
+    edgeStates[`${s}-${m}`] = "tree";
+    nodeStates[m] = "visited";
+    emitted[m] = splits[s].map((w) => [w, 1]);
+    frames.push({
+      nodeStates: { ...nodeStates },
+      edgeStates: { ...edgeStates },
+      distances: {},
+      description: `[Mapフェーズ] ${m}が${s}を処理: ${splits[s].map((w) => `(${w},1)`).join(", ")}を出力`,
+    });
+  }
+
+  const reducerInputs: Record<string, [string, number][]> = { R1: [], R2: [] };
+  for (const m of ["M1", "M2", "M3"]) {
+    for (const [word, v] of emitted[m]) {
+      const r = reducerOf[word];
+      reducerInputs[r].push([word, v]);
+      edgeStates[`${m}-${r}`] = "tree";
+      nodeStates[r] = "visited";
+      frames.push({
+        nodeStates: { ...nodeStates },
+        edgeStates: { ...edgeStates },
+        distances: {},
+        description: `[シャッフル] キー"${word}"は${r}の担当なので、${m}から${r}へ送られる`,
+      });
+    }
+  }
+
+  const finalCounts: Record<string, number> = {};
+  for (const r of ["R1", "R2"] as const) {
+    const grouped = new Map<string, number>();
+    reducerInputs[r].forEach(([w, v]) => grouped.set(w, (grouped.get(w) ?? 0) + v));
+    grouped.forEach((cnt, w) => {
+      finalCounts[w] = cnt;
+    });
+    nodeStates[r] = "settled";
+    edgeStates[`${r}-Output`] = "tree";
+    frames.push({
+      nodeStates: { ...nodeStates },
+      edgeStates: { ...edgeStates },
+      distances: {},
+      description: `[Reduceフェーズ] ${r}が集計: ${[...grouped.entries()].map(([w, c]) => `${w}=${c}`).join(", ")}`,
+    });
+  }
+
+  nodeStates.Output = "settled";
+  frames.push({
+    nodeStates: { ...nodeStates },
+    edgeStates: { ...edgeStates },
+    distances: {},
+    description: `計算完了。最終的な単語カウント: ${Object.entries(finalCounts)
+      .map(([w, c]) => `${w}=${c}`)
+      .join(", ")}`,
+  });
+
+  return frames;
+}
+
+/** ゴシッププロトコルのデモ用データ。6ノード、N0が発信源。 */
+export const GOSSIP_NODES: GraphNode[] = circleLayout(["N0", "N1", "N2", "N3", "N4", "N5"]);
+export const GOSSIP_SOURCE = "N0";
+export const GOSSIP_SCHEDULE: [string, string][][] = [
+  [["N0", "N1"]],
+  [
+    ["N0", "N2"],
+    ["N1", "N3"],
+  ],
+  [
+    ["N0", "N4"],
+    ["N2", "N5"],
+  ],
+];
+export const GOSSIP_EDGES: GraphEdge[] = GOSSIP_SCHEDULE.flat().map(([from, to]) => ({
+  id: `${from}-${to}`,
+  from,
+  to,
+  weight: 1,
+}));
+
+/**
+ * ゴシッププロトコルのステップ列を生成する。情報を持つノードが毎ラウンド、まだ知らない
+ * 別のノードに情報を伝える(ここでは固定シナリオ)。情報を知っているノードの数が各ラウンドで
+ * およそ2倍に増えていき、6ノード全体にO(log n)ラウンド(ここでは3ラウンド)で情報が
+ * 行き渡る(結果整合性に収束する)様子を確認する。
+ */
+export function gossipProtocolSteps(): GraphFrame[] {
+  const nodes = GOSSIP_NODES;
+  const edges = GOSSIP_EDGES;
+  const schedule = GOSSIP_SCHEDULE;
+
+  const nodeStates = initNodeStates(nodes, "idle");
+  const edgeStates = initEdgeStates(edges, "idle");
+  const informed = new Set<string>([GOSSIP_SOURCE]);
+  nodeStates[GOSSIP_SOURCE] = "settled";
+
+  const frames: GraphFrame[] = [
+    {
+      nodeStates: { ...nodeStates },
+      edgeStates: { ...edgeStates },
+      distances: {},
+      description: `ゴシッププロトコルを開始。${GOSSIP_SOURCE}だけが情報を保持している(既知ノード数=1/${nodes.length})`,
+    },
+  ];
+
+  schedule.forEach((round, idx) => {
+    for (const [from, to] of round) {
+      edgeStates[`${from}-${to}`] = "checking";
+      nodeStates[from] = "settled";
+      frames.push({
+        nodeStates: { ...nodeStates },
+        edgeStates: { ...edgeStates },
+        distances: {},
+        description: `[ラウンド${idx + 1}] ${from}が${to}へ情報をゴシップ`,
+      });
+      informed.add(to);
+      edgeStates[`${from}-${to}`] = "tree";
+      nodeStates[to] = "settled";
+      frames.push({
+        nodeStates: { ...nodeStates },
+        edgeStates: { ...edgeStates },
+        distances: {},
+        description: `${to}が情報を取り込んだ(既知ノード数=${informed.size}/${nodes.length})。次ラウンドから${to}もゴシップする側になる`,
+      });
+    }
+  });
+
+  frames.push({
+    nodeStates: { ...nodeStates },
+    edgeStates: { ...edgeStates },
+    distances: {},
+    description: `計算完了。${schedule.length}ラウンドで全${nodes.length}ノードに情報が行き渡った(O(log n)ラウンドで収束する疫学的モデルの通り)`,
+  });
+
+  return frames;
+}
+
+/** Chandy-Lamportスナップショットのデモ用データ。3プロセスP0・P1・P2。 */
+export const CHANDY_LAMPORT_NODES: GraphNode[] = [
+  { id: "P0", label: "P0", x: 0.2, y: 0.2 },
+  { id: "P1", label: "P1", x: 0.8, y: 0.2 },
+  { id: "P2", label: "P2", x: 0.5, y: 0.85 },
+];
+export const CHANDY_LAMPORT_EDGES: GraphEdge[] = [
+  { id: "P0-P1", from: "P0", to: "P1", weight: 1 },
+  { id: "P0-P2", from: "P0", to: "P2", weight: 1 },
+  { id: "P1-P2", from: "P1", to: "P2", weight: 1 },
+];
+
+/**
+ * Chandy-Lamportスナップショットアルゴリズムのステップ列を生成する。発起プロセスP0が
+ * 自分の状態を記録して全ての出力チャネルにMARKERを送信し、各プロセスは「あるチャネルから
+ * 初めてMARKERを受け取った時点」で自分の状態とそのチャネルを空として記録、それ以降そのチャネルで
+ * MARKER受信までに届いたメッセージを「飛行中のメッセージ」として記録する、という規則を確認する。
+ * P2はP0とP1の両方からチャネルを持つため、2つの入力チャネルそれぞれで初回MARKER受信の意味
+ * (状態記録トリガー、あるいはチャネル記録の確定)が異なる様子を対比できる。
+ */
+export function chandyLamportSnapshotSteps(): GraphFrame[] {
+  const nodes = CHANDY_LAMPORT_NODES;
+  const edges = CHANDY_LAMPORT_EDGES;
+
+  const nodeStates = initNodeStates(nodes, "idle");
+  const edgeStates = initEdgeStates(edges, "idle");
+  const edgeLabels: Record<string, string> = Object.fromEntries(edges.map((e) => [e.id, ""]));
+
+  const frames: GraphFrame[] = [
+    {
+      nodeStates: { ...nodeStates },
+      edgeStates: { ...edgeStates },
+      distances: {},
+      edgeLabels: { ...edgeLabels },
+      description: "Chandy-Lamportスナップショットを開始。P0が発起プロセスとしてグローバルスナップショットの記録を始める",
+    },
+  ];
+
+  const send = (id: string, label: string, state: GraphEdgeState, description: string) => {
+    edgeLabels[id] = label;
+    edgeStates[id] = state;
+    frames.push({
+      nodeStates: { ...nodeStates },
+      edgeStates: { ...edgeStates },
+      distances: {},
+      edgeLabels: { ...edgeLabels },
+      description,
+    });
+  };
+
+  nodeStates.P0 = "settled";
+  frames.push({
+    nodeStates: { ...nodeStates },
+    edgeStates: { ...edgeStates },
+    distances: {},
+    edgeLabels: { ...edgeLabels },
+    description: "P0が自分自身のローカル状態を記録",
+  });
+  send("P0-P1", "MARKER", "tree", "P0 → P1: MARKER送信");
+  send("P0-P2", "MARKER", "tree", "P0 → P2: MARKER送信");
+
+  send(
+    "P1-P2",
+    "m(app)",
+    "checking",
+    "P1がまだMARKERを受け取っていない状態で、アプリケーションメッセージmをP2へ送信(この後P0のMARKERがP1に届く)",
+  );
+
+  nodeStates.P2 = "visited";
+  frames.push({
+    nodeStates: { ...nodeStates },
+    edgeStates: { ...edgeStates },
+    distances: {},
+    edgeLabels: { ...edgeLabels },
+    description:
+      "P2がP0からのMARKERを初めて受信 → 自分の状態を記録し、チャネルP0→P2を「空」として記録。P1→P2チャネルの記録を開始(メッセージが届き次第、飛行中メッセージとして記録する)",
+  });
+
+  frames.push({
+    nodeStates: { ...nodeStates },
+    edgeStates: { ...edgeStates },
+    distances: {},
+    edgeLabels: { ...edgeLabels },
+    description:
+      "P2がP1からのメッセージmを受信(P1→P2チャネルはまだMARKER未受信のため記録モード中) → mを「P1→P2チャネルの飛行中メッセージ」として記録",
+  });
+
+  nodeStates.P1 = "visited";
+  edgeStates["P0-P1"] = "idle";
+  frames.push({
+    nodeStates: { ...nodeStates },
+    edgeStates: { ...edgeStates },
+    distances: {},
+    edgeLabels: { ...edgeLabels },
+    description: "P1がP0からのMARKERを受信 → 自分の状態を記録し、チャネルP0→P1を「空」として記録",
+  });
+  send("P1-P2", "MARKER", "tree", "P1 → P2: MARKER送信(自分の状態記録後、出力チャネルにMARKERを送る)");
+
+  edgeStates["P1-P2"] = "idle";
+  nodeStates.P2 = "settled";
+  frames.push({
+    nodeStates: { ...nodeStates },
+    edgeStates: { ...edgeStates },
+    distances: {},
+    edgeLabels: { ...edgeLabels },
+    description:
+      "P2がP1からのMARKERを受信(このチャネルでは初回のMARKERだが、P2は既にP0からのMARKERで状態記録済み) → チャネルP1→P2の記録を確定: [m](MARKER受信までに届いた1件のメッセージ)",
+  });
+
+  nodeStates.P1 = "settled";
+  nodeStates.P0 = "settled";
+  frames.push({
+    nodeStates: { ...nodeStates },
+    edgeStates: { ...edgeStates },
+    distances: {},
+    edgeLabels: { ...edgeLabels },
+    description:
+      "計算完了。全プロセスの状態(P0,P1,P2)と全チャネルの状態(P0→P1:空, P0→P2:空, P1→P2:[m])を合わせて、因果関係を壊さない一貫したグローバルスナップショットが完成",
+  });
+
+  return frames;
+}
+
+/** CASロックフリースタックのデモ用データ。 */
+export const LOCK_FREE_STACK_NODES: GraphNode[] = [
+  { id: "Top", label: "Top", x: 0.5, y: 0.1 },
+  { id: "A", label: "A", x: 0.3, y: 0.5 },
+  { id: "B", label: "B", x: 0.7, y: 0.5 },
+];
+export const LOCK_FREE_STACK_EDGES: GraphEdge[] = [
+  { id: "Top-A", from: "Top", to: "A", weight: 1 },
+  { id: "Top-B", from: "Top", to: "B", weight: 1 },
+  { id: "A-B", from: "A", to: "B", weight: 1 },
+];
+
+/**
+ * CASロックフリースタックのステップ列を生成する。2つのスレッドT1(push A)とT2(push B)が
+ * 同時に空のスタックへpushを試みる競合状態を再現する: 両者ともoldTop=nullを読み取るが、
+ * T2のCAS(top,null,B)が先に成功しT1のCASは失敗する。T1はoldTopを読み直してリトライし、
+ * CAS(top,B,A)に成功してA→Bという正しい連結リストを作る。最後にpop()でCAS(top,A,B)により
+ * Aを取り出し、スタックの整合性(要素を失わない、LIFO順序が壊れない)が保たれることを確認する。
+ */
+export function lockFreeStackCasSteps(): GraphFrame[] {
+  const nodes = LOCK_FREE_STACK_NODES;
+  const edges = LOCK_FREE_STACK_EDGES;
+  const nodeStates = initNodeStates(nodes, "idle");
+  const edgeStates = initEdgeStates(edges, "idle");
+
+  const frames: GraphFrame[] = [
+    {
+      nodeStates: { ...nodeStates },
+      edgeStates: { ...edgeStates },
+      distances: {},
+      description: "CASロックフリースタックを開始。スタックは空(top=null)。T1がpush(A)、T2がpush(B)を同時に試みる",
+    },
+  ];
+
+  nodeStates.A = "visited";
+  nodeStates.B = "visited";
+  frames.push({
+    nodeStates: { ...nodeStates },
+    edgeStates: { ...edgeStates },
+    distances: {},
+    description: "T1・T2ともにoldTop=null(現在のtop)を読み取り、それぞれA.next=null、B.next=nullとする",
+  });
+
+  edgeStates["Top-B"] = "tree";
+  nodeStates.B = "settled";
+  frames.push({
+    nodeStates: { ...nodeStates },
+    edgeStates: { ...edgeStates },
+    distances: {},
+    description: "T2: CAS(top, null, B)が先に成功。top=Bになる",
+  });
+
+  edgeStates["Top-A"] = "rejected";
+  frames.push({
+    nodeStates: { ...nodeStates },
+    edgeStates: { ...edgeStates },
+    distances: {},
+    description: "T1: CAS(top, null, A)を試みるが、topは既にnullではなくB(T2に書き換えられた)なので失敗 → CASループでリトライ",
+  });
+
+  edgeStates["Top-A"] = "idle";
+  edgeStates["A-B"] = "tree";
+  frames.push({
+    nodeStates: { ...nodeStates },
+    edgeStates: { ...edgeStates },
+    distances: {},
+    description: "T1: oldTopを読み直す(oldTop=B)。A.next=Bに設定してCAS(top, B, A)を再試行",
+  });
+
+  edgeStates["Top-B"] = "idle";
+  edgeStates["Top-A"] = "tree";
+  nodeStates.A = "settled";
+  frames.push({
+    nodeStates: { ...nodeStates },
+    edgeStates: { ...edgeStates },
+    distances: {},
+    description: "T1: CAS(top, B, A)が成功。top=A(A→Bという正しい連結リストが完成、両方の要素が失われずにスタックに積まれた)",
+  });
+
+  frames.push({
+    nodeStates: { ...nodeStates },
+    edgeStates: { ...edgeStates },
+    distances: {},
+    description: "pop()を実行: oldTop=A、A.nextであるBをnewTopとして読み取る",
+  });
+
+  edgeStates["Top-A"] = "idle";
+  edgeStates["A-B"] = "idle";
+  nodeStates.A = "idle";
+  frames.push({
+    nodeStates: { ...nodeStates },
+    edgeStates: { ...edgeStates },
+    distances: {},
+    description: "CAS(top, A, B)が成功。top=Bとなり、Aがスタックから取り出される(戻り値=A)",
+  });
+
+  frames.push({
+    nodeStates: { ...nodeStates },
+    edgeStates: { ...edgeStates },
+    distances: {},
+    description:
+      "計算完了。競合したpush(A),push(B)は両方とも要素を失わずに積まれ、pop()も正しくA(最後に積んだ要素)を取り出せた(LIFOの整合性)。ロックを使わずに一貫性が保たれた",
+  });
+
+  return frames;
+}
+
+/** Michael-Scottキュー(ロックフリーキュー)のデモ用データ。 */
+export const MICHAEL_SCOTT_QUEUE_NODES: GraphNode[] = [
+  { id: "Dummy", label: "Dummy", x: 0.15, y: 0.5 },
+  { id: "X", label: "X", x: 0.5, y: 0.5 },
+  { id: "Y", label: "Y", x: 0.85, y: 0.5 },
+];
+export const MICHAEL_SCOTT_QUEUE_EDGES: GraphEdge[] = [
+  { id: "Dummy-X", from: "Dummy", to: "X", weight: 1 },
+  { id: "X-Y", from: "X", to: "Y", weight: 1 },
+];
+
+/**
+ * Michael-Scottキュー(ロックフリーキュー)のステップ列を生成する。番兵となるダミーノードを
+ * 常に先頭に持つ連結リストとして実装し、enqueue(X)、enqueue(Y)、そして「あるスレッドがtailの
+ * 前進を完了する前に別スレッドが代わりに前進させる」協調の様子、最後にdequeue()で
+ * 先頭の実データを取り出す様子を確認する。
+ */
+export function michaelScottQueueSteps(): GraphFrame[] {
+  const nodes = MICHAEL_SCOTT_QUEUE_NODES;
+  const edges = MICHAEL_SCOTT_QUEUE_EDGES;
+  const nodeStates = initNodeStates(nodes, "idle");
+  const edgeStates = initEdgeStates(edges, "idle");
+
+  nodeStates.Dummy = "settled";
+  const frames: GraphFrame[] = [
+    {
+      nodeStates: { ...nodeStates },
+      edgeStates: { ...edgeStates },
+      distances: {},
+      description: "Michael-Scottキューを開始。番兵のDummyノードのみが存在し、head=tail=Dummy",
+    },
+  ];
+
+  nodeStates.X = "visited";
+  frames.push({
+    nodeStates: { ...nodeStates },
+    edgeStates: { ...edgeStates },
+    distances: {},
+    description: "enqueue(X): 新ノードXを作成。tailが指すDummyのnextをCASでnull→Xに更新",
+  });
+  edgeStates["Dummy-X"] = "tree";
+  frames.push({
+    nodeStates: { ...nodeStates },
+    edgeStates: { ...edgeStates },
+    distances: {},
+    description: "Dummy.next=Xへの更新に成功。続けてtailポインタ自体をCASでDummy→Xに前進",
+  });
+  frames.push({
+    nodeStates: { ...nodeStates },
+    edgeStates: { ...edgeStates },
+    distances: {},
+    description: "tail=Xに前進。tail=X、head=Dummyの状態になった",
+  });
+
+  nodeStates.Y = "visited";
+  edgeStates["X-Y"] = "tree";
+  frames.push({
+    nodeStates: { ...nodeStates },
+    edgeStates: { ...edgeStates },
+    distances: {},
+    description:
+      "enqueue(Y): 新ノードYを作成。tail(X)が指すノードのnextをCASでnull→Yに更新。この時点でtailはまだXを指したまま(2段階目が未完了)",
+  });
+
+  nodeStates.X = "idle";
+  frames.push({
+    nodeStates: { ...nodeStates },
+    edgeStates: { ...edgeStates },
+    distances: {},
+    description:
+      "別のスレッドがtailの遅れに気づき、代わりにCAS(tail, X, Y)を実行して前進させる(協調)。元のenqueueスレッドが自分でtail更新を試みても、既に正しい値になっているため実質的に成功扱いとなる",
+  });
+
+  frames.push({
+    nodeStates: { ...nodeStates },
+    edgeStates: { ...edgeStates },
+    distances: {},
+    description: "dequeue(): headが指すDummyのnext(X)を読み取る。Xが存在するのでCAS(head, Dummy, X)を試みる",
+  });
+
+  nodeStates.Dummy = "idle";
+  nodeStates.X = "settled";
+  edgeStates["Dummy-X"] = "idle";
+  frames.push({
+    nodeStates: { ...nodeStates },
+    edgeStates: { ...edgeStates },
+    distances: {},
+    description: "CAS(head, Dummy, X)が成功。head=X(Xが新しい番兵になる)。取り出した値はXが元々保持していたデータ",
+  });
+
+  frames.push({
+    nodeStates: { ...nodeStates },
+    edgeStates: { ...edgeStates },
+    distances: {},
+    description:
+      "計算完了。enqueue(X)→enqueue(Y)→dequeue()を実行し、キューの中身はY 1件のみが残った(head=X(新ダミー)、tail=Y)。他スレッドの協調によりtailが遅れてもFIFOの整合性が保たれた",
+  });
+
+  return frames;
+}
+
 export const GRAPH_VISUALIZERS: Record<string, () => GraphFrame[]> = {
+  "dining-philosophers": diningPhilosophersSteps,
+  "petersons-algorithm": petersonsAlgorithmSteps,
+  "bakery-algorithm": bakeryAlgorithmSteps,
+  "producer-consumer-semaphore": producerConsumerSemaphoreSteps,
+  "readers-writers-problem": readersWritersProblemSteps,
+  "sleeping-barber-problem": sleepingBarberProblemSteps,
+  "chang-roberts-leader-election": changRobertsLeaderElectionSteps,
+  mapreduce: mapreduceSteps,
+  "gossip-protocol": gossipProtocolSteps,
+  "chandy-lamport-snapshot": chandyLamportSnapshotSteps,
+  "lock-free-stack-cas": lockFreeStackCasSteps,
+  "michael-scott-queue": michaelScottQueueSteps,
   "bellman-ford": bellmanFordSteps,
   prim: primSteps,
   kruskal: kruskalSteps,

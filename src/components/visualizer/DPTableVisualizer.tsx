@@ -3,6 +3,7 @@
 import { useMemo } from "react";
 import styles from "./DPTableVisualizer.module.css";
 import { PlaybackControls } from "./PlaybackControls";
+import { ZoomableStage } from "./ZoomableStage";
 import { useStepPlayer } from "./useStepPlayer";
 import { useWorkerFrames } from "./useWorkerFrames";
 import { DP_TABLE_META, type DPCellState, type DPFrame } from "@/lib/dp-visualizers";
@@ -45,32 +46,34 @@ export function DPTableVisualizer({ algorithmId }: DPTableVisualizerProps) {
         ))}
       </div>
 
-      <div className={styles.tableWrap}>
-        <table className={styles.table}>
-          <thead>
-            <tr>
-              <th className={styles.cornerHeader}>{meta.cornerLabel}</th>
-              {meta.colHeaders.map((label, w) => (
-                <th key={w} className={styles.colHeader}>
-                  {label}
-                </th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {currentFrame?.table.map((row, i) => (
-              <tr key={i}>
-                <th className={styles.rowHeader}>{meta.rowHeaders[i]}</th>
-                {row.map((cell, w) => (
-                  <td key={w} className={styles.cell} data-state={cell.state}>
-                    {cell.value ?? ""}
-                  </td>
+      <ZoomableStage>
+        <div className={styles.tableWrap}>
+          <table className={styles.table}>
+            <thead>
+              <tr>
+                <th className={styles.cornerHeader}>{meta.cornerLabel}</th>
+                {meta.colHeaders.map((label, w) => (
+                  <th key={w} className={styles.colHeader}>
+                    {label}
+                  </th>
                 ))}
               </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
+            </thead>
+            <tbody>
+              {currentFrame?.table.map((row, i) => (
+                <tr key={i}>
+                  <th className={styles.rowHeader}>{meta.rowHeaders[i]}</th>
+                  {row.map((cell, w) => (
+                    <td key={w} className={styles.cell} data-state={cell.state}>
+                      {cell.value ?? ""}
+                    </td>
+                  ))}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </ZoomableStage>
 
       <p className={styles.description} role="status">
         {isComputing ? "Web Workerで計算中…" : currentFrame?.description}

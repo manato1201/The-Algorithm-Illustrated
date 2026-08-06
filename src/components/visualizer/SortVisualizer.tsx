@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import styles from "./SortVisualizer.module.css";
 import { PlaybackControls } from "./PlaybackControls";
+import { ZoomableStage } from "./ZoomableStage";
 import { useStepPlayer } from "./useStepPlayer";
 import { useWorkerFrames } from "./useWorkerFrames";
 import { ParticleBurstLayer, type ParticleBurst } from "./ParticleBurstLayer";
@@ -125,10 +126,12 @@ export function SortVisualizer({ algorithmId }: SortVisualizerProps) {
 
   return (
     <div className={styles.visualizer}>
-      <div className={styles.canvasWrap}>
-        <canvas ref={canvasRef} className={styles.canvas} aria-hidden="true" />
-        <ParticleBurstLayer bursts={bursts} />
-      </div>
+      <ZoomableStage>
+        <div className={styles.canvasWrap}>
+          <canvas ref={canvasRef} className={styles.canvas} aria-hidden="true" />
+          <ParticleBurstLayer bursts={bursts} />
+        </div>
+      </ZoomableStage>
       <p className={styles.description} role="status">
         {isComputing ? "Web Workerで計算中…" : currentFrame?.description}
       </p>

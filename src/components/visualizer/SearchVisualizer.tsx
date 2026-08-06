@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef } from "react";
 import styles from "./SearchVisualizer.module.css";
 import { PlaybackControls } from "./PlaybackControls";
+import { ZoomableStage } from "./ZoomableStage";
 import { useStepPlayer } from "./useStepPlayer";
 import { useWorkerFrames } from "./useWorkerFrames";
 import { ParticleBurstLayer, type ParticleBurst } from "./ParticleBurstLayer";
@@ -122,10 +123,12 @@ export function SearchVisualizer({ algorithmId }: SearchVisualizerProps) {
       {TARGET_SEARCH_ALGORITHMS.has(algorithmId) ? (
         <p className={styles.target}>検索対象の値: {SEARCH_TARGET}</p>
       ) : null}
-      <div className={styles.canvasWrap}>
-        <canvas ref={canvasRef} className={styles.canvas} aria-hidden="true" />
-        <ParticleBurstLayer bursts={bursts} />
-      </div>
+      <ZoomableStage>
+        <div className={styles.canvasWrap}>
+          <canvas ref={canvasRef} className={styles.canvas} aria-hidden="true" />
+          <ParticleBurstLayer bursts={bursts} />
+        </div>
+      </ZoomableStage>
       <p className={styles.description} role="status">
         {isComputing ? "Web Workerで計算中…" : currentFrame?.description}
       </p>
