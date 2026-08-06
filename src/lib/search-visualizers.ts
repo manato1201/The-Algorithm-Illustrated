@@ -1548,6 +1548,439 @@ export function monteCarloIntegrationSteps(): SearchFrame[] {
   return frames;
 }
 
+/** 平方分割の区間クエリ対象。半開区間[left, right)の合計を求める(SEARCH_ARRAYを再利用)。 */
+export const SQRT_DECOMPOSITION_QUERY_LEFT = 3;
+export const SQRT_DECOMPOSITION_QUERY_RIGHT = 17;
+
+/**
+ * 平方分割(Sqrt Decomposition)のステップ列を生成する。配列をブロックサイズ√nでブロック分割し、
+ * 各ブロックの合計をあらかじめ計算しておく。区間クエリでは、区間の両端が属するブロックだけを
+ * 1要素ずつ愚直に処理し、区間に完全に含まれる中間のブロックは事前計算した集約値をO(1)で
+ * まとめて使うことで、O(n)の全走査を避けてO(√n)で答えを求める過程を可視化する。
+ */
+export function sqrtDecompositionSteps(): SearchFrame[] {
+  const array = SEARCH_ARRAY;
+  const n = array.length;
+  const blockSize = Math.max(1, Math.ceil(Math.sqrt(n)));
+  const numBlocks = Math.ceil(n / blockSize);
+  const blockSum: number[] = new Array(numBlocks).fill(0);
+  for (let i = 0; i < n; i++) blockSum[Math.floor(i / blockSize)] += array[i];
+
+  const frames: SearchFrame[] = [
+    frame(
+      array,
+      {},
+      `平方分割を開始。配列(長さ${n})をブロックサイズ√n≈${blockSize}で${numBlocks}個のブロックに分割する`,
+    ),
+  ];
+
+  for (let b = 0; b < numBlocks; b++) {
+    const start = b * blockSize;
+    const end = Math.min(n, start + blockSize) - 1;
+    const highlight: Partial<Record<number, StateColorKey>> = {};
+    for (let i = start; i <= end; i++) highlight[i] = "pivot";
+    frames.push(
+      frame(array, highlight, `ブロック${b}[${start}, ${end}]の合計をあらかじめ計算: ${blockSum[b]}`),
+    );
+  }
+
+  const left = SQRT_DECOMPOSITION_QUERY_LEFT;
+  const right = SQRT_DECOMPOSITION_QUERY_RIGHT;
+  frames.push(frame(array, {}, `区間クエリ[${left}, ${right})の合計を求める`));
+
+  const blockLeft = Math.floor(left / blockSize);
+  const blockRight = Math.floor((right - 1) / blockSize);
+  let sum = 0;
+
+  if (blockLeft === blockRight) {
+    const highlight: Partial<Record<number, StateColorKey>> = {};
+    for (let i = left; i < right; i++) {
+      sum += array[i];
+      highlight[i] = "comparing";
+    }
+    frames.push(frame(array, highlight, `左右が同じブロック内 → 該当区間だけ愚直に加算: 合計=${sum}`));
+  } else {
+    const endOfFirstBlock = (blockLeft + 1) * blockSize;
+    const leftHighlight: Partial<Record<number, StateColorKey>> = {};
+    for (let i = left; i < endOfFirstBlock; i++) {
+      sum += array[i];
+      leftHighlight[i] = "comparing";
+    }
+    frames.push(
+      frame(
+        array,
+        leftHighlight,
+        `左端のブロック${blockLeft}の途中から: 位置[${left}, ${endOfFirstBlock})を1要素ずつ加算(累計=${sum})`,
+      ),
+    );
+
+    for (let b = blockLeft + 1; b < blockRight; b++) {
+      const start = b * blockSize;
+      const end = Math.min(n, start + blockSize) - 1;
+      sum += blockSum[b];
+      const highlight: Partial<Record<number, StateColorKey>> = {};
+      for (let i = start; i <= end; i++) highlight[i] = "settled";
+      frames.push(
+        frame(
+          array,
+          highlight,
+          `ブロック${b}[${start}, ${end}]は区間に完全に含まれる → 事前計算した集約値${blockSum[b]}をO(1)で加算(累計=${sum})`,
+        ),
+      );
+    }
+
+    const startOfLastBlock = blockRight * blockSize;
+    const rightHighlight: Partial<Record<number, StateColorKey>> = {};
+    for (let i = startOfLastBlock; i < right; i++) {
+      sum += array[i];
+      rightHighlight[i] = "comparing";
+    }
+    frames.push(
+      frame(
+        array,
+        rightHighlight,
+        `右端のブロック${blockRight}の途中まで: 位置[${startOfLastBlock}, ${right})を1要素ずつ加算(累計=${sum})`,
+      ),
+    );
+  }
+
+  const finalHighlight: Partial<Record<number, StateColorKey>> = {};
+  for (let i = left; i < right; i++) finalHighlight[i] = "settled";
+  frames.push(frame(array, finalHighlight, `計算完了。区間[${left}, ${right})の合計 = ${sum}(O(√n)で計算)`));
+
+  return frames;
+}
+
+export const COUNT_MIN_SKETCH_WIDTH = 7;
+export const COUNT_MIN_SKETCH_DEPTH = 3;
+/** 追加する要素のストリーム。15と22は3つのハッシュ関数全てで衝突するよう仕組んである(過大評価のデモ用)。 */
+export const COUNT_MIN_SKETCH_STREAM = [3, 7, 3, 15, 3, 7, 22];
+/** クエリする要素。99は一度も追加していないが、15・22とハッシュが完全一致するため過大評価される。 */
+export const COUNT_MIN_SKETCH_QUERY_ITEMS = [3, 7, 15, 22, 99];
+
+function countMinSketchHashes(x: number, width: number): number[] {
+  return [x % width, (3 * x + 5) % width, (4 * x + 6) % width];
+}
+
+/**
+ * Count-Min Sketchのステップ列を生成する。d行×w列のカウンタ配列を1次元に平坦化して表示する
+ * (index = row×width + col)。要素を追加するたびにd個のハッシュ関数が指す各行1つずつのカウンタを
+ * +1し、クエリ時はd個のカウンタの最小値を頻度の推定値とする。ストリーム中の15と22は、あえて
+ * 3つのハッシュ関数すべてで同じカウンタ位置に衝突するよう選んであり、その結果クエリ側では
+ * 15・22はもちろん、一度も追加していない99までもが過大評価されてしまう様子を確認できる
+ * ——Count-Min Sketchは過大評価はあり得ても過小評価は絶対に起きない、という一方向の誤差だけを持つ。
+ */
+export function countMinSketchSteps(): SearchFrame[] {
+  const width = COUNT_MIN_SKETCH_WIDTH;
+  const depth = COUNT_MIN_SKETCH_DEPTH;
+  const table = new Array(width * depth).fill(0);
+  const cellIndex = (row: number, col: number) => row * width + col;
+
+  const frames: SearchFrame[] = [
+    frame(
+      [...table],
+      {},
+      `Count-Min Sketchを開始。幅w=${width}×深さd=${depth}=${width * depth}個のカウンタを全て0で初期化`,
+    ),
+  ];
+
+  const trueFreq = new Map<number, number>();
+
+  for (const item of COUNT_MIN_SKETCH_STREAM) {
+    const cols = countMinSketchHashes(item, width);
+    trueFreq.set(item, (trueFreq.get(item) ?? 0) + 1);
+
+    const highlight: Partial<Record<number, StateColorKey>> = {};
+    cols.forEach((col, row) => {
+      highlight[cellIndex(row, col)] = "pivot";
+    });
+    frames.push(
+      frame(
+        [...table],
+        highlight,
+        `要素${item}を追加: ${depth}個のハッシュ関数で列(${cols.join(", ")})を計算(各行1つずつのカウンタが対象)`,
+      ),
+    );
+
+    cols.forEach((col, row) => {
+      table[cellIndex(row, col)] += 1;
+    });
+    frames.push(
+      frame(
+        [...table],
+        highlight,
+        `対応する${depth}個のカウンタを+1(現在値: ${cols.map((col, row) => table[cellIndex(row, col)]).join(", ")})`,
+      ),
+    );
+  }
+
+  frames.push(frame([...table], {}, `追加完了。ストリーム: [${COUNT_MIN_SKETCH_STREAM.join(", ")}]`));
+
+  for (const item of COUNT_MIN_SKETCH_QUERY_ITEMS) {
+    const cols = countMinSketchHashes(item, width);
+    const highlight: Partial<Record<number, StateColorKey>> = {};
+    cols.forEach((col, row) => {
+      highlight[cellIndex(row, col)] = "comparing";
+    });
+    const values = cols.map((col, row) => table[cellIndex(row, col)]);
+    frames.push(
+      frame([...table], highlight, `要素${item}をクエリ: ${depth}行のカウンタ値(${values.join(", ")})を確認`),
+    );
+
+    const estimate = Math.min(...values);
+    const actual = trueFreq.get(item) ?? 0;
+    const resultHighlight: Partial<Record<number, StateColorKey>> = {};
+    cols.forEach((col, row) => {
+      resultHighlight[cellIndex(row, col)] = "settled";
+    });
+    const verdict =
+      estimate === actual
+        ? `最小値${estimate}を推定頻度とする(真の頻度${actual}と一致)`
+        : `最小値${estimate}を推定頻度とする(真の頻度は${actual} → 他の要素とのハッシュ衝突により過大評価。過小評価は理論上起こらない)`;
+    frames.push(frame([...table], resultHighlight, `要素${item}: ${verdict}`));
+  }
+
+  frames.push(
+    frame([...table], {}, "計算完了。Count-Min Sketchの推定値は常に真の頻度以上(過大評価はあるが過小評価はない)"),
+  );
+
+  return frames;
+}
+
+export const CUCKOO_HASHING_SIZE = 5;
+export const CUCKOO_HASHING_KEYS = [24, 2, 6, 4, 27, 20];
+
+function cuckooHashingH1(key: number, size: number): number {
+  return key % size;
+}
+function cuckooHashingH2(key: number, size: number): number {
+  return (3 * key + 2) % size;
+}
+
+/**
+ * カッコウハッシュ法のステップ列を生成する。2つのテーブルT1・T2を1本の配列に連結して表示する
+ * (表示位置0〜size-1がT1、size〜2×size-1がT2)。キーをT1のh1(key)に置こうとして先住者がいれば、
+ * その先住者を追い出してT2のh2(先住者)へ、そこでも先住者がいればさらに追い出してT1へ……という
+ * 玉突き(cuckoo eviction)を、追い出された「今動いているキー」をハイライトしながら1手ずつ辿る。
+ * この例ではキー4・27の挿入時に実際に追い出しの連鎖が発生し、最終的に全キーがどちらかの
+ * テーブルに収まることで、探索が常に高々2箇所の参照で済むという性質を確認できる。
+ */
+export function cuckooHashingSteps(): SearchFrame[] {
+  const size = CUCKOO_HASHING_SIZE;
+  const table1: (number | null)[] = new Array(size).fill(null);
+  const table2: (number | null)[] = new Array(size).fill(null);
+  const maxLoop = Math.max(size, 8);
+
+  const displayArray = () => [...table1.map((v) => v ?? 0), ...table2.map((v) => v ?? 0)];
+  const t1Pos = (i: number) => i;
+  const t2Pos = (i: number) => size + i;
+
+  const frames: SearchFrame[] = [
+    frame(
+      displayArray(),
+      {},
+      `カッコウハッシュ法を開始。T1(表示位置0〜${size - 1})とT2(表示位置${size}〜${2 * size - 1})、サイズ${size}を用意`,
+    ),
+  ];
+
+  for (const key of CUCKOO_HASHING_KEYS) {
+    let cur = key;
+    let useTable1 = true;
+    let evicted = false;
+    frames.push(frame(displayArray(), {}, `キー${key}を挿入開始`));
+
+    for (let i = 0; i < maxLoop; i++) {
+      if (useTable1) {
+        const idx = cuckooHashingH1(cur, size);
+        const pos = t1Pos(idx);
+        if (table1[idx] === null) {
+          table1[idx] = cur;
+          frames.push(
+            frame(
+              displayArray(),
+              { [pos]: "settled" },
+              `T1[${idx}]は空き → キー${cur}を配置${evicted ? "(追い出しの連鎖が完了)" : ""}`,
+            ),
+          );
+          break;
+        }
+        const displaced = table1[idx] as number;
+        table1[idx] = cur;
+        frames.push(
+          frame(
+            displayArray(),
+            { [pos]: "swapping" },
+            `T1[${idx}]は既にキー${displaced}で占有 → キー${cur}を配置し、キー${displaced}を追い出す`,
+          ),
+        );
+        cur = displaced;
+        evicted = true;
+      } else {
+        const idx = cuckooHashingH2(cur, size);
+        const pos = t2Pos(idx);
+        if (table2[idx] === null) {
+          table2[idx] = cur;
+          frames.push(
+            frame(
+              displayArray(),
+              { [pos]: "settled" },
+              `T2[${idx}]は空き → 追い出されたキー${cur}を配置${evicted ? "(追い出しの連鎖が完了)" : ""}`,
+            ),
+          );
+          break;
+        }
+        const displaced = table2[idx] as number;
+        table2[idx] = cur;
+        frames.push(
+          frame(
+            displayArray(),
+            { [pos]: "swapping" },
+            `T2[${idx}]は既にキー${displaced}で占有 → キー${cur}を配置し、キー${displaced}を追い出す(T1へ玉突き)`,
+          ),
+        );
+        cur = displaced;
+        evicted = true;
+      }
+      useTable1 = !useTable1;
+    }
+  }
+
+  const finalHighlight: Partial<Record<number, StateColorKey>> = {};
+  displayArray().forEach((v, idx) => {
+    if (v !== 0) finalHighlight[idx] = "settled";
+  });
+  frames.push(
+    frame(
+      displayArray(),
+      finalHighlight,
+      `挿入完了。全てのキー[${CUCKOO_HASHING_KEYS.join(", ")}]がT1・T2のいずれかに格納され、探索は常に高々2箇所の参照だけで済む`,
+    ),
+  );
+
+  return frames;
+}
+
+/** レジスタ数m=2^b個(b=3 → m=8)。相異なる要素数はHYPERLOGLOG_DISTINCT_COUNT件。 */
+export const HYPERLOGLOG_B = 3;
+export const HYPERLOGLOG_SEED = 133;
+export const HYPERLOGLOG_DISTINCT_COUNT = 12;
+/** ストリーム中で重複させて追加するインデックス(冪等性——再追加しても推定値が変わらないことのデモ用)。 */
+export const HYPERLOGLOG_DUPLICATE_INDICES = [2, 5, 9];
+
+function hyperLogLogHash32(s: string): number {
+  let h = 0x811c9dc5;
+  for (let i = 0; i < s.length; i++) {
+    h ^= s.charCodeAt(i);
+    h = Math.imul(h, 0x01000193) >>> 0;
+  }
+  return h >>> 0;
+}
+
+function hyperLogLogGenItems(n: number, seed: number): string[] {
+  const items: string[] = [];
+  let x = seed >>> 0;
+  for (let i = 0; i < n; i++) {
+    x = (Math.imul(x, 1103515245) + 12345) >>> 0;
+    items.push(`id-${x}`);
+  }
+  return items;
+}
+
+function hyperLogLogAlpha(m: number): number {
+  if (m === 16) return 0.673;
+  if (m === 32) return 0.697;
+  if (m === 64) return 0.709;
+  return 0.7213 / (1 + 1.079 / m);
+}
+
+/**
+ * HyperLogLogのステップ列を生成する。m=2^b個のレジスタを配列として表示し、要素を追加するたびに
+ * (1) ハッシュ値の上位bビットで担当レジスタを選び、(2) 残りのビット列の「先頭から連続する0の
+ * 個数+1」(ρ)を計算し、(3) そのレジスタの現在値より大きければ更新する、という過程を1件ずつ
+ * 辿る。レジスタは観測した中の最大値だけを保持する(合計値ではない)ため、同じ要素を何度追加
+ * しても推定値は変わらない(冪等性)——ストリームに意図的に重複を混ぜてそれを確認できる。
+ * 最終フレームでは、既知の相異なる要素数(真の値)と、レジスタの調和平均から算出した推定
+ * カーディナリティがどれだけ近いかを示す。
+ */
+export function hyperloglogSteps(): SearchFrame[] {
+  const b = HYPERLOGLOG_B;
+  const m = 1 << b;
+  const registers = new Array(m).fill(0);
+  const alpha = hyperLogLogAlpha(m);
+
+  const distinctItems = hyperLogLogGenItems(HYPERLOGLOG_DISTINCT_COUNT, HYPERLOGLOG_SEED);
+  const stream = [...distinctItems];
+  HYPERLOGLOG_DUPLICATE_INDICES.forEach((idx) => stream.push(distinctItems[idx]));
+
+  const frames: SearchFrame[] = [
+    frame(
+      [...registers],
+      {},
+      `HyperLogLogを開始。レジスタ数m=2^${b}=${m}個を全て0で初期化。${stream.length}件の要素(うち相異なるものは${HYPERLOGLOG_DISTINCT_COUNT}件)を追加する`,
+    ),
+  ];
+
+  const seen = new Set<string>();
+  stream.forEach((item) => {
+    const isDuplicate = seen.has(item);
+    seen.add(item);
+
+    const x = hyperLogLogHash32(item);
+    const idx = x >>> (32 - b);
+    let rest = (x << b) >>> 0;
+    let rho = 1;
+    while ((rest & 0x80000000) === 0 && rho <= 32 - b) {
+      rest = (rest << 1) >>> 0;
+      rho++;
+    }
+
+    frames.push(
+      frame(
+        [...registers],
+        { [idx]: "comparing" },
+        `要素"${item}"${isDuplicate ? "(重複追加)" : ""}を追加: レジスタ[${idx}]に割り当て、先頭ゼロ連続数+1 = ρ=${rho}(現在のレジスタ値=${registers[idx]})`,
+      ),
+    );
+
+    if (rho > registers[idx]) {
+      registers[idx] = rho;
+      frames.push(
+        frame(
+          [...registers],
+          { [idx]: "pivot" },
+          `ρ=${rho}は現在のレジスタ値を上回る → レジスタ[${idx}]を${rho}に更新`,
+        ),
+      );
+    } else {
+      frames.push(
+        frame(
+          [...registers],
+          { [idx]: "swapping" },
+          `ρ=${rho}は現在のレジスタ値${registers[idx]}以下 → 更新せず(レジスタは観測した最大値だけを保持する)`,
+        ),
+      );
+    }
+  });
+
+  let z = 0;
+  for (const r of registers) z += Math.pow(2, -r);
+  const estimate = (alpha * m * m) / z;
+
+  const finalHighlight: Partial<Record<number, StateColorKey>> = {};
+  registers.forEach((_, idx) => {
+    finalHighlight[idx] = "settled";
+  });
+  frames.push(
+    frame(
+      [...registers],
+      finalHighlight,
+      `計算完了。推定カーディナリティ=${estimate.toFixed(2)}(真の相異なる要素数=${HYPERLOGLOG_DISTINCT_COUNT}、誤差${Math.abs(estimate - HYPERLOGLOG_DISTINCT_COUNT).toFixed(2)}) — わずか${m}個のレジスタでほぼ正確な集合の濃度を推定できた`,
+    ),
+  );
+
+  return frames;
+}
+
 export const SEARCH_VISUALIZERS: Record<string, () => SearchFrame[]> = {
   "linear-search": linearSearchSteps,
   "binary-search": binarySearchSteps,
@@ -1575,4 +2008,8 @@ export const SEARCH_VISUALIZERS: Record<string, () => SearchFrame[]> = {
   "trapezoidal-rule": trapezoidalRuleSteps,
   "simpsons-rule": simpsonsRuleSteps,
   "monte-carlo-integration": monteCarloIntegrationSteps,
+  "sqrt-decomposition": sqrtDecompositionSteps,
+  "count-min-sketch": countMinSketchSteps,
+  "cuckoo-hashing": cuckooHashingSteps,
+  hyperloglog: hyperloglogSteps,
 };
