@@ -114,7 +114,8 @@ web-production-skill/    参考にしたClaude Codeスキル一式(gitignore対�
 - ✅ Vercelへのデプロイ・公開(2026-08-04): [the-algorithm-illustrated.vercel.app](https://the-algorithm-illustrated.vercel.app) でどこからでもアクセス可能。GitHub連携により`git push`のたびに自動再デプロイ
 - ✅ 「アルゴリズムとは/Big-O記法とは」入門ページ(/basics、2026-08-04追加)。O(1)〜O(n!)の主要な計算量クラスを、サイト内の実例へのリンクと所要時間の目安つきで解説
 - ✅ ドキュメント整備(2026-08-04): 技術解説書([docs/technical-guide.md](docs/technical-guide.md))・Mermaidアーキテクチャ図解([docs/architecture.md](docs/architecture.md))・スタンドアロンHTMLレポート([docs/report.html](docs/report.html))を新設
-- ✅ 全可視化コンポーネント(8種)に拡大・縮小機能を追加(2026-08-04): 共通ラッパー`ZoomableStage`(`src/components/visualizer/ZoomableStage.tsx`)がCSS `transform: scale()`で0.5〜2.5倍のズームを提供、既存の描画ロジックは無改修
+- ✅ 全可視化コンポーネント(8種)に拡大・縮小機能を追加(2026-08-04): 共通ラッパー`ZoomableStage`(`src/components/visualizer/ZoomableStage.tsx`)がCSS `transform: scale()`で0.5〜2.5倍のズームを提供
+- ✅ GraphVisualizerの見切れバグを根本修正(2026-08-04): ズーム機能だけではcanvas自身の内部ラスタライズで既に切り捨てられていたノードは解決しないと判明したため、データセットの座標の境界ボックスを自動計算しcanvas内に余白付きでフィットさせる`computeBounds()`を追加(TreeVisualizer/TrieVisualizerは元々[0,1]正規化+余白マッピングが保証されていたため対象外)
 - ✅ 可視化49件を追加(2026-08-04、190件→**239件**): 分散・並行・ロックフリー系12件(dining-philosophers等)をGraphVisualizerで、スケジューリング・並列計算系19件(round-robin-scheduling等)をDPTableVisualizerで、merkle-tree/kd-tree/系統樹2件をTreeVisualizerで、sqrt-decomposition等4件をSearchVisualizerで、文字列圧縮・トークン化系10件(lz77-compression等)をStringMatchVisualizerで実装。各`*-visualizers.ts`ファイルをサブエージェントが排他的に担当し、既存の巨大な単一ファイルへの同時書き込み衝突を回避
 - ⬜ 残り128件の可視化対応(デザインパターン23件・コンピュータビジョン系・自然言語処理系等、新規ビジュアライザ設計が必要なカテゴリ)、モーション停止ボタンUI、比較画面の特性トレードオフ深掘り
 

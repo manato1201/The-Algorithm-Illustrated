@@ -53,8 +53,25 @@ type GraphVisualizerProps = {
  * 辺のラベルは既定では`weight`をそのまま表示するが、frame.edgeLabelsがあればそちらを優先する
  * (Edmonds-Karp法の「流量/容量」のように、フレームごとに変化する値を表示したいアルゴリズム向け)。
  */
+/** データセットの実際の座標範囲(境界ボックス)。手作業でレイアウトした頂点が[0,1]の想定範囲を
+ * 超えていても、この境界ボックスをcanvasいっぱいに引き伸ばして描画することで見切れを防ぐ。 */
+function computeBounds(nodes: { x: number; y: number }[]) {
+  let minX = Infinity;
+  let maxX = -Infinity;
+  let minY = Infinity;
+  let maxY = -Infinity;
+  for (const node of nodes) {
+    minX = Math.min(minX, node.x);
+    maxX = Math.max(maxX, node.x);
+    minY = Math.min(minY, node.y);
+    maxY = Math.max(maxY, node.y);
+  }
+  return { minX, maxX, minY, maxY };
+}
+
 export function GraphVisualizer({ algorithmId }: GraphVisualizerProps) {
   const dataset = GRAPH_DATASETS[algorithmId];
+  const bounds = useMemo(() => (dataset ? computeBounds(dataset.nodes) : null), [dataset]);
   const request = useMemo<WorkerRequest>(
     () => ({ kind: "graph", algorithmId }),
     [algorithmId],
@@ -67,7 +84,7 @@ export function GraphVisualizer({ algorithmId }: GraphVisualizerProps) {
   useEffect(() => {
     const canvas = canvasRef.current;
     const currentFrame = frames[stepIndex];
-    if (!canvas || !currentFrame || !dataset) return;
+    if (!canvas || !currentFrame || !dataset || !bounds) return;
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
 
@@ -81,9 +98,19 @@ export function GraphVisualizer({ algorithmId }: GraphVisualizerProps) {
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     ctx.clearRect(0, 0, width, height);
 
+    // 頂点半径(最大16px)+ラベル分の余白。データセットの実際の座標範囲(bounds)を
+    // このpadding内に収まるよう伸縮させるため、layoutが[0,1]の外に出ていても見切れない。
+    const padding = 30;
+    const spanX = Math.max(bounds.maxX - bounds.minX, 1e-6);
+    const spanY = Math.max(bounds.maxY - bounds.minY, 1e-6);
+    const usableW = Math.max(width - padding * 2, 1);
+    const usableH = Math.max(height - padding * 2, 1);
+
     const point = (nodeId: string) => {
       const node = dataset.nodes.find((n) => n.id === nodeId)!;
-      return { x: node.x * width, y: node.y * height };
+      const nx = (node.x - bounds.minX) / spanX;
+      const ny = (node.y - bounds.minY) / spanY;
+      return { x: padding + nx * usableW, y: padding + ny * usableH };
     };
 
     ctx.font = "11px var(--font-mono), monospace";
@@ -164,7 +191,7 @@ export function GraphVisualizer({ algorithmId }: GraphVisualizerProps) {
         ctx.font = "11px var(--font-mono), monospace";
       }
     }
-  }, [frames, stepIndex, dataset]);
+  }, [frames, stepIndex, dataset, bounds]);
 
   if (!dataset) return null;
 
