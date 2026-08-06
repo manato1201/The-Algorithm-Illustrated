@@ -3,6 +3,7 @@
 import { useMemo } from "react";
 import styles from "./StringMatchVisualizer.module.css";
 import { PlaybackControls } from "./PlaybackControls";
+import { ZoomableStage } from "./ZoomableStage";
 import { useStepPlayer } from "./useStepPlayer";
 import { useWorkerFrames } from "./useWorkerFrames";
 import type { CharState, StringMatchFrame } from "@/lib/string-visualizers";
@@ -35,31 +36,33 @@ export function StringMatchVisualizer({ algorithmId }: StringMatchVisualizerProp
 
   return (
     <div className={styles.visualizer}>
-      <div className={styles.grid}>
-        <div className={styles.row}>
-          <span className={styles.rowLabel}>text</span>
-          <div className={styles.chars}>
-            {currentFrame?.text.split("").map((ch, i) => (
-              <span key={i} className={styles.char} data-state={currentFrame.textHighlight[i] ?? "idle"}>
-                {ch}
-              </span>
-            ))}
+      <ZoomableStage>
+        <div className={styles.grid}>
+          <div className={styles.row}>
+            <span className={styles.rowLabel}>text</span>
+            <div className={styles.chars}>
+              {currentFrame?.text.split("").map((ch, i) => (
+                <span key={i} className={styles.char} data-state={currentFrame.textHighlight[i] ?? "idle"}>
+                  {ch}
+                </span>
+              ))}
+            </div>
+          </div>
+          <div className={styles.row}>
+            <span className={styles.rowLabel}>pattern</span>
+            <div
+              className={styles.chars}
+              style={{ marginLeft: `${(currentFrame?.patternOffset ?? 0) * CHAR_STEP_PX}px` }}
+            >
+              {currentFrame?.pattern.split("").map((ch, i) => (
+                <span key={i} className={styles.char} data-state={currentFrame.patternHighlight[i] ?? "idle"}>
+                  {ch}
+                </span>
+              ))}
+            </div>
           </div>
         </div>
-        <div className={styles.row}>
-          <span className={styles.rowLabel}>pattern</span>
-          <div
-            className={styles.chars}
-            style={{ marginLeft: `${(currentFrame?.patternOffset ?? 0) * CHAR_STEP_PX}px` }}
-          >
-            {currentFrame?.pattern.split("").map((ch, i) => (
-              <span key={i} className={styles.char} data-state={currentFrame.patternHighlight[i] ?? "idle"}>
-                {ch}
-              </span>
-            ))}
-          </div>
-        </div>
-      </div>
+      </ZoomableStage>
 
       <p className={styles.description} role="status">
         {isComputing ? "Web Workerで計算中…" : currentFrame?.description}

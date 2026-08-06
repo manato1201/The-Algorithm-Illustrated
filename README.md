@@ -114,6 +114,7 @@ web-production-skill/    参考にしたClaude Codeスキル一式(gitignore対�
 - ✅ Vercelへのデプロイ・公開(2026-08-04): [the-algorithm-illustrated.vercel.app](https://the-algorithm-illustrated.vercel.app) でどこからでもアクセス可能。GitHub連携により`git push`のたびに自動再デプロイ
 - ✅ 「アルゴリズムとは/Big-O記法とは」入門ページ(/basics、2026-08-04追加)。O(1)〜O(n!)の主要な計算量クラスを、サイト内の実例へのリンクと所要時間の目安つきで解説
 - ✅ ドキュメント整備(2026-08-04): 技術解説書([docs/technical-guide.md](docs/technical-guide.md))・Mermaidアーキテクチャ図解([docs/architecture.md](docs/architecture.md))・スタンドアロンHTMLレポート([docs/report.html](docs/report.html))を新設
-- ⬜ モーション停止ボタンUI、比較画面の特性トレードオフ深掘り
+- ✅ 全可視化コンポーネント(8種)に拡大・縮小機能を追加(2026-08-04): 共通ラッパー`ZoomableStage`(`src/components/visualizer/ZoomableStage.tsx`)がCSS `transform: scale()`で0.5〜2.5倍のズームを提供、既存の描画ロジックは無改修
+- ⬜ 残り177件の可視化対応(既存コンポーネントで対応可能な52件から着手中)、モーション停止ボタンUI、比較画面の特性トレードオフ深掘り
 
 詳細・既知の制約は [docs/progress.md](docs/progress.md) を参照。

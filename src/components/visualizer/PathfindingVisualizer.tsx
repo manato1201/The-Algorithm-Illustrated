@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef } from "react";
 import styles from "./PathfindingVisualizer.module.css";
 import { PlaybackControls } from "./PlaybackControls";
+import { ZoomableStage } from "./ZoomableStage";
 import { useStepPlayer } from "./useStepPlayer";
 import { useWorkerFrames } from "./useWorkerFrames";
 import { coreColors, stateColors } from "@/lib/design-tokens";
@@ -92,7 +93,9 @@ export function PathfindingVisualizer({ algorithmId }: PathfindingVisualizerProp
 
   return (
     <div className={styles.visualizer}>
-      <canvas ref={canvasRef} className={styles.canvas} aria-hidden="true" />
+      <ZoomableStage>
+        <canvas ref={canvasRef} className={styles.canvas} aria-hidden="true" />
+      </ZoomableStage>
       <p className={styles.description} role="status">
         {isComputing ? "Web Workerで計算中…" : currentFrame?.description}
       </p>
