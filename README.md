@@ -23,7 +23,7 @@
 - **描画**: Canvas API(ソート・経路探索・グラフ・木構造)、HTML+CSSトランジション(DPテーブル)、pixi.js/WebGL(ソート可視化のパーティクル演出)
 - **状態キャッシュ**: IndexedDB(未実装)
 
-現時点ではNext.jsのスキャフォールド・デザインシステム・カタログ画面・アルゴリズム詳細ページ(ソート23種+配列探索26種+グリッド経路探索9種+グラフ49種(negamax/expectimax/iterative-deepening-minimax/stable-marriage-problem/push-relabel-max-flow/hierholzer-algorithm/two-sat/textrank/register-allocation-graph-coloring/de-bruijn-graph-assembly/suffix-automaton含む)+DP70種(hungarian-algorithmほか多数)+木構造6種(BST/AVL木/Treap/赤黒木/スプレー木/区間木)+トライ木2種(トライ木/Aho-Corasick法)+文字列パターンマッチング5種(KMP法/ラビン-カープ法/Z algorithm/ボイヤー・ムーア法/連長圧縮)の計190件が可視化対応、Web Worker経由)・比較画面(可視化グリッド付き)・更新情報(RSS)画面・Aboutページ・Markdownベースの実データモデル(367件、全24カテゴリ。category→subcategoryの2階層分類+カタログの絞り込みチップUI(可視化対応のみ絞り込みも含む)に対応、新設9カテゴリ計100件(ゲーム/数値計算/コンピュータビジョン/自然言語処理/コンパイラ・構文解析/バイオインフォマティクス/並行処理・並列アルゴリズム/スケジューリング/制御・ロボティクス)+深堀りバッチ1・2(既存カテゴリに計104件)を含む)が実装済み。アルゴリズム総数を10倍規模(約1600件超)に拡大する取り組みに着手済み(新カテゴリ追加フェーズは一区切り、以降は深堀り・可視化の2軸を反復)。さらに各記事へPython/TypeScript/C++/Rust/C#の5言語実装例(`## 実装例`セクション)を追加する取り組みは、可視化対応済み190件全件で完了した(課題d)。詳細は [docs/progress.md](docs/progress.md) を参照。
+現時点ではNext.jsのスキャフォールド・デザインシステム・カタログ画面・アルゴリズム詳細ページ(ソート23種+配列探索26種+グリッド経路探索9種+グラフ49種(negamax/expectimax/iterative-deepening-minimax/stable-marriage-problem/push-relabel-max-flow/hierholzer-algorithm/two-sat/textrank/register-allocation-graph-coloring/de-bruijn-graph-assembly/suffix-automaton含む)+DP70種(hungarian-algorithmほか多数)+木構造6種(BST/AVL木/Treap/赤黒木/スプレー木/区間木)+トライ木2種(トライ木/Aho-Corasick法)+文字列パターンマッチング5種(KMP法/ラビン-カープ法/Z algorithm/ボイヤー・ムーア法/連長圧縮)+分散・並行・ロックフリー系12種+スケジューリング系19種+merkle-tree/kd-tree/系統樹2種+sqrt-decomposition等4種+文字列圧縮系10種の計**239件**が可視化対応、Web Worker経由)・比較画面(可視化グリッド付き)・更新情報(RSS)画面・Aboutページ・Markdownベースの実データモデル(367件、全24カテゴリ。category→subcategoryの2階層分類+カタログの絞り込みチップUI(可視化対応のみ絞り込みも含む)に対応、新設9カテゴリ計100件(ゲーム/数値計算/コンピュータビジョン/自然言語処理/コンパイラ・構文解析/バイオインフォマティクス/並行処理・並列アルゴリズム/スケジューリング/制御・ロボティクス)+深堀りバッチ1・2(既存カテゴリに計104件)を含む)が実装済み。アルゴリズム総数を10倍規模(約1600件超)に拡大する取り組みに着手済み(新カテゴリ追加フェーズは一区切り、以降は深堀り・可視化の2軸を反復)。さらに各記事へPython/TypeScript/C++/Rust/C#の5言語実装例(`## 実装例`セクション)を追加する取り組みは、可視化対応済み190件全件で完了した(課題d)。詳細は [docs/progress.md](docs/progress.md) を参照。
 
 ## セットアップ
 
@@ -35,14 +35,14 @@ Node.js v20以降を推奨(動作確認環境: v22)。
 
 ## 実行・動作手順
 
-| コマンド           | 内容                                                                                                              |
-| ------------------ | ----------------------------------------------------------------------------------------------------------------- |
-| `npm run dev`      | 開発サーバーを起動([http://localhost:3000](http://localhost:3000))                                                |
-| `npm run build`    | 本番ビルドを作成                                                                                                  |
-| `npm run start`    | `npm run build` 後、本番ビルドをローカルで起動                                                                    |
-| `npm run lint`     | ESLintを実行                                                                                                      |
-| `npm run verify`   | 可視化(190件)の正しさを独立実装のbrute-force・既知の正解値と突き合わせて検証(`scripts/verify-visualizations.mjs`) |
-| `npx tsc --noEmit` | 型チェックのみ実行(ビルドなし)                                                                                    |
+| コマンド           | 内容                                                                                                                                                                            |
+| ------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `npm run dev`      | 開発サーバーを起動([http://localhost:3000](http://localhost:3000))                                                                                                              |
+| `npm run build`    | 本番ビルドを作成                                                                                                                                                                |
+| `npm run start`    | `npm run build` 後、本番ビルドをローカルで起動                                                                                                                                  |
+| `npm run lint`     | ESLintを実行                                                                                                                                                                    |
+| `npm run verify`   | 可視化(190件、2026-08-04以降追加分の49件は別途一時検証スクリプトで確認済み)の正しさを独立実装のbrute-force・既知の正解値と突き合わせて検証(`scripts/verify-visualizations.mjs`) |
+| `npx tsc --noEmit` | 型チェックのみ実行(ビルドなし)                                                                                                                                                  |
 
 開発中の変更確認は `npm run dev` → ブラウザで `http://localhost:3000` を開く、が基本フロー。コードを変更するたびに以下を通しておくと安全:
 
@@ -101,20 +101,21 @@ web-production-skill/    参考にしたClaude Codeスキル一式(gitignore対�
 - ✅ Next.jsプロジェクトのスキャフォールド、デザイントークン、フォント設定
 - ✅ HUD共通コンポーネント(コーナーブラケット・ステータスチップ・ライブ時計・ログフィード・ナビゲーション等)
 - ✅ カタログ画面(検索・カテゴリ/サブカテゴリ絞り込みチップ・可視化対応のみ絞り込み、367件)
-- ✅ アルゴリズム詳細ページ(367件を静的生成。可視化はソート23種+配列探索26種+グリッド経路探索9種+グラフ49種(negamax/expectimax/iterative-deepening-minimax/stable-marriage-problem/push-relabel-max-flow/hierholzer-algorithm/two-sat/textrank/register-allocation-graph-coloring/de-bruijn-graph-assembly/suffix-automaton含む)+DP70種(hungarian-algorithm含む)+木構造6種(二分探索木/AVL木/Treap/赤黒木/スプレー木/区間木)+トライ木2種(トライ木/Aho-Corasick法)+文字列パターンマッチング5種(KMP法/ラビン-カープ法/Z algorithm/ボイヤー・ムーア法/連長圧縮)の計190件、他177件は準備中表示)
+- ✅ アルゴリズム詳細ページ(367件を静的生成。可視化はソート23種+配列探索26種+グリッド経路探索9種+グラフ49種(negamax/expectimax/iterative-deepening-minimax/stable-marriage-problem/push-relabel-max-flow/hierholzer-algorithm/two-sat/textrank/register-allocation-graph-coloring/de-bruijn-graph-assembly/suffix-automaton含む)+DP70種(hungarian-algorithm含む)+木構造6種(二分探索木/AVL木/Treap/赤黒木/スプレー木/区間木)+トライ木2種(トライ木/Aho-Corasick法)+文字列パターンマッチング5種(KMP法/ラビン-カープ法/Z algorithm/ボイヤー・ムーア法/連長圧縮)+分散・並行・ロックフリー系12種+スケジューリング系19種+merkle-tree/kd-tree/系統樹2種+sqrt-decomposition等4種+文字列圧縮系10種の計**239件**、他128件は準備中表示)
 - ✅ 可視化のステップ列生成をWeb Worker化(algorithm-worker.ts、単一Workerを使い回す設計)
 - ✅ Markdownベースの実データモデル(content/algorithms/)。全24カテゴリ・367件全てで概要・仕組み・特性トレードオフを充実化済み(デザインパターン(GoF23種)、新設9カテゴリ計100件、深堀りバッチ1・2(既存カテゴリに計104件)を含めて完了)。category→subcategoryの2階層分類(CATEGORY_TAXONOMY)に対応
 - ✅ 比較画面(/compare、選択したアルゴリズムのうち可視化対応済みのものは実行の可視化も並べて表示)・更新情報(RSS)画面(/updates + /api/updates)・Aboutページ(/about)
 - ✅ Vercel Edge Functions(BFF、/api/updatesでQiita人気記事フィードを中継)
 - ✅ pixi.js(WebGL)によるパーティクル演出(ソート可視化の交換/確定イベント)
 - ⬜ 状態スナップショットのdiffベース記録・IndexedDBキャッシュ(Event Sourcing的な差分記録は未実装)
-- ⬜ 残りアルゴリズム(177件)の可視化拡張(2026-07-14に42件追加(数論・暗号7件/数値計算・線形代数12件/配列アラインメントDP4件/系列タグ付けDP4件/区間・ナップサックDP3件/ゲーム木3件/グラフ系9件)、148件→190件。次の候補: 分散・並行処理17件(dining-philosophers等10件+lock-free-stack-cas等7件)、スケジューリング14件、データ構造・文字列圧縮13件、系統樹3件。デザインパターン23件・計算幾何7件・機械学習の多次元手法4件等は新規2Dコンポーネントが必要なため引き続き優先度低)
+- ⬜ 残りアルゴリズム(128件)の可視化拡張(2026-07-14に42件追加、148件→190件。2026-08-04に49件追加(分散・並行・ロックフリー12件/スケジューリング等19件/merkle-tree・kd-tree・系統樹2種4件/sqrt-decomposition等4件/文字列圧縮系10件)、190件→239件。デザインパターン23件・コンピュータビジョン系・自然言語処理系等は新規ビジュアライザコンポーネント設計が必要なため次フェーズの課題)
 - ⬜ アルゴリズム数を10倍規模(約1600件超)に拡大(課題a、着手済み・367件。新カテゴリ追加フェーズ(全24カテゴリ)は一区切り、深堀りバッチ1・2(既存カテゴリに計104件)完了、デザインパターンを除く23カテゴリ全てに最低1回は深堀りが入った。以降は既存カテゴリの深堀り2巡目と可視化(課題b)の2軸を反復。詳細は[docs/progress.md](docs/progress.md)のロードマップ参照)
 - ✅ 各アルゴリズム記事に`## 実装例`(Python/TypeScript/C++/Rust/C#の5言語)を追加(課題d、2026-07-14着手、2026-08-04に**367件全件完了**、1835スニペット)。Python/TypeScript/C#は実行検証、C++/Rustはコンパイラ未インストールのため手動レビューのみ(既知の制約)
 - ✅ Vercelへのデプロイ・公開(2026-08-04): [the-algorithm-illustrated.vercel.app](https://the-algorithm-illustrated.vercel.app) でどこからでもアクセス可能。GitHub連携により`git push`のたびに自動再デプロイ
 - ✅ 「アルゴリズムとは/Big-O記法とは」入門ページ(/basics、2026-08-04追加)。O(1)〜O(n!)の主要な計算量クラスを、サイト内の実例へのリンクと所要時間の目安つきで解説
 - ✅ ドキュメント整備(2026-08-04): 技術解説書([docs/technical-guide.md](docs/technical-guide.md))・Mermaidアーキテクチャ図解([docs/architecture.md](docs/architecture.md))・スタンドアロンHTMLレポート([docs/report.html](docs/report.html))を新設
 - ✅ 全可視化コンポーネント(8種)に拡大・縮小機能を追加(2026-08-04): 共通ラッパー`ZoomableStage`(`src/components/visualizer/ZoomableStage.tsx`)がCSS `transform: scale()`で0.5〜2.5倍のズームを提供、既存の描画ロジックは無改修
-- ⬜ 残り177件の可視化対応(既存コンポーネントで対応可能な52件から着手中)、モーション停止ボタンUI、比較画面の特性トレードオフ深掘り
+- ✅ 可視化49件を追加(2026-08-04、190件→**239件**): 分散・並行・ロックフリー系12件(dining-philosophers等)をGraphVisualizerで、スケジューリング・並列計算系19件(round-robin-scheduling等)をDPTableVisualizerで、merkle-tree/kd-tree/系統樹2件をTreeVisualizerで、sqrt-decomposition等4件をSearchVisualizerで、文字列圧縮・トークン化系10件(lz77-compression等)をStringMatchVisualizerで実装。各`*-visualizers.ts`ファイルをサブエージェントが排他的に担当し、既存の巨大な単一ファイルへの同時書き込み衝突を回避
+- ⬜ 残り128件の可視化対応(デザインパターン23件・コンピュータビジョン系・自然言語処理系等、新規ビジュアライザ設計が必要なカテゴリ)、モーション停止ボタンUI、比較画面の特性トレードオフ深掘り
 
 詳細・既知の制約は [docs/progress.md](docs/progress.md) を参照。
