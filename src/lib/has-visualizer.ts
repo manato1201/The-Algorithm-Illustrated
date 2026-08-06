@@ -6,6 +6,7 @@ import { SEARCH_VISUALIZERS } from "./search-visualizers";
 import { TREE_VISUALIZERS } from "./tree-visualizers";
 import { STRING_VISUALIZERS } from "./string-visualizers";
 import { TRIE_VISUALIZERS } from "./trie-visualizer";
+import { GEOMETRY_VISUALIZERS } from "./geometry-visualizers";
 
 /**
  * このidに対応する可視化があるかどうか。React componentへの依存を一切持たないため、
@@ -21,6 +22,7 @@ export function hasVisualizer(algorithmId: string): boolean {
     algorithmId in SEARCH_VISUALIZERS ||
     algorithmId in TREE_VISUALIZERS ||
     algorithmId in STRING_VISUALIZERS ||
-    algorithmId in TRIE_VISUALIZERS
+    algorithmId in TRIE_VISUALIZERS ||
+    algorithmId in GEOMETRY_VISUALIZERS
   );
 }
