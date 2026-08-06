@@ -7370,6 +7370,55 @@ export function michaelScottQueueSteps(): GraphFrame[] {
   return frames;
 }
 
+// GRAPH_DATASETSは全ノード/辺定数の定義より前(ファイル冒頭寄り)で宣言されているため、
+// ここで追記登録する(定義前の定数を直接オブジェクトリテラルに書くとTDZでReferenceErrorになる)。
+Object.assign(GRAPH_DATASETS, {
+  "dining-philosophers": {
+    nodes: DINING_PHILOSOPHERS_NODES,
+    edges: DINING_PHILOSOPHERS_EDGES,
+    directed: false,
+  },
+  "petersons-algorithm": { nodes: PETERSONS_NODES, edges: PETERSONS_EDGES, directed: false },
+  "bakery-algorithm": { nodes: BAKERY_NODES, edges: BAKERY_EDGES, directed: false },
+  "producer-consumer-semaphore": {
+    nodes: PRODUCER_CONSUMER_NODES,
+    edges: PRODUCER_CONSUMER_EDGES,
+    directed: true,
+  },
+  "readers-writers-problem": {
+    nodes: READERS_WRITERS_NODES,
+    edges: READERS_WRITERS_EDGES,
+    directed: true,
+  },
+  "sleeping-barber-problem": {
+    nodes: SLEEPING_BARBER_NODES,
+    edges: SLEEPING_BARBER_EDGES,
+    directed: true,
+  },
+  "chang-roberts-leader-election": {
+    nodes: CHANG_ROBERTS_NODES,
+    edges: CHANG_ROBERTS_EDGES,
+    directed: true,
+  },
+  mapreduce: { nodes: MAPREDUCE_NODES, edges: MAPREDUCE_EDGES, directed: true },
+  "gossip-protocol": { nodes: GOSSIP_NODES, edges: GOSSIP_EDGES, directed: true },
+  "chandy-lamport-snapshot": {
+    nodes: CHANDY_LAMPORT_NODES,
+    edges: CHANDY_LAMPORT_EDGES,
+    directed: true,
+  },
+  "lock-free-stack-cas": {
+    nodes: LOCK_FREE_STACK_NODES,
+    edges: LOCK_FREE_STACK_EDGES,
+    directed: true,
+  },
+  "michael-scott-queue": {
+    nodes: MICHAEL_SCOTT_QUEUE_NODES,
+    edges: MICHAEL_SCOTT_QUEUE_EDGES,
+    directed: true,
+  },
+} satisfies Record<string, GraphDataset>);
+
 export const GRAPH_VISUALIZERS: Record<string, () => GraphFrame[]> = {
   "dining-philosophers": diningPhilosophersSteps,
   "petersons-algorithm": petersonsAlgorithmSteps,
