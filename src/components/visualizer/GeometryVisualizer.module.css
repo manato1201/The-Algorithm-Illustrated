@@ -1,0 +1,47 @@
+.visualizer {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+/* フルブリード可視化キャンバス(ui-design.md 2.4節: 唯一の破調区画) */
+.canvas {
+  width: 100%;
+  aspect-ratio: 16 / 10;
+  display: block;
+  background: var(--color-bg-void);
+  border: 1px solid var(--color-line);
+  border-radius: 4px;
+}
+
+.description {
+  font-family: var(--font-mono);
+  font-size: 0.875rem;
+  color: var(--color-accent-amber);
+  min-height: 1.5em;
+}
+
+.legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-4);
+  list-style: none;
+  padding-top: var(--space-2);
+  border-top: 1px solid var(--color-line);
+}
+
+.legendItem {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  color: var(--color-text-muted);
+}
+
+.legendSwatch {
+  width: 10px;
+  height: 10px;
+  border-radius: 2px;
+  flex-shrink: 0;
+}
