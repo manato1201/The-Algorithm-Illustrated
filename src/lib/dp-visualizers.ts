@@ -6970,6 +6970,133 @@ export function noisyChannelSpellingCorrectionSteps(): DPFrame[] {
   return frames;
 }
 
+// ===========================================================================
+// Q学習: 3×3グリッドワールドでのQ値テーブル更新(強化学習カテゴリ)
+// ===========================================================================
+
+export const Q_LEARNING_GRID_SIZE = 3;
+export const Q_LEARNING_GOAL_STATE = 8; // 右下(行2,列2)
+export const Q_LEARNING_ACTIONS = ["↑", "↓", "←", "→"] as const;
+const Q_LEARNING_ACTION_DELTAS: [number, number][] = [
+  [-1, 0], // 上
+  [1, 0], // 下
+  [0, -1], // 左
+  [0, 1], // 右
+];
+const Q_LEARNING_ALPHA = 0.5;
+const Q_LEARNING_GAMMA = 0.9;
+/** 固定路 S0→S1→S2→S5→S8 を3エピソード反復し、報酬がゴールから逆伝播する様子を見せる。 */
+const Q_LEARNING_EPISODE_ACTIONS = [3, 3, 1, 1]; // 右,右,下,下
+const Q_LEARNING_EPISODE_COUNT = 3;
+
+function qLearningStep(state: number): number[] {
+  const row = Math.floor(state / Q_LEARNING_GRID_SIZE);
+  const col = state % Q_LEARNING_GRID_SIZE;
+  return Q_LEARNING_ACTION_DELTAS.map(([dr, dc]) => {
+    const newRow = row + dr;
+    const newCol = col + dc;
+    if (newRow < 0 || newRow >= Q_LEARNING_GRID_SIZE || newCol < 0 || newCol >= Q_LEARNING_GRID_SIZE) {
+      return state; // 壁にぶつかって位置は変わらない
+    }
+    return newRow * Q_LEARNING_GRID_SIZE + newCol;
+  });
+}
+
+function round3(v: number): number {
+  return Math.round(v * 1000) / 1000;
+}
+
+/**
+ * 3×3グリッドワールドでQ学習の更新式(ベルマン方程式に基づくTD学習)を反復適用するステップ列。
+ * 固定路(S0→S1→S2→S5→S8)を複数エピソード反復することで、ゴールで得た報酬が
+ * max_a' Q(s',a')の項を通じて手前の状態へ少しずつ逆伝播していく様子を可視化する。
+ * DPCellState(idle/comparing/pivot/settled)を「未更新/次状態の最大値として参照中/更新中/更新済み」に対応させる。
+ */
+export function qLearningSteps(): DPFrame[] {
+  const nStates = Q_LEARNING_GRID_SIZE * Q_LEARNING_GRID_SIZE;
+  const nActions = Q_LEARNING_ACTIONS.length;
+  const q: number[][] = Array.from({ length: nStates }, () => new Array(nActions).fill(0));
+  const touched = new Set<string>();
+
+  const frames: DPFrame[] = [];
+  const snapshot = (extra: Map<string, "comparing" | "pivot">, description: string): DPFrame => {
+    const table: DPCell[][] = q.map((row, s) =>
+      row.map((value, a) => {
+        const key = `${s},${a}`;
+        const state = extra.get(key) ?? (touched.has(key) ? "settled" : "idle");
+        return { value, state };
+      }),
+    );
+    return { table, description };
+  };
+
+  frames.push(
+    snapshot(
+      new Map(),
+      `3×3グリッドワールド(S0〜S8)でQ学習を開始。全てのQ(s,a)=0で初期化。ゴールS${Q_LEARNING_GOAL_STATE}到達で報酬+10、それ以外の移動は-1。学習率α=${Q_LEARNING_ALPHA}、割引率γ=${Q_LEARNING_GAMMA}`,
+    ),
+  );
+
+  for (let episode = 1; episode <= Q_LEARNING_EPISODE_COUNT; episode++) {
+    let state = 0;
+    frames.push(snapshot(new Map(), `エピソード${episode}開始。S0からS${Q_LEARNING_GOAL_STATE}への固定路(→→↓↓)をたどる`));
+
+    for (const action of Q_LEARNING_EPISODE_ACTIONS) {
+      const nextStates = qLearningStep(state);
+      const nextState = nextStates[action];
+      const isTerminal = nextState === Q_LEARNING_GOAL_STATE;
+      const reward = isTerminal ? 10 : -1;
+
+      const highlight = new Map<string, "comparing" | "pivot">();
+      highlight.set(`${state},${action}`, "pivot");
+      let bestNextAction = 0;
+      let maxNext = 0;
+      if (!isTerminal) {
+        maxNext = q[nextState][0];
+        for (let a = 1; a < nActions; a++) {
+          if (q[nextState][a] > maxNext) {
+            maxNext = q[nextState][a];
+            bestNextAction = a;
+          }
+        }
+        highlight.set(`${nextState},${bestNextAction}`, "comparing");
+      }
+
+      frames.push(
+        snapshot(
+          highlight,
+          isTerminal
+            ? `S${state}で${Q_LEARNING_ACTIONS[action]}を実行 → S${nextState}(ゴール!)、報酬+10`
+            : `S${state}で${Q_LEARNING_ACTIONS[action]}を実行 → S${nextState}、報酬-1。次状態の最大Q値 max Q(S${nextState},・)=${round3(maxNext)} を参照`,
+        ),
+      );
+
+      const oldValue = q[state][action];
+      const tdTarget = reward + (isTerminal ? 0 : Q_LEARNING_GAMMA * maxNext);
+      const tdError = tdTarget - oldValue;
+      q[state][action] = round3(oldValue + Q_LEARNING_ALPHA * tdError);
+      touched.add(`${state},${action}`);
+
+      frames.push(
+        snapshot(
+          new Map([[`${state},${action}`, "pivot"]]),
+          `Q(S${state},${Q_LEARNING_ACTIONS[action]}) ← ${oldValue} + α[${reward} + γ・${round3(maxNext)} − ${oldValue}] = ${q[state][action]}`,
+        ),
+      );
+
+      state = nextState;
+    }
+  }
+
+  frames.push(
+    snapshot(
+      new Map(),
+      `${Q_LEARNING_EPISODE_COUNT}エピソード完了。ゴールに近い状態ほどQ値が大きく育ち、報酬がゴールから逆方向に伝播していく様子が確認できる`,
+    ),
+  );
+  return frames;
+}
+
 export type DPTableMeta = {
   /** テーブル上の情報チップ(品物一覧や対象文字列など)。 */
   chips: string[];
@@ -6979,6 +7106,17 @@ export type DPTableMeta = {
 };
 
 export const DP_TABLE_META: Record<string, DPTableMeta> = {
+  "q-learning": {
+    chips: [
+      "3×3グリッドワールド(S0=左上 〜 S8=右下、行優先で番号付け)",
+      `ゴール: S${Q_LEARNING_GOAL_STATE}(到達で報酬+10、それ以外の移動は-1)`,
+      `学習率α=${Q_LEARNING_ALPHA}、割引率γ=${Q_LEARNING_GAMMA}`,
+      "固定路 S0→S1→S2→S5→S8 を3エピソード反復",
+    ],
+    cornerLabel: "状態 \\ 行動",
+    rowHeaders: Array.from({ length: Q_LEARNING_GRID_SIZE * Q_LEARNING_GRID_SIZE }, (_, s) => `S${s}`),
+    colHeaders: [...Q_LEARNING_ACTIONS],
+  },
   "knapsack-dp": {
     chips: [
       ...KNAPSACK_ITEMS.map((item) => `${item.name}: 重さ${item.weight} / 価値${item.value}`),
@@ -7622,6 +7760,7 @@ export const DP_TABLE_META: Record<string, DPTableMeta> = {
 };
 
 export const DP_VISUALIZERS: Record<string, () => DPFrame[]> = {
+  "q-learning": qLearningSteps,
   "knapsack-dp": knapsackSteps,
   lcs: lcsSteps,
   "edit-distance": editDistanceSteps,

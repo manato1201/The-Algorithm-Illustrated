@@ -67,6 +67,9 @@ import {
 } from "../src/lib/graph-visualizers.ts";
 import {
   DP_VISUALIZERS,
+  Q_LEARNING_GRID_SIZE,
+  Q_LEARNING_GOAL_STATE,
+  Q_LEARNING_ACTIONS,
   KNAPSACK_ITEMS,
   KNAPSACK_CAPACITY,
   LCS_STRING_A,
@@ -705,6 +708,60 @@ for (const [id, fn] of Object.entries(DP_VISUALIZERS)) {
   checkWellFormed(id, fn());
 }
 
+// q-learning: 独立実装したQ学習の参照シミュレーションと最終Q値テーブルを突き合わせる
+{
+  const frames = DP_VISUALIZERS["q-learning"]();
+  const nStates = Q_LEARNING_GRID_SIZE * Q_LEARNING_GRID_SIZE;
+  const nActions = Q_LEARNING_ACTIONS.length;
+  const deltas = [
+    [-1, 0], // 上
+    [1, 0], // 下
+    [0, -1], // 左
+    [0, 1], // 右
+  ];
+  const step = (state, action) => {
+    const row = Math.floor(state / Q_LEARNING_GRID_SIZE);
+    const col = state % Q_LEARNING_GRID_SIZE;
+    const [dr, dc] = deltas[action];
+    const nr = row + dr, nc = col + dc;
+    if (nr < 0 || nr >= Q_LEARNING_GRID_SIZE || nc < 0 || nc >= Q_LEARNING_GRID_SIZE) return state;
+    return nr * Q_LEARNING_GRID_SIZE + nc;
+  };
+  const alpha = 0.5, gamma = 0.9;
+  const episodeActions = [3, 3, 1, 1]; // 右,右,下,下 (S0→S1→S2→S5→S8)
+  const q = Array.from({ length: nStates }, () => new Array(nActions).fill(0));
+  const round3 = (v) => Math.round(v * 1000) / 1000;
+  for (let episode = 0; episode < 3; episode++) {
+    let state = 0;
+    for (const action of episodeActions) {
+      const nextState = step(state, action);
+      const isTerminal = nextState === Q_LEARNING_GOAL_STATE;
+      const reward = isTerminal ? 10 : -1;
+      const maxNext = isTerminal ? 0 : Math.max(...q[nextState]);
+      const tdTarget = reward + (isTerminal ? 0 : gamma * maxNext);
+      q[state][action] = round3(q[state][action] + alpha * (tdTarget - q[state][action]));
+      state = nextState;
+    }
+  }
+  const lastTable = frames[frames.length - 1].table;
+  let allMatch = true;
+  const mismatches = [];
+  for (let s = 0; s < nStates; s++) {
+    for (let a = 0; a < nActions; a++) {
+      if (lastTable[s][a].value !== q[s][a]) {
+        allMatch = false;
+        mismatches.push(`Q(S${s},${Q_LEARNING_ACTIONS[a]})=${lastTable[s][a].value}≠参照値${q[s][a]}`);
+      }
+    }
+  }
+  check("q-learning: 独立実装したQ学習シミュレーションの最終Q値テーブルと一致", allMatch, mismatches.join(", "));
+  check(
+    "q-learning: ゴールに隣接するS5→ゴール方向の行動のQ値が正であり、報酬の伝播が確認できる",
+    q[5][1] > 0,
+    `Q(S5,↓)=${q[5][1]}`,
+  );
+}
+
 // knapsack-dp: brute-force全部分集合探索
 {
   const frames = DP_VISUALIZERS["knapsack-dp"]();
@@ -1312,17 +1369,36 @@ for (const id of ["binary-search-tree", "avl-tree", "treap", "splay-tree"]) {
 // ===========================================================================
 // STRING (5件) / TRIE (2件)
 // ===========================================================================
-section("STRING (5件) / TRIE (2件)");
+section("STRING (15件) / TRIE (2件)");
+
+// TEXT/PATTERNに対する部分文字列探索を行わない(圧縮・トークナイズ・カウント系)アルゴリズムは
+// 「一致位置」の概念自体が存在しないため、位置一致チェックの対象から除外する。
+const NON_SEARCH_STRING_IDS = new Set([
+  "run-length-encoding",
+  "lz77-compression",
+  "lzw-compression",
+  "lcp-array",
+  "burrows-wheeler-transform",
+  "byte-pair-encoding",
+  "wordpiece-tokenization",
+  "porter-stemming",
+  "n-gram-language-model",
+  "k-mer-counting",
+]);
 
 const nativeMatchIndex = TEXT.indexOf(PATTERN);
 for (const [id, fn] of Object.entries(STRING_VISUALIZERS)) {
   const frames = fn();
   checkWellFormed(id, frames);
-  if (id === "run-length-encoding") continue; // 圧縮アルゴリズムなので一致位置の概念がない
+  if (NON_SEARCH_STRING_IDS.has(id)) continue; // 圧縮アルゴリズムなので一致位置の概念がない
   const matchFrame = frames.find((f) => f.description.includes("完全一致を発見"));
-  // 大半は「位置N で完全一致を発見」の形式だが、rabin-karpだけ窓の範囲「窓[N, ...]」で位置を表す。
+  // 大半は「位置Nで完全一致を発見」の形式だが、rabin-karpだけ窓の範囲「窓[N, ...]」、
+  // bitap-algorithmだけ「位置N: ...」とコロン区切りで位置を表す。
   const desc = matchFrame?.description ?? "";
-  const positionMatches = desc.includes(`位置${nativeMatchIndex}で`) || desc.includes(`窓[${nativeMatchIndex},`);
+  const positionMatches =
+    desc.includes(`位置${nativeMatchIndex}で`) ||
+    desc.includes(`位置${nativeMatchIndex}:`) ||
+    desc.includes(`窓[${nativeMatchIndex},`);
   check(
     `${id}: String.prototype.indexOfの結果(位置${nativeMatchIndex})と同じ位置で一致を発見`,
     positionMatches,
