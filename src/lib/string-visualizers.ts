@@ -449,7 +449,7 @@ export function bitapAlgorithmSteps(): StringMatchFrame[] {
         textHighlight,
         patternOffset: s,
         patternHighlight,
-        description: `位置${s}: 状態ベクトルRの対応ビットが0になり、完全一致を検出`,
+        description: `位置${s}: 状態ベクトルRの対応ビットが0になり、完全一致を発見`,
       });
     } else {
       textHighlight[s + j] = "mismatch";
