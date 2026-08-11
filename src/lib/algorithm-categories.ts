@@ -79,6 +79,26 @@ export const CATEGORY_TAXONOMY = [
     category: "制御・ロボティクス",
     subcategories: ["フィードバック制御", "状態推定", "経路計画", "姿勢・軌道生成"],
   },
+  {
+    category: "音響・信号処理",
+    subcategories: ["音声合成・分析", "音響効果・DSP", "オーディオ圧縮・符号化"],
+  },
+  {
+    category: "ゲーム/競技プログラミング",
+    subcategories: ["競技プログラミング典型", "ゲームバランス・乱数制御"],
+  },
+  {
+    category: "キャラクターAI・空間AI",
+    subcategories: ["ビヘイビア制御", "空間認識・知覚", "群衆・マルチエージェント", "メタAI・ペーシング制御"],
+  },
+  {
+    category: "強化学習",
+    subcategories: ["価値ベース手法", "方策勾配法", "モデルベース・探索"],
+  },
+  {
+    category: "CG・3Dレンダリング",
+    subcategories: ["ジオメトリ処理", "可視性・最適化", "ライティング・シェーディング", "アニメーション"],
+  },
 ] as const;
 
 export const CATEGORY_ORDER = CATEGORY_TAXONOMY.map((c) => c.category);
