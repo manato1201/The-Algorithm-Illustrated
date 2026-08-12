@@ -8,9 +8,13 @@ import {
   AlgorithmVisualizer,
   hasVisualizer,
 } from "@/components/visualizer/AlgorithmVisualizer";
+import { CATEGORY_ORDER } from "@/lib/algorithm-categories";
+import { matchesSearchQuery } from "@/lib/algorithm-search";
 import type { AlgorithmMeta } from "@/lib/content/algorithms";
 
 const MAX_SELECTED = 4;
+const CANDIDATE_LIMIT_WITH_QUERY = 8;
+const CANDIDATE_LIMIT_BROWSE = 20;
 
 type CompareViewProps = {
   algorithms: AlgorithmMeta[];
@@ -22,6 +26,7 @@ type CompareViewProps = {
  */
 export function CompareView({ algorithms }: CompareViewProps) {
   const [query, setQuery] = useState("");
+  const [browseCategory, setBrowseCategory] = useState<string | null>(null);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
 
   const byId = useMemo(
@@ -32,18 +37,25 @@ export function CompareView({ algorithms }: CompareViewProps) {
     .map((id) => byId.get(id))
     .filter((a): a is AlgorithmMeta => !!a);
 
-  const trimmedQuery = query.trim().toLowerCase();
+  const categoryCounts = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const algorithm of algorithms) {
+      counts.set(algorithm.category, (counts.get(algorithm.category) ?? 0) + 1);
+    }
+    return counts;
+  }, [algorithms]);
+
+  const trimmedQuery = query.trim();
+  const isSearching = trimmedQuery.length > 0;
+  const isBrowsing = isSearching || browseCategory !== null;
   const candidates = useMemo(() => {
-    if (trimmedQuery.length === 0) return [];
+    if (!isBrowsing) return [];
     return algorithms
       .filter((a) => !selectedIds.includes(a.id))
-      .filter((a) =>
-        [a.name, a.category, a.subcategory, a.summary].some((field) =>
-          field.toLowerCase().includes(trimmedQuery),
-        ),
-      )
-      .slice(0, 8);
-  }, [algorithms, trimmedQuery, selectedIds]);
+      .filter((a) => !browseCategory || a.category === browseCategory)
+      .filter((a) => !isSearching || matchesSearchQuery(a, trimmedQuery))
+      .slice(0, isSearching ? CANDIDATE_LIMIT_WITH_QUERY : CANDIDATE_LIMIT_BROWSE);
+  }, [algorithms, trimmedQuery, isSearching, browseCategory, isBrowsing, selectedIds]);
 
   const addAlgorithm = (id: string) => {
     if (selectedIds.length >= MAX_SELECTED || selectedIds.includes(id)) return;
@@ -57,6 +69,34 @@ export function CompareView({ algorithms }: CompareViewProps) {
 
   return (
     <div className={styles.view}>
+      <div
+        className={styles.chipRow}
+        role="group"
+        aria-label="カテゴリから候補を絞り込む"
+      >
+        {CATEGORY_ORDER.filter((category) => categoryCounts.has(category)).map(
+          (category) => (
+            <button
+              key={category}
+              type="button"
+              className={`${styles.chip} ${browseCategory === category ? styles.chipActive : ""}`}
+              aria-pressed={browseCategory === category}
+              disabled={selectedIds.length >= MAX_SELECTED}
+              onClick={() =>
+                setBrowseCategory((current) =>
+                  current === category ? null : category,
+                )
+              }
+            >
+              {category}
+              <span className={styles.chipCount}>
+                {categoryCounts.get(category)}
+              </span>
+            </button>
+          ),
+        )}
+      </div>
+
       <div className={styles.searchArea}>
         <input
           className={styles.searchInput}
@@ -66,11 +106,18 @@ export function CompareView({ algorithms }: CompareViewProps) {
           placeholder={
             selectedIds.length >= MAX_SELECTED
               ? `最大${MAX_SELECTED}件まで選択済みです`
-              : "追加するアルゴリズムを検索(例: ソート、木)"
+              : browseCategory
+                ? `「${browseCategory}」内をキーワードでさらに絞り込む`
+                : "追加するアルゴリズムを検索、またはカテゴリから選択(例: ソート、木)"
           }
           aria-label="比較に追加するアルゴリズムを検索"
           disabled={selectedIds.length >= MAX_SELECTED}
         />
+        {isBrowsing && candidates.length === 0 ? (
+          <p className={styles.candidateEmpty}>
+            該当するアルゴリズムが見つかりませんでした。
+          </p>
+        ) : null}
         {candidates.length > 0 ? (
           <ul className={styles.candidateList}>
             {candidates.map((a) => (
