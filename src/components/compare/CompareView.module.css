@@ -4,6 +4,60 @@
   gap: var(--space-6);
 }
 
+/* カテゴリ絞り込みチップ(AlgorithmCatalog.module.cssの.chipRow/.chipと揃えた見た目)。
+   検索語を知らなくてもカテゴリから候補を辿れるようにする。 */
+.chipRow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  border: 1px solid var(--color-line);
+  border-radius: 999px;
+  padding: var(--space-2) var(--space-4);
+  background: transparent;
+  color: var(--color-text-muted);
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  letter-spacing: 0.03em;
+  cursor: pointer;
+  transition:
+    border-color 0.15s ease,
+    color 0.15s ease;
+}
+
+.chip:hover {
+  border-color: var(--color-text-muted);
+  color: var(--color-text);
+}
+
+.chip:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.chipActive {
+  border-color: var(--color-accent-amber);
+  color: var(--color-accent-amber);
+}
+
+.chipCount {
+  font-size: 0.6875rem;
+  color: inherit;
+  opacity: 0.7;
+}
+
+.candidateEmpty {
+  margin-top: var(--space-2);
+  font-family: var(--font-body);
+  font-size: 0.8125rem;
+  color: var(--color-text-muted);
+}
+
 .searchArea {
   position: relative;
   max-width: 32rem;
