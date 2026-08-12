@@ -698,6 +698,96 @@ export function langtonsAntSteps(): GridFrame[] {
   return frames;
 }
 
+export const WIREWORLD_ROWS = 10;
+export const WIREWORLD_COLS = 14;
+export const WIREWORLD_GENERATIONS = 40;
+
+function isWireworldRingCell(r: number, c: number): boolean {
+  const onHorizontalEdge = (r === 1 || r === WIREWORLD_ROWS - 2) && c >= 1 && c <= WIREWORLD_COLS - 2;
+  const onVerticalEdge = (c === 1 || c === WIREWORLD_COLS - 2) && r >= 1 && r <= WIREWORLD_ROWS - 2;
+  return onHorizontalEdge || onVerticalEdge;
+}
+
+/**
+ * 導線(conductor)がループ状に1本つながった単純な回路を作り、信号(電子ヘッド+テールの対)を
+ * ループ上端の1箇所に置く。「wall」を導線、「visited」を電子テール、「frontier」を電子ヘッドに
+ * 転用することでGridCellStateパレットをそのまま流用する(コンウェイのライフゲーム・
+ * ラングトンのアリと同じ再利用パターン)。
+ */
+function buildWireworldGrid(): GridCellState[][] {
+  const grid: GridCellState[][] = Array.from({ length: WIREWORLD_ROWS }, () =>
+    Array<GridCellState>(WIREWORLD_COLS).fill("idle"),
+  );
+  for (let r = 0; r < WIREWORLD_ROWS; r++) {
+    for (let c = 0; c < WIREWORLD_COLS; c++) {
+      if (isWireworldRingCell(r, c)) grid[r][c] = "wall";
+    }
+  }
+  // ループ上端(r=1)に電子テール(c=2)→電子ヘッド(c=3)の対を置き、右向きに走らせる
+  grid[1][2] = "visited";
+  grid[1][3] = "frontier";
+  return grid;
+}
+
+function wireworldCountHeadNeighbors(grid: GridCellState[][], r: number, c: number): number {
+  let count = 0;
+  for (let dr = -1; dr <= 1; dr++) {
+    for (let dc = -1; dc <= 1; dc++) {
+      if (dr === 0 && dc === 0) continue;
+      const nr = r + dr;
+      const nc = c + dc;
+      if (nr >= 0 && nr < WIREWORLD_ROWS && nc >= 0 && nc < WIREWORLD_COLS && grid[nr][nc] === "frontier") {
+        count++;
+      }
+    }
+  }
+  return count;
+}
+
+/**
+ * WireWorldのステップ列を生成する。各セルは空・導線(conductor)・電子ヘッド・電子テールの
+ * 4状態を持ち、「電子ヘッドは次に電子テールになる」「電子テールは次に導線に戻る」
+ * 「導線は隣接8マスの電子ヘッドがちょうど1つか2つなら電子ヘッドになる」という3つの規則だけを
+ * 全マスに同時適用する。導線をループ状に配線すれば、信号が電子ヘッド→テール→導線を
+ * 繰り返しながらループを永久に周回し続け、論理回路(ANDゲート等)を組む土台になる。
+ */
+export function wireworldSteps(): GridFrame[] {
+  let grid = buildWireworldGrid();
+  const frames: GridFrame[] = [
+    {
+      cellStates: cloneGrid(grid),
+      description: "初期状態。導線(wall色)のループに電子ヘッド(frontier色)・テール(visited色)の対を1つ配置",
+    },
+  ];
+
+  for (let gen = 1; gen <= WIREWORLD_GENERATIONS; gen++) {
+    const next: GridCellState[][] = grid.map((row) => [...row]);
+    for (let r = 0; r < WIREWORLD_ROWS; r++) {
+      for (let c = 0; c < WIREWORLD_COLS; c++) {
+        const state = grid[r][c];
+        if (state === "idle") {
+          next[r][c] = "idle";
+        } else if (state === "frontier") {
+          next[r][c] = "visited";
+        } else if (state === "visited") {
+          next[r][c] = "wall";
+        } else if (state === "wall") {
+          const headNeighbors = wireworldCountHeadNeighbors(grid, r, c);
+          next[r][c] = headNeighbors === 1 || headNeighbors === 2 ? "frontier" : "wall";
+        }
+      }
+    }
+    grid = next;
+    frames.push({
+      cellStates: cloneGrid(grid),
+      description: `世代${gen}: ヘッド→テール→導線の遷移と、隣接ヘッド数1〜2の導線からの新規発火を同時適用`,
+    });
+  }
+
+  frames.push({ cellStates: cloneGrid(grid), description: `計算完了(${WIREWORLD_GENERATIONS}世代経過、信号はループを周回し続ける)` });
+  return frames;
+}
+
 export const PATHFINDING_VISUALIZERS: Record<string, () => GridFrame[]> = {
   bfs: bfsSteps,
   dfs: dfsSteps,
@@ -706,6 +796,7 @@ export const PATHFINDING_VISUALIZERS: Record<string, () => GridFrame[]> = {
   iddfs: iddfsSteps,
   "conways-game-of-life": conwaysGameOfLifeSteps,
   "langtons-ant": langtonsAntSteps,
+  wireworld: wireworldSteps,
   "best-first-search": bestFirstSearchSteps,
   "bidirectional-search": bidirectionalSearchSteps,
 };

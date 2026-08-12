@@ -356,14 +356,14 @@ for (const id of ["simulated-annealing", "tabu-search"]) {
 }
 
 // ===========================================================================
-// PATHFINDING (9件)
+// PATHFINDING (10件)
 // ===========================================================================
-section("PATHFINDING (9件)");
+section("PATHFINDING (10件)");
 const PATH_SUCCESS_KEYWORDS = ["発見", "出会"];
 for (const [id, fn] of Object.entries(PATHFINDING_VISUALIZERS)) {
   const frames = fn();
   checkWellFormed(id, frames);
-  if (id === "conways-game-of-life" || id === "langtons-ant") {
+  if (id === "conways-game-of-life" || id === "langtons-ant" || id === "wireworld") {
     // 決定論的なセルオートマトンなので「完了」の報告があれば十分(既知の正解値というより固定シミュレーション)
     const lastDesc = frames[frames.length - 1].description;
     check(`${id}: シミュレーションが完了したと報告`, lastDesc.includes("完了"), lastDesc);
