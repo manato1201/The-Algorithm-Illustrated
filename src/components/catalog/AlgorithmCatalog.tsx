@@ -8,7 +8,10 @@ import {
   CATEGORY_ORDER,
   SUBCATEGORIES_BY_CATEGORY,
 } from "@/lib/algorithm-categories";
+import { matchesSearchQuery } from "@/lib/algorithm-search";
 import type { AlgorithmMeta } from "@/lib/content/algorithms";
+
+type SortOrder = "category" | "name";
 
 type AlgorithmCatalogProps = {
   algorithms: AlgorithmMeta[];
@@ -31,6 +34,7 @@ export function AlgorithmCatalog({
     null,
   );
   const [visualizedOnly, setVisualizedOnly] = useState(false);
+  const [sortOrder, setSortOrder] = useState<SortOrder>("category");
   const trimmedQuery = query.trim().toLowerCase();
   const isSearching = trimmedQuery.length > 0;
   const isFiltering = isSearching || activeCategory !== null || visualizedOnly;
@@ -76,31 +80,27 @@ export function AlgorithmCatalog({
 
   const filteredResults = useMemo(() => {
     if (!isFiltering) return [];
-    return algorithms.filter((algorithm) => {
+    const results = algorithms.filter((algorithm) => {
       if (activeCategory && algorithm.category !== activeCategory) return false;
       if (activeSubcategory && algorithm.subcategory !== activeSubcategory)
         return false;
       if (visualizedOnly && !algorithm.hasVisualizer) return false;
-      if (
-        trimmedQuery &&
-        ![
-          algorithm.name,
-          algorithm.category,
-          algorithm.subcategory,
-          algorithm.summary,
-        ].some((field) => field.toLowerCase().includes(trimmedQuery))
-      ) {
-        return false;
-      }
+      if (isSearching && !matchesSearchQuery(algorithm, query)) return false;
       return true;
     });
+    if (sortOrder === "name") {
+      return [...results].sort((a, b) => a.name.localeCompare(b.name, "ja"));
+    }
+    return results;
   }, [
     algorithms,
     activeCategory,
     activeSubcategory,
     visualizedOnly,
-    trimmedQuery,
+    query,
+    isSearching,
     isFiltering,
+    sortOrder,
   ]);
 
   const filterLabelParts: string[] = [];
@@ -244,9 +244,25 @@ export function AlgorithmCatalog({
 
       {isFiltering ? (
         <section className={styles.results} aria-labelledby="results-heading">
-          <h2 id="results-heading" className={styles.sectionLabel}>
-            ■ RESULTS {filterLabel}の絞り込み結果 — {filteredResults.length}件
-          </h2>
+          <div className={styles.resultsHeader}>
+            <h2 id="results-heading" className={styles.sectionLabel}>
+              ■ RESULTS {filterLabel}の絞り込み結果 — {filteredResults.length}件
+            </h2>
+            {filteredResults.length > 1 ? (
+              <label className={styles.sortControl}>
+                並び替え
+                <select
+                  value={sortOrder}
+                  onChange={(event) =>
+                    setSortOrder(event.target.value as SortOrder)
+                  }
+                >
+                  <option value="category">カテゴリ順</option>
+                  <option value="name">名前順</option>
+                </select>
+              </label>
+            ) : null}
+          </div>
           {filteredResults.length === 0 ? (
             <div className={styles.emptyState}>
               該当するアルゴリズムが見つかりませんでした。別のキーワードやカテゴリでお試しください。
