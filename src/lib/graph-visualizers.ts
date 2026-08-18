@@ -7370,9 +7370,338 @@ export function michaelScottQueueSteps(): GraphFrame[] {
   return frames;
 }
 
+/** Stateパターンのデモ用データ。content/algorithms/state-pattern.mdの自動販売機と対応する2状態。 */
+export const STATE_PATTERN_NODES: GraphNode[] = [
+  { id: "waiting", label: "WaitingForCoin", x: 0.28, y: 0.5 },
+  { id: "dispensing", label: "Dispensing", x: 0.72, y: 0.5 },
+];
+export const STATE_PATTERN_EDGES: GraphEdge[] = [
+  { id: "waiting-dispensing", from: "waiting", to: "dispensing", weight: 1 },
+  { id: "dispensing-waiting", from: "dispensing", to: "waiting", weight: 1 },
+];
+
+/**
+ * Stateパターンのステップ列を生成する。content/algorithms/state-pattern.mdのdemo()と同じ4回の呼び出し
+ * (dispense→拒否、insertCoin→遷移、insertCoin→拒否、dispense→遷移)を、状態オブジェクトの差し替えとして
+ * 可視化する。呼び出し側が一度もif文で「今どの状態か」を判定していない点を各フレームの説明文で強調する。
+ */
+export function statePatternSteps(): GraphFrame[] {
+  const nodes = STATE_PATTERN_NODES;
+  const edges = STATE_PATTERN_EDGES;
+  const nodeStates = initNodeStates(nodes, "idle");
+  const edgeStates = initEdgeStates(edges, "idle");
+  nodeStates.waiting = "settled";
+
+  const frames: GraphFrame[] = [
+    {
+      nodeStates: { ...nodeStates },
+      edgeStates: { ...edgeStates },
+      distances: {},
+      description: "初期状態はWaitingForCoin。VendingMachineは現在の状態オブジェクトへの参照を1つだけ保持する",
+    },
+  ];
+
+  frames.push({
+    nodeStates: { ...nodeStates },
+    edgeStates: { ...edgeStates },
+    distances: {},
+    description: "dispense()を呼ぶ → WaitingForCoinは「先にコインを入れてください」を返すだけで状態遷移しない",
+  });
+
+  edgeStates["waiting-dispensing"] = "tree";
+  nodeStates.waiting = "visited";
+  nodeStates.dispensing = "settled";
+  frames.push({
+    nodeStates: { ...nodeStates },
+    edgeStates: { ...edgeStates },
+    distances: {},
+    description: "insertCoin()を呼ぶ → WaitingForCoinが自分自身をDispensingに差し替える(状態遷移)",
+  });
+
+  frames.push({
+    nodeStates: { ...nodeStates },
+    edgeStates: { ...edgeStates },
+    distances: {},
+    description: "再度insertCoin()を呼ぶ → Dispensingは「既にコインが投入済みです」を返すだけで状態遷移しない",
+  });
+
+  edgeStates["dispensing-waiting"] = "tree";
+  nodeStates.dispensing = "visited";
+  nodeStates.waiting = "settled";
+  frames.push({
+    nodeStates: { ...nodeStates },
+    edgeStates: { ...edgeStates },
+    distances: {},
+    description: "dispense()を呼ぶ → Dispensingが自分自身をWaitingForCoinに差し替える(状態遷移)",
+  });
+
+  frames.push({
+    nodeStates: { ...nodeStates },
+    edgeStates: { ...edgeStates },
+    distances: {},
+    description: "計算完了。呼び出し側は一度もif文で「今どの状態か」を判定していない",
+  });
+
+  return frames;
+}
+
+/** Observerパターンのデモ用データ。content/algorithms/observer-pattern.mdのSubject+観測者A/Bと対応する。 */
+export const OBSERVER_PATTERN_NODES: GraphNode[] = [
+  { id: "subject", label: "Subject", x: 0.5, y: 0.15 },
+  { id: "a", label: "A", x: 0.25, y: 0.85 },
+  { id: "b", label: "B", x: 0.75, y: 0.85 },
+];
+export const OBSERVER_PATTERN_EDGES: GraphEdge[] = [
+  { id: "subject-a", from: "subject", to: "a", weight: 1 },
+  { id: "subject-b", from: "subject", to: "b", weight: 1 },
+];
+
+/**
+ * Observerパターンのステップ列を生成する。content/algorithms/observer-pattern.mdのobserver_demo()と同じ
+ * (subscribe(A)→subscribe(B)→setState(1)→unsubscribe(B)→setState(2))という流れを、
+ * 通知(notify)がSubjectから購読者リストへ順番に配送される様子として可視化する。
+ * unsubscribe後は該当の辺を「rejected」にして、以降の通知が届かないことを示す。
+ */
+export function observerPatternSteps(): GraphFrame[] {
+  const nodes = OBSERVER_PATTERN_NODES;
+  const edges = OBSERVER_PATTERN_EDGES;
+  const nodeStates = initNodeStates(nodes, "idle");
+  const edgeStates = initEdgeStates(edges, "idle");
+
+  const frames: GraphFrame[] = [
+    {
+      nodeStates: { ...nodeStates },
+      edgeStates: { ...edgeStates },
+      distances: {},
+      description: "SubjectはまだオブザーバーA・Bのどちらも購読していない",
+    },
+  ];
+  const push = (description: string) =>
+    frames.push({
+      nodeStates: { ...nodeStates },
+      edgeStates: { ...edgeStates },
+      distances: {},
+      description,
+    });
+
+  nodeStates.a = "visited";
+  push("subscribe(A): AがSubjectを購読する");
+  nodeStates.b = "visited";
+  push("subscribe(B): BがSubjectを購読する");
+
+  nodeStates.subject = "visited";
+  push("setState(1)を呼ぶ → Subjectの状態が変化し、購読者リストの走査(notify)が始まる");
+
+  edgeStates["subject-a"] = "tree";
+  nodeStates.a = "settled";
+  push("Subject → A: update(1)を呼び出す");
+
+  edgeStates["subject-b"] = "tree";
+  nodeStates.b = "settled";
+  push("Subject → B: update(1)を呼び出す");
+
+  edgeStates["subject-b"] = "rejected";
+  nodeStates.b = "visited";
+  push("unsubscribe(B): Bが購読を解除する。以降Bには通知が届かない");
+
+  edgeStates["subject-a"] = "tree";
+  nodeStates.a = "settled";
+  push("setState(2)を呼ぶ → 購読中なのはAだけなので、Subject → A: update(2)だけが呼ばれる");
+
+  push("計算完了。A.received=[1, 2]、B.received=[1](解除後のsetState(2)はBに届かない)");
+
+  return frames;
+}
+
+/** Chain of Responsibilityパターンのデモ用データ。content/algorithms/chain-of-responsibility-pattern.mdの承認フローと対応する。 */
+export const CHAIN_OF_RESPONSIBILITY_NODES: GraphNode[] = [
+  { id: "staff", label: "Staff", x: 0.15, y: 0.5 },
+  { id: "manager", label: "Manager", x: 0.5, y: 0.5 },
+  { id: "director", label: "Director", x: 0.85, y: 0.5 },
+];
+export const CHAIN_OF_RESPONSIBILITY_EDGES: GraphEdge[] = [
+  { id: "staff-manager", from: "staff", to: "manager", weight: 1 },
+  { id: "manager-director", from: "manager", to: "director", weight: 1 },
+];
+const CHAIN_OF_RESPONSIBILITY_ORDER = ["staff", "manager", "director"];
+const CHAIN_OF_RESPONSIBILITY_LIMITS: Record<string, number> = {
+  staff: 1000,
+  manager: 5000,
+  director: 20000,
+};
+
+/**
+ * Chain of Responsibilityパターンのステップ列を生成する。content/algorithms/chain-of-responsibility-pattern.mdの
+ * chain_demo()と同じ4件のリクエスト(500, 3000, 15000, 50000)を、鎖状のハンドラを順に検査・転送していく
+ * 様子として可視化する。最後のリクエスト(50000)だけは鎖の末尾まで到達しても誰も処理できずRejectedになる
+ * 「誰も処理しなかったケース」も含めている。
+ */
+export function chainOfResponsibilityPatternSteps(): GraphFrame[] {
+  const nodes = CHAIN_OF_RESPONSIBILITY_NODES;
+  const edges = CHAIN_OF_RESPONSIBILITY_EDGES;
+  const order = CHAIN_OF_RESPONSIBILITY_ORDER;
+  const limits = CHAIN_OF_RESPONSIBILITY_LIMITS;
+  const labelOf = (id: string) => nodes.find((n) => n.id === id)!.label;
+  const amounts = [500, 3000, 15000, 50000];
+
+  const frames: GraphFrame[] = [
+    {
+      nodeStates: initNodeStates(nodes, "idle"),
+      edgeStates: initEdgeStates(edges, "idle"),
+      distances: {},
+      description: "Staff(上限1000)→Manager(上限5000)→Director(上限20000)の順に鎖状につながったハンドラを構築",
+    },
+  ];
+
+  for (const amount of amounts) {
+    const nodeStates = initNodeStates(nodes, "idle");
+    const edgeStates = initEdgeStates(edges, "idle");
+    const push = (description: string) =>
+      frames.push({
+        nodeStates: { ...nodeStates },
+        edgeStates: { ...edgeStates },
+        distances: {},
+        description,
+      });
+
+    push(`新しいリクエスト: 金額${amount}を鎖の先頭Staffへ送る`);
+    let handled = false;
+    for (let i = 0; i < order.length; i++) {
+      const handlerId = order[i];
+      nodeStates[handlerId] = "visited";
+      const limit = limits[handlerId];
+      if (amount <= limit) {
+        nodeStates[handlerId] = "settled";
+        push(`${labelOf(handlerId)}が承認(${amount} <= 上限${limit})。鎖はここで止まる`);
+        handled = true;
+        break;
+      }
+      push(`${labelOf(handlerId)}の上限${limit}を超えているため処理できない`);
+      if (i < order.length - 1) {
+        const nextId = order[i + 1];
+        edgeStates[`${handlerId}-${nextId}`] = "tree";
+        push(`${labelOf(handlerId)} → ${labelOf(nextId)}: 次のハンドラへ転送`);
+      }
+    }
+    if (!handled) {
+      push(`鎖の末尾まで到達したが誰も処理できず、リクエスト(${amount})はRejectedになる`);
+    }
+  }
+
+  frames.push({
+    nodeStates: initNodeStates(nodes, "idle"),
+    edgeStates: initEdgeStates(edges, "idle"),
+    distances: {},
+    description:
+      "計算完了。4件のリクエストのうち3件は鎖のどこかで承認され、上限20000を超える最後の1件だけがRejectedになった",
+  });
+
+  return frames;
+}
+
+/** Mediatorパターンのデモ用データ。content/algorithms/mediator-pattern.mdのチャットルームと対応する。 */
+export const MEDIATOR_PATTERN_NODES: GraphNode[] = [
+  { id: "mediator", label: "ChatRoom", x: 0.5, y: 0.15 },
+  { id: "alice", label: "Alice", x: 0.18, y: 0.85 },
+  { id: "bob", label: "Bob", x: 0.5, y: 0.95 },
+  { id: "carol", label: "Carol", x: 0.82, y: 0.85 },
+];
+export const MEDIATOR_PATTERN_PARTICIPANTS = ["alice", "bob", "carol"];
+export const MEDIATOR_PATTERN_EDGES: GraphEdge[] = MEDIATOR_PATTERN_PARTICIPANTS.flatMap((p) => [
+  { id: `${p}-mediator`, from: p, to: "mediator", weight: 1 },
+  { id: `mediator-${p}`, from: "mediator", to: p, weight: 1 },
+]);
+
+/**
+ * Mediatorパターンのステップ列を生成する。content/algorithms/mediator-pattern.mdのdemo()と同じ
+ * (Alice.send("Hello everyone")→Bob.send("Hi Alice"))という流れを、送信者からメディエーターへの
+ * 集約(コロリーグ→メディエーター)と、メディエーターから送信者以外全員への配送(メディエーター→コロリーグ)
+ * という2段階のメッセージ経路として可視化する。コロリーグ同士の辺が一切存在しない(N対N結合が
+ * メディエーターとのN対1結合に変わっている)点が図の構造そのものに表れる。
+ */
+export function mediatorPatternSteps(): GraphFrame[] {
+  const nodes = MEDIATOR_PATTERN_NODES;
+  const edges = MEDIATOR_PATTERN_EDGES;
+  const participants = MEDIATOR_PATTERN_PARTICIPANTS;
+  const labelOf = (id: string) => nodes.find((n) => n.id === id)!.label;
+  const nodeStates = initNodeStates(nodes, "idle");
+  const edgeStates = initEdgeStates(edges, "idle");
+  const edgeLabels: Record<string, string> = Object.fromEntries(edges.map((e) => [e.id, ""]));
+
+  const frames: GraphFrame[] = [
+    {
+      nodeStates: { ...nodeStates },
+      edgeStates: { ...edgeStates },
+      distances: {},
+      edgeLabels: { ...edgeLabels },
+      description: "Alice・Bob・Carolはそれぞれ互いを知らず、ChatRoomMediatorにだけ登録される",
+    },
+  ];
+
+  for (const p of participants) nodeStates[p] = "visited";
+  frames.push({
+    nodeStates: { ...nodeStates },
+    edgeStates: { ...edgeStates },
+    distances: {},
+    edgeLabels: { ...edgeLabels },
+    description: "3人全員の登録が完了。依存関係は各コロリーグ⇔メディエーターの星型に集約されている",
+  });
+
+  const send = (from: string, label: string, description: string) => {
+    edgeLabels[`${from}-mediator`] = label;
+    edgeStates[`${from}-mediator`] = "tree";
+    nodeStates[from] = "settled";
+    frames.push({
+      nodeStates: { ...nodeStates },
+      edgeStates: { ...edgeStates },
+      distances: {},
+      edgeLabels: { ...edgeLabels },
+      description,
+    });
+  };
+  const deliver = (to: string, label: string, description: string) => {
+    edgeLabels[`mediator-${to}`] = label;
+    edgeStates[`mediator-${to}`] = "tree";
+    nodeStates[to] = "settled";
+    frames.push({
+      nodeStates: { ...nodeStates },
+      edgeStates: { ...edgeStates },
+      distances: {},
+      edgeLabels: { ...edgeLabels },
+      description,
+    });
+  };
+
+  send("alice", "Hello everyone", `${labelOf("alice")}.send(): Alice → ChatRoom へメッセージを送る(宛先を一切指定しない)`);
+  deliver("bob", "Hello everyone", "ChatRoomが送信者以外の全員(Bob)へ配送");
+  deliver("carol", "Hello everyone", "ChatRoomが送信者以外の全員(Carol)へ配送");
+
+  send("bob", "Hi Alice", `${labelOf("bob")}.send(): Bob → ChatRoom へメッセージを送る`);
+  deliver("alice", "Hi Alice", "ChatRoomが送信者以外の全員(Alice)へ配送");
+  deliver("carol", "Hi Alice", "ChatRoomが送信者以外の全員(Carol)へ配送");
+
+  frames.push({
+    nodeStates: { ...nodeStates },
+    edgeStates: { ...edgeStates },
+    distances: {},
+    edgeLabels: { ...edgeLabels },
+    description: "計算完了。Alice/Bob/Carolは互いのクラスを一切知らないまま、ChatRoom経由でメッセージをやり取りできた",
+  });
+
+  return frames;
+}
+
 // GRAPH_DATASETSは全ノード/辺定数の定義より前(ファイル冒頭寄り)で宣言されているため、
 // ここで追記登録する(定義前の定数を直接オブジェクトリテラルに書くとTDZでReferenceErrorになる)。
 Object.assign(GRAPH_DATASETS, {
+  "state-pattern": { nodes: STATE_PATTERN_NODES, edges: STATE_PATTERN_EDGES, directed: true },
+  "observer-pattern": { nodes: OBSERVER_PATTERN_NODES, edges: OBSERVER_PATTERN_EDGES, directed: true },
+  "chain-of-responsibility-pattern": {
+    nodes: CHAIN_OF_RESPONSIBILITY_NODES,
+    edges: CHAIN_OF_RESPONSIBILITY_EDGES,
+    directed: true,
+  },
+  "mediator-pattern": { nodes: MEDIATOR_PATTERN_NODES, edges: MEDIATOR_PATTERN_EDGES, directed: true },
   "dining-philosophers": {
     nodes: DINING_PHILOSOPHERS_NODES,
     edges: DINING_PHILOSOPHERS_EDGES,
@@ -7481,4 +7810,8 @@ export const GRAPH_VISUALIZERS: Record<string, () => GraphFrame[]> = {
   "register-allocation-graph-coloring": registerAllocationGraphColoringSteps,
   "de-bruijn-graph-assembly": deBruijnGraphAssemblySteps,
   "suffix-automaton": suffixAutomatonSteps,
+  "state-pattern": statePatternSteps,
+  "observer-pattern": observerPatternSteps,
+  "chain-of-responsibility-pattern": chainOfResponsibilityPatternSteps,
+  "mediator-pattern": mediatorPatternSteps,
 };
