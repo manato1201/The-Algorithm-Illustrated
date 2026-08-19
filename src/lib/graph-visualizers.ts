@@ -7370,6 +7370,92 @@ export function michaelScottQueueSteps(): GraphFrame[] {
   return frames;
 }
 
+/** Mementoパターンのデモ用データ。content/algorithms/memento-pattern.mdのテキストエディタUndo機能と対応する。 */
+export const MEMENTO_PATTERN_NODES: GraphNode[] = [
+  { id: "history", label: "History", x: 0.5, y: 0.12 },
+  { id: "memento1", label: 'M1: "Hello"', x: 0.22, y: 0.5 },
+  { id: "memento2", label: 'M2: "Hello, World"', x: 0.78, y: 0.5 },
+  { id: "editor", label: "Editor", x: 0.5, y: 0.88 },
+];
+export const MEMENTO_PATTERN_EDGES: GraphEdge[] = [
+  { id: "history-memento1", from: "history", to: "memento1", weight: 1 },
+  { id: "history-memento2", from: "history", to: "memento2", weight: 1 },
+  { id: "memento1-editor", from: "memento1", to: "editor", weight: 1 },
+  { id: "memento2-editor", from: "memento2", to: "editor", weight: 1 },
+];
+
+/**
+ * Mementoパターンのステップ列を生成する。content/algorithms/memento-pattern.mdのdemo()と同じ
+ * (type→save→type→save→type→restore→restore)という流れを、EditorがHistory(ケアテイカー)に
+ * 気付かれないままMementoを生成・復元する様子として可視化する。memento→editor辺は、生成時は
+ * 「capture」、復元時は「restore」とラベルを差し替えて再利用する(Commandパターンのexecute/undo
+ * 再利用と同じ idiom)。HistoryはMementoの中身に一度も直接アクセスしない点を説明文で強調する。
+ */
+export function mementoPatternSteps(): GraphFrame[] {
+  const nodes = MEMENTO_PATTERN_NODES;
+  const edges = MEMENTO_PATTERN_EDGES;
+  const nodeStates = initNodeStates(nodes, "idle");
+  const edgeStates = initEdgeStates(edges, "idle");
+  const edgeLabels: Record<string, string> = Object.fromEntries(edges.map((e) => [e.id, ""]));
+
+  const frames: GraphFrame[] = [
+    {
+      nodeStates: { ...nodeStates },
+      edgeStates: { ...edgeStates },
+      distances: {},
+      edgeLabels: { ...edgeLabels },
+      description: "Editorは空文字列。Historyはまだ何も保持していない",
+    },
+  ];
+  const push = (description: string) =>
+    frames.push({
+      nodeStates: { ...nodeStates },
+      edgeStates: { ...edgeStates },
+      distances: {},
+      edgeLabels: { ...edgeLabels },
+      description,
+    });
+
+  push('editor.type("Hello"): content = "Hello"');
+
+  edgeLabels["memento1-editor"] = "capture";
+  edgeStates["memento1-editor"] = "tree";
+  nodeStates.memento1 = "visited";
+  edgeStates["history-memento1"] = "tree";
+  push('editor.save(): 現在の内容"Hello"をメメントM1として生成し、History.push(M1)');
+
+  push('editor.type(", World"): content = "Hello, World"');
+
+  edgeLabels["memento2-editor"] = "capture";
+  edgeStates["memento2-editor"] = "tree";
+  nodeStates.memento2 = "visited";
+  edgeStates["history-memento2"] = "tree";
+  push('editor.save(): 現在の内容"Hello, World"をメメントM2として生成し、History.push(M2)');
+
+  push('editor.type("!"): content = "Hello, World!"(保存されていない、snapshot1)');
+
+  edgeLabels["memento2-editor"] = "restore";
+  edgeStates["history-memento2"] = "rejected";
+  nodeStates.memento2 = "settled";
+  push('history.pop()はM2を返す。editor.restore(M2) → content = "Hello, World"(snapshot2)');
+
+  edgeLabels["memento1-editor"] = "restore";
+  edgeStates["history-memento1"] = "rejected";
+  nodeStates.memento1 = "settled";
+  push('history.pop()はM1を返す。editor.restore(M1) → content = "Hello"(snapshot3)');
+
+  frames.push({
+    nodeStates: { ...nodeStates },
+    edgeStates: { ...edgeStates },
+    distances: {},
+    edgeLabels: { ...edgeLabels },
+    description:
+      '計算完了。結果は["Hello, World!", "Hello, World", "Hello"]。HistoryはEditorの内部フィールドに一度も直接アクセスしていない',
+  });
+
+  return frames;
+}
+
 /** Stateパターンのデモ用データ。content/algorithms/state-pattern.mdの自動販売機と対応する2状態。 */
 export const STATE_PATTERN_NODES: GraphNode[] = [
   { id: "waiting", label: "WaitingForCoin", x: 0.28, y: 0.5 },
@@ -7980,6 +8066,7 @@ Object.assign(GRAPH_DATASETS, {
     edges: MICHAEL_SCOTT_QUEUE_EDGES,
     directed: true,
   },
+  "memento-pattern": { nodes: MEMENTO_PATTERN_NODES, edges: MEMENTO_PATTERN_EDGES, directed: true },
 } satisfies Record<string, GraphDataset>);
 
 export const GRAPH_VISUALIZERS: Record<string, () => GraphFrame[]> = {
@@ -8051,4 +8138,5 @@ export const GRAPH_VISUALIZERS: Record<string, () => GraphFrame[]> = {
   "command-pattern": commandPatternSteps,
   "iterator-pattern": iteratorPatternSteps,
   "visitor-pattern": visitorPatternSteps,
+  "memento-pattern": mementoPatternSteps,
 };
