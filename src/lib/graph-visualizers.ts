@@ -7691,6 +7691,237 @@ export function mediatorPatternSteps(): GraphFrame[] {
   return frames;
 }
 
+/** Commandパターンのデモ用データ。content/algorithms/command-pattern.mdのテキストエディタ+Undoと対応する。 */
+export const COMMAND_PATTERN_NODES: GraphNode[] = [
+  { id: "invoker", label: "Invoker", x: 0.5, y: 0.12 },
+  { id: "cmd1", label: 'Cmd1: Insert"Hello, "', x: 0.22, y: 0.5 },
+  { id: "cmd2", label: 'Cmd2: Insert"World!"', x: 0.78, y: 0.5 },
+  { id: "document", label: "Document", x: 0.5, y: 0.88 },
+];
+export const COMMAND_PATTERN_EDGES: GraphEdge[] = [
+  { id: "invoker-cmd1", from: "invoker", to: "cmd1", weight: 1 },
+  { id: "invoker-cmd2", from: "invoker", to: "cmd2", weight: 1 },
+  { id: "cmd1-document", from: "cmd1", to: "document", weight: 1 },
+  { id: "cmd2-document", from: "cmd2", to: "document", weight: 1 },
+];
+
+/**
+ * Commandパターンのステップ列を生成する。content/algorithms/command-pattern.mdのcommand_demo()と同じ
+ * (execute(Cmd1)→execute(Cmd2)→undo())という流れを、コマンドがInvoker→レシーバーへの操作カプセル化
+ * として実行され、履歴スタックからundo()で取り消される様子として可視化する。undo時は同じ有向辺
+ * (cmd2→document)をラベルだけ差し替えて再利用し、「実行」と「取り消し」が同じ経路の往復であることを表す。
+ */
+export function commandPatternSteps(): GraphFrame[] {
+  const nodes = COMMAND_PATTERN_NODES;
+  const edges = COMMAND_PATTERN_EDGES;
+  const nodeStates = initNodeStates(nodes, "idle");
+  const edgeStates = initEdgeStates(edges, "idle");
+  const edgeLabels: Record<string, string> = Object.fromEntries(edges.map((e) => [e.id, ""]));
+
+  const frames: GraphFrame[] = [
+    {
+      nodeStates: { ...nodeStates },
+      edgeStates: { ...edgeStates },
+      distances: {},
+      edgeLabels: { ...edgeLabels },
+      description: "Documentは空文字列。履歴スタックも空の状態から開始",
+    },
+  ];
+  const push = (description: string) =>
+    frames.push({
+      nodeStates: { ...nodeStates },
+      edgeStates: { ...edgeStates },
+      distances: {},
+      edgeLabels: { ...edgeLabels },
+      description,
+    });
+
+  edgeStates["invoker-cmd1"] = "tree";
+  nodeStates.cmd1 = "visited";
+  push("invoker.execute(Cmd1): InvokerがCmd1を履歴スタックに積み、実行を指示する");
+
+  edgeLabels["cmd1-document"] = "execute";
+  edgeStates["cmd1-document"] = "tree";
+  nodeStates.cmd1 = "settled";
+  nodeStates.document = "visited";
+  push('Cmd1.execute(): レシーバーDocumentに"Hello, "を追記 → text="Hello, "');
+
+  edgeStates["invoker-cmd2"] = "tree";
+  nodeStates.cmd2 = "visited";
+  push("invoker.execute(Cmd2): InvokerがCmd2を履歴スタックに積み、実行を指示する");
+
+  edgeLabels["cmd2-document"] = "execute";
+  edgeStates["cmd2-document"] = "tree";
+  nodeStates.cmd2 = "settled";
+  nodeStates.document = "settled";
+  push('Cmd2.execute(): レシーバーDocumentに"World!"を追記 → text="Hello, World!"(snapshot1)');
+
+  edgeLabels["cmd2-document"] = "undo";
+  nodeStates.cmd2 = "visited";
+  push('invoker.undo(): 履歴スタックの先頭(Cmd2)を取り出しCmd2.undo()を呼ぶ → 末尾6文字を削除し text="Hello, "(snapshot2)');
+
+  frames.push({
+    nodeStates: { ...nodeStates },
+    edgeStates: { ...edgeStates },
+    distances: {},
+    edgeLabels: { ...edgeLabels },
+    description:
+      "計算完了。呼び出し側はCmd1/Cmd2の具体的な処理内容を知らずexecute()/undo()だけで操作履歴を管理できた",
+  });
+
+  return frames;
+}
+
+/** Iteratorパターンのデモ用データ。content/algorithms/iterator-pattern.mdのNameCollection(Alice/Bob/Carol)と対応する。 */
+export const ITERATOR_PATTERN_NODES: GraphNode[] = [
+  { id: "alice", label: "Alice", x: 0.2, y: 0.5 },
+  { id: "bob", label: "Bob", x: 0.5, y: 0.5 },
+  { id: "carol", label: "Carol", x: 0.8, y: 0.5 },
+];
+export const ITERATOR_PATTERN_EDGES: GraphEdge[] = [
+  { id: "alice-bob", from: "alice", to: "bob", weight: 1 },
+  { id: "bob-carol", from: "bob", to: "carol", weight: 1 },
+];
+
+/**
+ * Iteratorパターンのステップ列を生成する。content/algorithms/iterator-pattern.mdのdemo()と同じ
+ * (["Alice","Bob","Carol"]をhasNext()/next()だけで走査する)という流れを、カーソルが要素間の辺を
+ * 1つずつ前進していく様子として可視化する。呼び出し側が配列のインデックスに一度も直接触れていない
+ * (settled/idleの状態遷移だけで走査が進む)点を各フレームの説明文で強調する。
+ */
+export function iteratorPatternSteps(): GraphFrame[] {
+  const nodes = ITERATOR_PATTERN_NODES;
+  const edges = ITERATOR_PATTERN_EDGES;
+  const nodeStates = initNodeStates(nodes, "idle");
+  const edgeStates = initEdgeStates(edges, "idle");
+
+  const frames: GraphFrame[] = [
+    {
+      nodeStates: { ...nodeStates },
+      edgeStates: { ...edgeStates },
+      distances: {},
+      description: "collection.createIterator()でイテレーターを取得。カーソルは先頭(Alice)の手前にある",
+    },
+  ];
+  const push = (description: string) =>
+    frames.push({
+      nodeStates: { ...nodeStates },
+      edgeStates: { ...edgeStates },
+      distances: {},
+      description,
+    });
+
+  push("it.hasNext() → true(カーソルより後ろに要素が残っている)");
+  nodeStates.alice = "settled";
+  push('it.next() → "Alice"を返し、カーソルを1つ進める');
+
+  push("it.hasNext() → true");
+  edgeStates["alice-bob"] = "tree";
+  nodeStates.alice = "visited";
+  nodeStates.bob = "settled";
+  push('it.next() → "Bob"を返し、カーソルを1つ進める');
+
+  push("it.hasNext() → true");
+  edgeStates["bob-carol"] = "tree";
+  nodeStates.bob = "visited";
+  nodeStates.carol = "settled";
+  push('it.next() → "Carol"を返し、カーソルを1つ進める');
+
+  push("it.hasNext() → false(カーソルが末尾に到達)。ループが終了する");
+
+  frames.push({
+    nodeStates: { ...nodeStates },
+    edgeStates: { ...edgeStates },
+    distances: {},
+    description:
+      "計算完了。結果は[Alice, Bob, Carol]。呼び出し側はNameCollectionの内部が配列であることを一度も意識しなかった",
+  });
+
+  return frames;
+}
+
+/** Visitorパターンのデモ用データ。content/algorithms/visitor-pattern.mdの式木(1+2)+3と対応する。 */
+export const VISITOR_PATTERN_NODES: GraphNode[] = [
+  { id: "root-add", label: "Add", x: 0.5, y: 0.15 },
+  { id: "left-add", label: "Add", x: 0.28, y: 0.5 },
+  { id: "num3", label: "3", x: 0.72, y: 0.5 },
+  { id: "num1", label: "1", x: 0.15, y: 0.85 },
+  { id: "num2", label: "2", x: 0.42, y: 0.85 },
+];
+export const VISITOR_PATTERN_EDGES: GraphEdge[] = [
+  { id: "root-left", from: "root-add", to: "left-add", weight: 1 },
+  { id: "root-num3", from: "root-add", to: "num3", weight: 1 },
+  { id: "left-num1", from: "left-add", to: "num1", weight: 1 },
+  { id: "left-num2", from: "left-add", to: "num2", weight: 1 },
+];
+
+/**
+ * Visitorパターンのステップ列を生成する。content/algorithms/visitor-pattern.mdの式木(1+2)+3に対し、
+ * EvaluateVisitor(評価)→PrintVisitor(文字列化)という2つの独立した操作を、要素クラス
+ * (NumberNode/AddNode)を一切変更せず追加できることを、同じ木構造への2回の走査として可視化する。
+ * 各accept()呼び出しはボトムアップ(葉から根へ)に処理される点を辺の点灯順序で表す。
+ */
+export function visitorPatternSteps(): GraphFrame[] {
+  const nodes = VISITOR_PATTERN_NODES;
+  const edges = VISITOR_PATTERN_EDGES;
+
+  const frames: GraphFrame[] = [
+    {
+      nodeStates: initNodeStates(nodes, "idle"),
+      edgeStates: initEdgeStates(edges, "idle"),
+      distances: {},
+      description: "式木 (1 + 2) + 3 を構築。NumberNode/AddNodeはaccept(visitor)を1つ持つだけ",
+    },
+  ];
+
+  const runPass = (visitorName: string, combine: (a: number, b: number) => number, finalLabel: (v: number) => string) => {
+    const nodeStates = initNodeStates(nodes, "idle");
+    const edgeStates = initEdgeStates(edges, "idle");
+    const push = (description: string) =>
+      frames.push({
+        nodeStates: { ...nodeStates },
+        edgeStates: { ...edgeStates },
+        distances: {},
+        description,
+      });
+
+    push(`${visitorName}を追加(既存の要素クラスは一切変更しない)。葉から根に向かってaccept()を呼んでいく`);
+
+    nodeStates.num1 = "settled";
+    push(`NumberNode(1).accept(${visitorName}) → visitNumberNode(1)`);
+    nodeStates.num2 = "settled";
+    push(`NumberNode(2).accept(${visitorName}) → visitNumberNode(2)`);
+
+    edgeStates["left-num1"] = "tree";
+    edgeStates["left-num2"] = "tree";
+    nodeStates["left-add"] = "settled";
+    const leftValue = combine(1, 2);
+    push(`AddNode(左).accept(${visitorName}) → visitAddNode: left.accept()とright.accept()の結果を合成 → ${finalLabel(leftValue)}`);
+
+    nodeStates.num3 = "settled";
+    push(`NumberNode(3).accept(${visitorName}) → visitNumberNode(3)`);
+
+    edgeStates["root-left"] = "tree";
+    edgeStates["root-num3"] = "tree";
+    nodeStates["root-add"] = "settled";
+    const rootValue = combine(leftValue, 3);
+    push(`AddNode(根).accept(${visitorName}) → visitAddNode: 左部分木と3を合成 → 結果は${finalLabel(rootValue)}`);
+  };
+
+  runPass("EvaluateVisitor", (a, b) => a + b, (v) => String(v));
+  runPass("PrintVisitor", () => 0, () => '"((1 + 2) + 3)"');
+
+  frames.push({
+    nodeStates: initNodeStates(nodes, "idle"),
+    edgeStates: initEdgeStates(edges, "idle"),
+    distances: {},
+    description:
+      "計算完了。EvaluateVisitor(結果6)とPrintVisitor(結果\"((1 + 2) + 3)\")という2つの独立した操作を、NumberNode/AddNodeのコードを1行も変更せずに追加できた",
+  });
+
+  return frames;
+}
+
 // GRAPH_DATASETSは全ノード/辺定数の定義より前(ファイル冒頭寄り)で宣言されているため、
 // ここで追記登録する(定義前の定数を直接オブジェクトリテラルに書くとTDZでReferenceErrorになる)。
 Object.assign(GRAPH_DATASETS, {
@@ -7702,6 +7933,9 @@ Object.assign(GRAPH_DATASETS, {
     directed: true,
   },
   "mediator-pattern": { nodes: MEDIATOR_PATTERN_NODES, edges: MEDIATOR_PATTERN_EDGES, directed: true },
+  "command-pattern": { nodes: COMMAND_PATTERN_NODES, edges: COMMAND_PATTERN_EDGES, directed: true },
+  "iterator-pattern": { nodes: ITERATOR_PATTERN_NODES, edges: ITERATOR_PATTERN_EDGES, directed: true },
+  "visitor-pattern": { nodes: VISITOR_PATTERN_NODES, edges: VISITOR_PATTERN_EDGES, directed: true },
   "dining-philosophers": {
     nodes: DINING_PHILOSOPHERS_NODES,
     edges: DINING_PHILOSOPHERS_EDGES,
@@ -7814,4 +8048,7 @@ export const GRAPH_VISUALIZERS: Record<string, () => GraphFrame[]> = {
   "observer-pattern": observerPatternSteps,
   "chain-of-responsibility-pattern": chainOfResponsibilityPatternSteps,
   "mediator-pattern": mediatorPatternSteps,
+  "command-pattern": commandPatternSteps,
+  "iterator-pattern": iteratorPatternSteps,
+  "visitor-pattern": visitorPatternSteps,
 };
