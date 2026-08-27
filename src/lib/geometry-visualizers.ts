@@ -173,12 +173,131 @@ export function jarvisMarchSteps(): GeometryFrame[] {
   return frames;
 }
 
+/**
+ * RVOのデモ用データ。エージェントA(左→右)とB(右→左)が正面衝突コースにあり、
+ * それぞれが回避コストを半分ずつ負担するように上下へ半歩ずつ回避する4点の離散軌道。
+ * content/algorithms/reciprocal-velocity-obstacles.mdの「相手との相対速度の中間点を
+ * 頂点として半分だけシフトした禁止領域を避ける」という考え方を、連続的な速度空間ではなく
+ * 事前計算済みの離散的な経路点の系列として可視化する(GeometryVisualizerは点の位置が
+ * フレームごとに動かない静的データセットである制約のため)。
+ */
+export const RVO_POINTS: GeometryPoint[] = [
+  { id: "A0", x: 0, y: 5.2 },
+  { id: "A1", x: 3.5, y: 5.6 },
+  { id: "A2", x: 6.5, y: 5.6 },
+  { id: "A3", x: 10, y: 4.8 },
+  { id: "B0", x: 10, y: 5.2 },
+  { id: "B1", x: 6.5, y: 4.4 },
+  { id: "B2", x: 3.5, y: 4.4 },
+  { id: "B3", x: 0, y: 4.8 },
+];
+
+export function reciprocalVelocityObstaclesSteps(): GeometryFrame[] {
+  const points = RVO_POINTS;
+  const frames: GeometryFrame[] = [];
+  const states = idleStates(points);
+  const segs: GeometrySegment[] = [];
+
+  frames.push(frame(states, segs, "エージェントA(左→右)とB(右→左)が正面衝突コースで接近する"));
+
+  states.A0 = "current";
+  states.B0 = "current";
+  frames.push(frame(states, segs, "このまま直進すると衝突円錐(Collision Cone)が重なり合ってしまう"));
+
+  segs.push({ from: "A0", to: "A1", state: "active" }, { from: "B0", to: "B1", state: "active" });
+  states.A0 = "hull";
+  states.B0 = "hull";
+  states.A1 = "current";
+  states.B1 = "current";
+  frames.push(
+    frame(states, segs, "RVO: 相手との相対速度の中間点を基準に、回避コストを半分ずつ負担する。Aは上へ、Bは下へ半歩ずつ回避する"),
+  );
+
+  segs.push({ from: "A1", to: "A2", state: "active" }, { from: "B1", to: "B2", state: "active" });
+  states.A1 = "hull";
+  states.B1 = "hull";
+  states.A2 = "current";
+  states.B2 = "current";
+  frames.push(frame(states, segs, "最接近点を通過。単純なVOと違い、双方の回避量が半分ずつなので振動が起きない"));
+
+  segs.push({ from: "A2", to: "A3", state: "active" }, { from: "B2", to: "B3", state: "active" });
+  states.A2 = "hull";
+  states.B2 = "hull";
+  states.A3 = "current";
+  states.B3 = "current";
+  frames.push(frame(states, segs, "すれ違いが完了し、双方とも元の進行方向へ戻り始める"));
+
+  for (const seg of segs) seg.state = "final";
+  states.A3 = "hull";
+  states.B3 = "hull";
+  frames.push(frame(states, segs, "計算完了。局所的な速度選択の繰り返しだけで、振動なく滑らかな相互回避が実現した"));
+
+  return frames;
+}
+
+/**
+ * ボロノイ図による経路計画のデモ用データ。3つの障害物代表点(O1〜O3)に対し、
+ * 各障害物からちょうど等距離になるボロノイ頂点V1・V2を骨格線上の経路候補として抽出し、
+ * S→V1→V2→Gという「障害物から最大限離れた」経路を構築する簡略化した例。
+ */
+export const VORONOI_PATH_POINTS: GeometryPoint[] = [
+  { id: "O1", x: 2, y: 7 },
+  { id: "O2", x: 5, y: 2 },
+  { id: "O3", x: 8, y: 7 },
+  { id: "S", x: 0, y: 4.5 },
+  { id: "V1", x: 3.5, y: 5.5 },
+  { id: "V2", x: 6.5, y: 5.5 },
+  { id: "G", x: 10, y: 4.5 },
+];
+
+export function voronoiPathPlanningSteps(): GeometryFrame[] {
+  const points = VORONOI_PATH_POINTS;
+  const frames: GeometryFrame[] = [];
+  const states = idleStates(points);
+  const segs: GeometrySegment[] = [];
+
+  states.O1 = "rejected";
+  states.O2 = "rejected";
+  states.O3 = "rejected";
+  frames.push(frame(states, segs, "3つの障害物代表点(O1〜O3)を配置する。これらから最も遠い場所だけを経路候補とみなす"));
+
+  states.V1 = "candidate";
+  states.V2 = "candidate";
+  frames.push(frame(states, segs, "ボロノイ図を計算し、隣接する障害物からちょうど等距離になる頂点V1・V2を骨格線(ボロノイグラフ)のノードとして抽出"));
+
+  states.S = "current";
+  segs.push({ from: "S", to: "V1", state: "active" });
+  frames.push(frame(states, segs, "現在位置Sを最寄りのボロノイグラフ上の点V1へ接続する"));
+
+  states.S = "hull";
+  states.V1 = "hull";
+  states.V2 = "current";
+  segs.push({ from: "V1", to: "V2", state: "active" });
+  frames.push(frame(states, segs, "骨格線に沿ってV1→V2をダイクストラ法で辿る(各点は障害物から最大限離れている)"));
+
+  states.V2 = "hull";
+  states.G = "hull";
+  segs.push({ from: "V2", to: "G", state: "active" });
+  frames.push(frame(states, segs, "V2からゴールGへ接続し、経路S→V1→V2→Gが確定した"));
+
+  for (const seg of segs) seg.state = "final";
+  frames.push(
+    frame(states, segs, "計算完了。この経路は定義上どの障害物からもできるだけ離れた場所を通るため、衝突マージンの大きい安全な経路になっている"),
+  );
+
+  return frames;
+}
+
 export const GEOMETRY_DATASETS: Record<string, GeometryDataset> = {
   "graham-scan": { points: HULL_POINTS },
   "jarvis-march": { points: HULL_POINTS },
+  "reciprocal-velocity-obstacles": { points: RVO_POINTS },
+  "voronoi-path-planning": { points: VORONOI_PATH_POINTS },
 };
 
 export const GEOMETRY_VISUALIZERS: Record<string, () => GeometryFrame[]> = {
   "graham-scan": grahamScanSteps,
   "jarvis-march": jarvisMarchSteps,
+  "reciprocal-velocity-obstacles": reciprocalVelocityObstaclesSteps,
+  "voronoi-path-planning": voronoiPathPlanningSteps,
 };
