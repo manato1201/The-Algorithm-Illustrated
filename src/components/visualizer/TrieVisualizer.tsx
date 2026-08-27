@@ -6,6 +6,7 @@ import { PlaybackControls } from "./PlaybackControls";
 import { ZoomableStage } from "./ZoomableStage";
 import { useStepPlayer } from "./useStepPlayer";
 import { useWorkerFrames } from "./useWorkerFrames";
+import { ParticleBurstLayer, type ParticleBurst } from "./ParticleBurstLayer";
 import { stateColors } from "@/lib/design-tokens";
 import type { TrieFrame, TrieNodeState } from "@/lib/trie-visualizer";
 import type { WorkerRequest } from "@/workers/algorithm-worker";
@@ -173,12 +174,38 @@ export function TrieVisualizer({ algorithmId }: TrieVisualizerProps) {
     });
   }, [frames, stepIndex]);
 
+  const bursts = useMemo<ParticleBurst[]>(() => {
+    const currentFrame = frames[stepIndex];
+    const previousFrame = frames[stepIndex - 1];
+    if (!currentFrame) return [];
+    const positions = computeLayout(currentFrame.nodes, currentFrame.rootId);
+    const result: ParticleBurst[] = [];
+
+    Object.values(currentFrame.nodes).forEach((node) => {
+      const state = currentFrame.nodeStates[node.id] ?? "idle";
+      const previousState = previousFrame?.nodeStates[node.id];
+      if ((state === "inserted" || state === "matched") && previousState !== state) {
+        const pos = positions[node.id];
+        result.push({
+          id: `${stepIndex}-${node.id}-${state}`,
+          xRatio: pos.x,
+          yRatio: pos.y,
+          color: NODE_COLORS[state],
+        });
+      }
+    });
+    return result;
+  }, [frames, stepIndex]);
+
   const currentFrame = frames[stepIndex];
 
   return (
     <div className={styles.visualizer}>
       <ZoomableStage>
-        <canvas ref={canvasRef} className={styles.canvas} aria-hidden="true" />
+        <div className={styles.canvasWrap}>
+          <canvas ref={canvasRef} className={styles.canvas} aria-hidden="true" />
+          <ParticleBurstLayer bursts={bursts} />
+        </div>
       </ZoomableStage>
       <p className={styles.description} role="status">
         {isComputing ? "Web Workerで計算中…" : currentFrame?.description}

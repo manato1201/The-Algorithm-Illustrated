@@ -4,6 +4,10 @@
   gap: var(--space-4);
 }
 
+.canvasWrap {
+  position: relative;
+}
+
 /* フルブリード可視化キャンバス(ui-design.md 2.4節: 唯一の破調区画) */
 .canvas {
   width: 100%;

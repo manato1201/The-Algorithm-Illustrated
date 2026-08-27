@@ -6,6 +6,8 @@ import { PlaybackControls } from "./PlaybackControls";
 import { ZoomableStage } from "./ZoomableStage";
 import { useStepPlayer } from "./useStepPlayer";
 import { useWorkerFrames } from "./useWorkerFrames";
+import { ParticleBurstLayer, type ParticleBurst } from "./ParticleBurstLayer";
+import { stateColors } from "@/lib/design-tokens";
 import { DP_TABLE_META, type DPCellState, type DPFrame } from "@/lib/dp-visualizers";
 import type { WorkerRequest } from "@/workers/algorithm-worker";
 
@@ -33,6 +35,30 @@ export function DPTableVisualizer({ algorithmId }: DPTableVisualizerProps) {
 
   const meta = DP_TABLE_META[algorithmId];
   const currentFrame = frames[stepIndex];
+
+  const bursts = useMemo<ParticleBurst[]>(() => {
+    const frame = frames[stepIndex];
+    const previousFrame = frames[stepIndex - 1];
+    if (!frame) return [];
+    const totalRows = frame.table.length + 1; // +1: ヘッダー行
+    const result: ParticleBurst[] = [];
+
+    frame.table.forEach((row, i) => {
+      const totalCols = row.length + 1; // +1: 行ヘッダー列
+      row.forEach((cell, w) => {
+        const previousState = previousFrame?.table[i]?.[w]?.state;
+        if (cell.state === "settled" && previousState !== "settled") {
+          result.push({
+            id: `${stepIndex}-${i}-${w}-settled`,
+            xRatio: (w + 1.5) / totalCols,
+            yRatio: (i + 1.5) / totalRows,
+            color: stateColors.settled,
+          });
+        }
+      });
+    });
+    return result;
+  }, [frames, stepIndex]);
 
   if (!meta) return null;
 
@@ -72,6 +98,7 @@ export function DPTableVisualizer({ algorithmId }: DPTableVisualizerProps) {
               ))}
             </tbody>
           </table>
+          <ParticleBurstLayer bursts={bursts} />
         </div>
       </ZoomableStage>
 
