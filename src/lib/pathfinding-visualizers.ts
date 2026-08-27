@@ -788,6 +788,577 @@ export function wireworldSteps(): GridFrame[] {
   return frames;
 }
 
+/**
+ * フローフィールド経路探索のステップ列を生成する。content/algorithms/flow-field-pathfinding.mdの
+ * build_integration_field()と同じ要領で、ゴールを起点に逆方向BFSでコストを伝播させる
+ * (通常のBFS/ダイクストラ法とは探索の向きが逆になる点が本質)。全到達可能セルの統合コストが
+ * 確定した時点で「全セルがゴールへの方向を持つ」ことを、それらを一括でpath色に塗ることで表す
+ * (実際のフローフィールドは方向ベクトルだが、このグリッド表現では方向までは描画できないため、
+ * 「経路が確定した」という到達可能性の側面を可視化する)。
+ */
+export function flowFieldPathfindingSteps(): GridFrame[] {
+  const grid = buildInitialGrid();
+  const frames: GridFrame[] = [
+    {
+      cellStates: cloneGrid(grid),
+      description: "ゴールを起点に、逆方向BFSで統合コストフィールド(Integration Field)の構築を開始する",
+    },
+  ];
+  const visited = new Set<string>([key(GOAL[0], GOAL[1])]);
+  const queue: [number, number][] = [[GOAL[0], GOAL[1]]];
+
+  while (queue.length > 0) {
+    const [r, c] = queue.shift()!;
+    if (grid[r][c] !== "start" && grid[r][c] !== "goal") {
+      grid[r][c] = "visited";
+    }
+    frames.push({
+      cellStates: cloneGrid(grid),
+      description: `(${r + 1}, ${c + 1})の統合コストを確定し、隣接セルへコストを伝播する`,
+    });
+
+    const neighbors: [number, number][] = [
+      [r - 1, c],
+      [r + 1, c],
+      [r, c - 1],
+      [r, c + 1],
+    ];
+    for (const [nr, nc] of neighbors) {
+      if (!inBounds(nr, nc) || isWall(nr, nc) || visited.has(key(nr, nc))) continue;
+      visited.add(key(nr, nc));
+      queue.push([nr, nc]);
+      if (grid[nr][nc] !== "start" && grid[nr][nc] !== "goal") grid[nr][nc] = "frontier";
+    }
+    if (neighbors.some(([nr, nc]) => inBounds(nr, nc) && !isWall(nr, nc))) {
+      frames.push({
+        cellStates: cloneGrid(grid),
+        description: `新たに到達したセルをキューに追加(キュー内 ${queue.length}件)`,
+      });
+    }
+  }
+
+  frames.push({
+    cellStates: cloneGrid(grid),
+    description: "統合コストフィールド完成。次に各セルで最もコストの低い隣接セルを選び、方向ベクトル場(フローフィールド)を構築する",
+  });
+
+  for (const k of visited) {
+    const [r, c] = k.split(",").map(Number);
+    if (grid[r][c] !== "start" && grid[r][c] !== "goal") grid[r][c] = "path";
+  }
+  frames.push({
+    cellStates: cloneGrid(grid),
+    description: "計算完了。到達可能な全セルがゴールへの方向を持つフローフィールドとなった。以降どのユニットもO(1)の参照だけで移動できる",
+  });
+
+  return frames;
+}
+
+export const LOS_OBSERVER: [number, number] = [0, 0];
+export const LOS_TARGETS: [number, number][] = [
+  [0, 15],
+  [9, 8],
+  [4, 13],
+];
+
+/**
+ * レイキャストによる視線判定(DDA法)のステップ列を生成する。
+ * content/algorithms/line-of-sight-raycasting.mdのhas_line_of_sight()と全く同じ判定ロジックを、
+ * 観測者から3方向のターゲットへ実際にレイを飛ばして1マスずつ辿る過程として可視化する。
+ * 途中で壁に衝突すれば「遮られている」、衝突せず到達すれば「見える」と判定する(始点・終点自身は
+ * 障害物判定に含めない、という元記事のルールをそのまま踏襲する)。
+ */
+export function lineOfSightRaycastingSteps(): GridFrame[] {
+  const grid = buildInitialGrid();
+  const [or_, oc] = LOS_OBSERVER;
+  grid[or_][oc] = "frontier";
+  const frames: GridFrame[] = [
+    {
+      cellStates: cloneGrid(grid),
+      description: `観測者(${or_ + 1}, ${oc + 1})から複数のターゲットへ視線判定(DDA法)を行う`,
+    },
+  ];
+
+  for (const [tr, tc] of LOS_TARGETS) {
+    const dr = tr - or_;
+    const dc = tc - oc;
+    const steps = Math.max(Math.abs(dr), Math.abs(dc));
+    const rInc = dr / steps;
+    const cInc = dc / steps;
+    let r = or_;
+    let c = oc;
+    let blocked = false;
+    const rayCells: [number, number][] = [];
+
+    for (let i = 0; i <= steps; i++) {
+      const cr = Math.round(r);
+      const cc = Math.round(c);
+      const isEndpoint = (cr === or_ && cc === oc) || (cr === tr && cc === tc);
+      if (!isEndpoint) {
+        rayCells.push([cr, cc]);
+        if (isWall(cr, cc)) {
+          blocked = true;
+          frames.push({
+            cellStates: cloneGrid(grid),
+            description: `(${cr + 1}, ${cc + 1})で障害物に衝突。ターゲット(${tr + 1}, ${tc + 1})への視線は遮られている(見えない)`,
+          });
+          break;
+        }
+        grid[cr][cc] = "frontier";
+        frames.push({
+          cellStates: cloneGrid(grid),
+          description: `(${cr + 1}, ${cc + 1})を走査。障害物なし`,
+        });
+      }
+      r += rInc;
+      c += cInc;
+    }
+
+    if (!blocked) {
+      for (const [cr, cc] of rayCells) grid[cr][cc] = "path";
+      frames.push({
+        cellStates: cloneGrid(grid),
+        description: `ターゲット(${tr + 1}, ${tc + 1})まで障害物なし。視線が通っている(発見)`,
+      });
+    } else {
+      for (const [cr, cc] of rayCells) {
+        if (grid[cr][cc] === "frontier") grid[cr][cc] = "visited";
+      }
+      frames.push({
+        cellStates: cloneGrid(grid),
+        description: `ターゲット(${tr + 1}, ${tc + 1})への視線判定が終了(遮られている)`,
+      });
+    }
+  }
+
+  frames.push({
+    cellStates: cloneGrid(grid),
+    description: "計算完了。観測者から3方向への視線判定を行い、それぞれの障害物の有無を確認した",
+  });
+  return frames;
+}
+
+function bfsDistanceField(from: [number, number]): number[][] {
+  const dist: number[][] = Array.from({ length: MAZE_ROWS }, () => Array(MAZE_COLS).fill(-1));
+  dist[from[0]][from[1]] = 0;
+  const queue: [number, number][] = [from];
+  while (queue.length > 0) {
+    const [r, c] = queue.shift()!;
+    const neighbors: [number, number][] = [
+      [r - 1, c],
+      [r + 1, c],
+      [r, c - 1],
+      [r, c + 1],
+    ];
+    for (const [nr, nc] of neighbors) {
+      if (!inBounds(nr, nc) || isWall(nr, nc) || dist[nr][nc] !== -1) continue;
+      dist[nr][nc] = dist[r][c] + 1;
+      queue.push([nr, nc]);
+    }
+  }
+  return dist;
+}
+
+export const CROWD_AGENT_STARTS: [number, number][] = [
+  [0, 2],
+  [4, 0],
+  [8, 1],
+];
+
+/**
+ * セルオートマトン群衆モデルのステップ列を生成する。content/algorithms/cellular-automaton-crowd.mdの
+ * step_crowd()と同じ「フロアフィールド(ゴールまでの距離)が下がる隣接セルへ移動する」規則を、
+ * 3人の歩行者に同時適用する。同じセルを2人以上が希望した場合はエージェント番号の小さい方を
+ * 優先する決定的なルールで競合解決する(元記事はランダム選択だが、可視化は再現性のため決定的にする)。
+ */
+export function cellularAutomatonCrowdSteps(): GridFrame[] {
+  const grid = buildInitialGrid();
+  const floorField = bfsDistanceField([GOAL[0], GOAL[1]]);
+  const positions: [number, number][] = CROWD_AGENT_STARTS.map((p) => [...p] as [number, number]);
+  const frames: GridFrame[] = [];
+
+  const render = (description: string) => {
+    const snapshot = cloneGrid(grid);
+    positions.forEach(([r, c], i) => {
+      if (snapshot[r][c] !== "goal") snapshot[r][c] = i === 0 ? "frontier" : "visited";
+    });
+    frames.push({ cellStates: snapshot, description });
+  };
+
+  render("3人の歩行者(P1〜P3)がフロアフィールド(ゴールまでの距離)に従って移動を開始する");
+
+  for (let step = 1; step <= 12; step++) {
+    if (positions.every(([r, c]) => r === GOAL[0] && c === GOAL[1])) break;
+    const proposals = new Map<string, number[]>();
+
+    positions.forEach(([r, c], i) => {
+      if (r === GOAL[0] && c === GOAL[1]) return;
+      const neighbors: [number, number][] = [
+        [r - 1, c],
+        [r + 1, c],
+        [r, c - 1],
+        [r, c + 1],
+      ];
+      let best: [number, number] | null = null;
+      let bestDist = floorField[r][c];
+      for (const [nr, nc] of neighbors) {
+        if (!inBounds(nr, nc) || isWall(nr, nc) || floorField[nr][nc] === -1) continue;
+        if (floorField[nr][nc] < bestDist) {
+          bestDist = floorField[nr][nc];
+          best = [nr, nc];
+        }
+      }
+      const target = best ?? [r, c];
+      const k = key(target[0], target[1]);
+      const list = proposals.get(k) ?? [];
+      list.push(i);
+      proposals.set(k, list);
+    });
+
+    let moved = false;
+    for (const [k, agents] of proposals) {
+      const [tr, tc] = k.split(",").map(Number);
+      if (tr === positions[agents[0]][0] && tc === positions[agents[0]][1] && agents.length === 1) continue;
+      const winner = Math.min(...agents);
+      if (positions[winner][0] !== tr || positions[winner][1] !== tc) {
+        positions[winner] = [tr, tc];
+        moved = true;
+      }
+    }
+    render(
+      moved
+        ? `ステップ${step}: 各歩行者が空きセルへの移動を提案し、競合するセルは番号の小さいエージェントが優先された`
+        : `ステップ${step}: 全員が現在のセルに留まった(渋滞)`,
+    );
+  }
+
+  frames.push({
+    cellStates: cloneGrid(grid),
+    description: "計算完了。単純な「空きセルへの移動確率」規則の繰り返しだけで、群衆の流れが再現された",
+  });
+  return frames;
+}
+
+export const INFLUENCE_ALLY_SOURCE: [number, number] = [1, 1];
+export const INFLUENCE_ENEMY_SOURCE: [number, number] = [8, 14];
+
+/**
+ * 影響マップのステップ列を生成する。content/algorithms/influence-map.mdのbuild_influence_map()と
+ * 同じ式(influence = Σ strength / (1 + distance))で、味方拠点(+10)・敵拠点(-10)からの
+ * 影響力を全セルに合算し、結果を3段階(優勢/拮抗/劣勢)に離散化して塗り分ける。
+ * BFSのような探索過程を持たない直接計算のアルゴリズムであるため、フレーム数は少ない。
+ */
+export function influenceMapSteps(): GridFrame[] {
+  const grid = buildInitialGrid();
+  const [ar, ac] = INFLUENCE_ALLY_SOURCE;
+  const [er, ec] = INFLUENCE_ENEMY_SOURCE;
+  grid[ar][ac] = "goal";
+  grid[er][ec] = "difficult";
+
+  const frames: GridFrame[] = [
+    {
+      cellStates: cloneGrid(grid),
+      description: `味方拠点(${ar + 1}, ${ac + 1}、強さ+10)と敵拠点(${er + 1}, ${ec + 1}、強さ-10)を配置する`,
+    },
+  ];
+
+  const distance = (r: number, c: number, sr: number, sc: number) => Math.hypot(r - sr, c - sc);
+
+  for (let r = 0; r < MAZE_ROWS; r++) {
+    for (let c = 0; c < MAZE_COLS; c++) {
+      if (isWall(r, c) || (r === ar && c === ac) || (r === er && c === ec)) continue;
+      const value = 10 / (1 + distance(r, c, ar, ac)) - 10 / (1 + distance(r, c, er, ec));
+      if (value > 0.6) grid[r][c] = "path";
+      else if (value < -0.6) grid[r][c] = "difficult";
+      else grid[r][c] = "frontier";
+    }
+  }
+  frames.push({
+    cellStates: cloneGrid(grid),
+    description:
+      "各セルについて味方・敵からの影響を距離減衰させながら合算した勢力マップが完成(緑=味方優勢、水色=拮抗/国境線候補、赤=敵優勢)",
+  });
+
+  frames.push({
+    cellStates: cloneGrid(grid),
+    description: "計算完了。この数値マップを参照するだけで「どこを守るべきか」「どこが手薄か」を判断できる",
+  });
+  return frames;
+}
+
+/**
+ * ナビゲーションメッシュ生成(2D簡略版)のステップ列を生成する。
+ * content/algorithms/navmesh-generation.mdのextract_walkable_rectangles()と全く同じ貪欲アルゴリズムで、
+ * 歩行可能セルを走査順に最大矩形へ併合していく。1つの矩形=1つの凸多角形(ナビゲーションメッシュの1面)
+ * に相当する。
+ */
+export function navmeshGenerationSteps(): GridFrame[] {
+  const grid = buildInitialGrid();
+  const walkable: boolean[][] = Array.from({ length: MAZE_ROWS }, (_, r) =>
+    Array.from({ length: MAZE_COLS }, (_, c) => !isWall(r, c)),
+  );
+  const used: boolean[][] = Array.from({ length: MAZE_ROWS }, () => Array(MAZE_COLS).fill(false));
+  const frames: GridFrame[] = [
+    { cellStates: cloneGrid(grid), description: "衝突判定メッシュから歩行可能セルを抽出済み。少数の矩形(凸多角形)へ貪欲に併合していく" },
+  ];
+
+  for (let y = 0; y < MAZE_ROWS; y++) {
+    for (let x = 0; x < MAZE_COLS; x++) {
+      if (!walkable[y][x] || used[y][x]) continue;
+
+      let width = 0;
+      while (x + width < MAZE_COLS && walkable[y][x + width] && !used[y][x + width]) width++;
+      let height = 1;
+      while (
+        y + height < MAZE_ROWS &&
+        Array.from({ length: width }, (_, w) => w).every((w) => walkable[y + height][x + w] && !used[y + height][x + w])
+      ) {
+        height++;
+      }
+
+      for (let dy = 0; dy < height; dy++) {
+        for (let dx = 0; dx < width; dx++) {
+          used[y + dy][x + dx] = true;
+          if (grid[y + dy][x + dx] !== "start" && grid[y + dy][x + dx] !== "goal") {
+            grid[y + dy][x + dx] = "path";
+          }
+        }
+      }
+      frames.push({
+        cellStates: cloneGrid(grid),
+        description: `(${y + 1}, ${x + 1})を起点に幅${width}×高さ${height}の矩形領域を1つの凸多角形として確定`,
+      });
+    }
+  }
+
+  frames.push({
+    cellStates: cloneGrid(grid),
+    description: "計算完了。グリッド全体が少数の凸領域(ナビゲーションメッシュ)へ縮約された",
+  });
+  return frames;
+}
+
+/**
+ * 引力(ゴール方向)+斥力(壁・追加の反発点までの距離)を合成したポテンシャル場の勾配に
+ * 貪欲に従って格子上を1歩ずつ移動する共通ロジック。content/algorithms/potential-field-navigation.md
+ * (ゲームAI向け)とcontent/algorithms/potential-field-path-planning.md(ロボティクス向け)は
+ * 同じ数式(引力+斥力ポテンシャルの負の勾配)を扱う姉妹記事のため、格子上の離散化ロジックを共有し、
+ * 開始地点・追加の反発点(社会的な力モデルの「他の歩行者」等)・説明文だけを差し替える。
+ */
+function gradientDescentWalkSteps(
+  start: [number, number],
+  extraRepulsionPoints: [number, number][],
+  intro: string,
+  stepLabel: string,
+  outroSuccess: string,
+  outroStuck: string,
+): GridFrame[] {
+  const grid = buildInitialGrid();
+  const goalDist = bfsDistanceField([GOAL[0], GOAL[1]]);
+
+  const nearestWallDistance = (r: number, c: number): number => {
+    let best = Infinity;
+    for (let dr = -2; dr <= 2; dr++) {
+      for (let dc = -2; dc <= 2; dc++) {
+        const nr = r + dr;
+        const nc = c + dc;
+        if (inBounds(nr, nc) && isWall(nr, nc)) {
+          best = Math.min(best, Math.hypot(dr, dc));
+        }
+      }
+    }
+    for (const [pr, pc] of extraRepulsionPoints) {
+      best = Math.min(best, Math.hypot(r - pr, c - pc));
+    }
+    return best;
+  };
+  const potential = (r: number, c: number): number => {
+    const attract = goalDist[r][c] === -1 ? Infinity : goalDist[r][c];
+    const wallDist = nearestWallDistance(r, c);
+    const repel = wallDist <= 1.5 ? (1.5 - wallDist) * 6 : 0;
+    return attract + repel;
+  };
+
+  let [r, c] = start;
+  const visitedCells = new Set<string>([key(r, c)]);
+  const frames: GridFrame[] = [{ cellStates: cloneGrid(grid), description: intro }];
+
+  let stuck = false;
+  for (let step = 1; step <= 40; step++) {
+    if (r === GOAL[0] && c === GOAL[1]) break;
+    const neighbors: [number, number][] = [
+      [r - 1, c],
+      [r + 1, c],
+      [r, c - 1],
+      [r, c + 1],
+    ];
+    let best: [number, number] | null = null;
+    let bestP = potential(r, c);
+    for (const [nr, nc] of neighbors) {
+      if (!inBounds(nr, nc) || isWall(nr, nc)) continue;
+      const p = potential(nr, nc);
+      if (p < bestP - 1e-9) {
+        bestP = p;
+        best = [nr, nc];
+      }
+    }
+    if (!best) {
+      stuck = true;
+      frames.push({
+        cellStates: cloneGrid(grid),
+        description: `ステップ${step}: (${r + 1}, ${c + 1})で全ての隣接セルのポテンシャルが現在地以上になった(局所的最小値に陥った)`,
+      });
+      break;
+    }
+    [r, c] = best;
+    const k = key(r, c);
+    if (visitedCells.has(k)) {
+      stuck = true;
+      frames.push({
+        cellStates: cloneGrid(grid),
+        description: `ステップ${step}: 既に訪れたセル(${r + 1}, ${c + 1})に戻ってきた(振動、局所的最小値の兆候)`,
+      });
+      break;
+    }
+    visitedCells.add(k);
+    if (grid[r][c] !== "goal") grid[r][c] = "visited";
+    frames.push({
+      cellStates: cloneGrid(grid),
+      description: `ステップ${step}: ${stepLabel}、(${r + 1}, ${c + 1})へ1歩移動`,
+    });
+  }
+
+  frames.push({
+    cellStates: cloneGrid(grid),
+    description: stuck ? outroStuck : outroSuccess,
+  });
+  return frames;
+}
+
+/**
+ * ポテンシャルフィールド法によるナビゲーションのステップ列を生成する。
+ * content/algorithms/potential-field-navigation.mdのpotential_field_step()の発想を格子上で離散化し、
+ * 「ゴールまでの距離(引力)」と「最も近い壁までの距離の逆数(斥力)」の和が最小になる隣接セルへ
+ * 貪欲に移動する。元記事が弱点として挙げる局所的最小値(周囲より自分の方が低ポテンシャルになり
+ * 動けなくなる状態)に実際に陥った場合は、そのままその結果を報告する。
+ */
+export function potentialFieldNavigationSteps(): GridFrame[] {
+  return gradientDescentWalkSteps(
+    START,
+    [],
+    "引力(ゴール方向)と斥力(壁からの距離)を合成したポテンシャル場に従って移動を開始する",
+    "負の勾配方向(引力+斥力の合成)",
+    "計算完了。経路探索なしに、各ステップの局所的な勾配だけを見て目的地へ到達した",
+    "計算完了。局所的最小値に陥り、経路の事前計画なしではこれ以上目的地へ近づけなかった(RVOやA*との併用が実務では有効)",
+  );
+}
+
+/**
+ * ポテンシャル法(人工ポテンシャル場法)によるロボット経路計画のステップ列を生成する。
+ * content/algorithms/potential-field-path-planning.mdと数式は同一(引力+斥力ポテンシャルの負の勾配)
+ * だが、キャラクターAI向けの姉妹記事とは異なる開始地点(壁の凹みに近い位置)から出発させることで、
+ * 記事が「最大の弱点」として挙げる局所的最小値問題そのものを直接体験できるようにする。
+ */
+export function potentialFieldPathPlanningSteps(): GridFrame[] {
+  return gradientDescentWalkSteps(
+    [3, 3],
+    [],
+    "ゴールを引力源、壁を斥力源とする仮想的なポテンシャル場を定義し、ロボットがその勾配を下るように移動を開始する",
+    "負の勾配方向へ",
+    "計算完了。勾配に従うだけの反応的な制御で、経路の事前計画なしに目的地へ到達した",
+    "計算完了。引力と斥力が打ち消し合う局所的な谷にはまり込み、動けなくなった(Dynamic Window Approachが抱える弱点と本質的に同じ現象)",
+  );
+}
+
+/**
+ * ソーシャルフォースモデルのステップ列を生成する。content/algorithms/social-force-model.mdの
+ * 「目的地への駆動力+他の歩行者・壁からの斥力の合成」を、gradientDescentWalkSteps()の壁反発に
+ * 「他の歩行者」を表す2つの追加反発点を加えることで表現する。ポテンシャルフィールド法(壁のみ)との
+ * 違いは、動的な他者(歩行者)も斥力源として扱う点にある。
+ */
+export function socialForceModelSteps(): GridFrame[] {
+  return gradientDescentWalkSteps(
+    START,
+    [
+      [3, 5],
+      [6, 9],
+    ],
+    "目的地への駆動力と、他の歩行者・壁からのパーソナルスペース反発力を合成した「社会的な力」に従って移動を開始する",
+    "駆動力+社会的反発力の合成",
+    "計算完了。他の歩行者を避けながら、力の合成だけで自然な経路が形成された",
+    "計算完了。他の歩行者と壁からの反発力が拮抗し、局所的な谷にはまり込んで動けなくなった",
+  );
+}
+
+/**
+ * 連続体力学による群衆シミュレーションのステップ列を生成する。
+ * content/algorithms/continuum-crowd-model.mdの「Eikonal方程式をFast Marching Method(ダイクストラ法に
+ * 似たアルゴリズム)で解く」というコスト場構築を、ゴールを起点に密度依存のコスト(WEIGHT_MAPの高コスト
+ * 地形を「密集した群衆エリア」に見立てる)で伝播させるダイクストラ法として可視化する。全到達可能セルの
+ * コストが確定した時点で、フローフィールド経路探索と同様「全セルが移動方向を持つ」ことを一括で示す。
+ */
+export function continuumCrowdModelSteps(): GridFrame[] {
+  const grid = buildInitialGrid();
+  const frames: GridFrame[] = [
+    {
+      cellStates: cloneGrid(grid),
+      description: "ゴールを起点に、密度依存のコスト場(Eikonal方程式)をFast Marching Method的に構築する",
+    },
+  ];
+  const dist = new Map<string, number>();
+  const visited = new Set<string>();
+  const startKey = key(GOAL[0], GOAL[1]);
+  dist.set(startKey, 0);
+  const queue: [number, number][] = [[GOAL[0], GOAL[1]]];
+
+  while (queue.length > 0) {
+    queue.sort((a, b) => (dist.get(key(...a)) ?? Infinity) - (dist.get(key(...b)) ?? Infinity));
+    const [r, c] = queue.shift()!;
+    const currentKey = key(r, c);
+    if (visited.has(currentKey)) continue;
+    visited.add(currentKey);
+    if (grid[r][c] !== "start" && grid[r][c] !== "goal") grid[r][c] = "visited";
+    frames.push({
+      cellStates: cloneGrid(grid),
+      description: `(${r + 1}, ${c + 1})の累積コスト${dist.get(currentKey)}を確定(密度が高い地形ほどコストが高い)`,
+    });
+
+    const neighbors: [number, number][] = [
+      [r - 1, c],
+      [r + 1, c],
+      [r, c - 1],
+      [r, c + 1],
+    ];
+    let pushed = false;
+    for (const [nr, nc] of neighbors) {
+      if (!inBounds(nr, nc) || isWall(nr, nc) || visited.has(key(nr, nc))) continue;
+      const candidateDist = dist.get(currentKey)! + weightOf(nr, nc);
+      const neighborKey = key(nr, nc);
+      if (candidateDist < (dist.get(neighborKey) ?? Infinity)) {
+        dist.set(neighborKey, candidateDist);
+        if (grid[nr][nc] !== "start" && grid[nr][nc] !== "goal") grid[nr][nc] = "frontier";
+        queue.push([nr, nc]);
+        pushed = true;
+      }
+    }
+    if (pushed) {
+      frames.push({ cellStates: cloneGrid(grid), description: `隣接セルへコストを伝播(キュー内 ${queue.length}件)` });
+    }
+  }
+
+  for (const k of visited) {
+    const [r, c] = k.split(",").map(Number);
+    if (grid[r][c] !== "start" && grid[r][c] !== "goal") grid[r][c] = "path";
+  }
+  frames.push({
+    cellStates: cloneGrid(grid),
+    description:
+      "計算完了。コスト場が確定し、密度の高い地形を避けた「最もコストの低い目的地への方向」がマップ全体で得られた。エージェント数が増えても1体あたりの追加コストはほぼ一定",
+  });
+
+  return frames;
+}
+
 export const PATHFINDING_VISUALIZERS: Record<string, () => GridFrame[]> = {
   bfs: bfsSteps,
   dfs: dfsSteps,
@@ -797,6 +1368,15 @@ export const PATHFINDING_VISUALIZERS: Record<string, () => GridFrame[]> = {
   "conways-game-of-life": conwaysGameOfLifeSteps,
   "langtons-ant": langtonsAntSteps,
   wireworld: wireworldSteps,
+  "flow-field-pathfinding": flowFieldPathfindingSteps,
+  "line-of-sight-raycasting": lineOfSightRaycastingSteps,
+  "cellular-automaton-crowd": cellularAutomatonCrowdSteps,
+  "influence-map": influenceMapSteps,
+  "navmesh-generation": navmeshGenerationSteps,
+  "potential-field-navigation": potentialFieldNavigationSteps,
+  "potential-field-path-planning": potentialFieldPathPlanningSteps,
+  "social-force-model": socialForceModelSteps,
+  "continuum-crowd-model": continuumCrowdModelSteps,
   "best-first-search": bestFirstSearchSteps,
   "bidirectional-search": bidirectionalSearchSteps,
 };

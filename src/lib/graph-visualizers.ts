@@ -7456,6 +7456,1091 @@ export function mementoPatternSteps(): GraphFrame[] {
   return frames;
 }
 
+/**
+ * ビヘイビアツリーのデモ用データ。content/algorithms/behavior-tree.mdのenemy_ai例
+ * (Selector[Sequence[見える?, Selector[Sequence[近い?, 攻撃], 追跡]], パトロール])と対応する木構造。
+ */
+export const BEHAVIOR_TREE_NODES: GraphNode[] = [
+  { id: "root", label: "Sel(根)", x: 0.5, y: 0.08 },
+  { id: "seqA", label: "Seq", x: 0.3, y: 0.3 },
+  { id: "actPatrol", label: "パトロール", x: 0.78, y: 0.3 },
+  { id: "condVisible", label: "見える?", x: 0.14, y: 0.52 },
+  { id: "selB", label: "Sel", x: 0.42, y: 0.52 },
+  { id: "seqC", label: "Seq", x: 0.3, y: 0.74 },
+  { id: "actChase", label: "追跡", x: 0.56, y: 0.74 },
+  { id: "condDist", label: "近い?", x: 0.2, y: 0.94 },
+  { id: "actAttack", label: "攻撃", x: 0.42, y: 0.94 },
+];
+export const BEHAVIOR_TREE_EDGES: GraphEdge[] = [
+  { id: "root-seqA", from: "root", to: "seqA", weight: 1 },
+  { id: "root-actPatrol", from: "root", to: "actPatrol", weight: 1 },
+  { id: "seqA-condVisible", from: "seqA", to: "condVisible", weight: 1 },
+  { id: "seqA-selB", from: "seqA", to: "selB", weight: 1 },
+  { id: "selB-seqC", from: "selB", to: "seqC", weight: 1 },
+  { id: "selB-actChase", from: "selB", to: "actChase", weight: 1 },
+  { id: "seqC-condDist", from: "seqC", to: "condDist", weight: 1 },
+  { id: "seqC-actAttack", from: "seqC", to: "actAttack", weight: 1 },
+];
+
+/**
+ * ビヘイビアツリーのステップ列を生成する。content/algorithms/behavior-tree.mdのenemy_ai例に対し、
+ * 「敵が見えて近い(攻撃成功)」「敵が見えない(パトロールへフォールバック)」の2シナリオをtickする。
+ * Sequence(AND、最初の失敗で即座に失敗)とSelector(OR、最初の成功で即座に成功=残りの子は
+ * 一切tickされない)の短絡評価の違いを、2シナリオの対比としてそのまま可視化する。
+ */
+export function behaviorTreeSteps(): GraphFrame[] {
+  const nodes = BEHAVIOR_TREE_NODES;
+  const edges = BEHAVIOR_TREE_EDGES;
+
+  const frames: GraphFrame[] = [
+    {
+      nodeStates: initNodeStates(nodes, "idle"),
+      edgeStates: initEdgeStates(edges, "idle"),
+      distances: {},
+      description: "ビヘイビアツリーを構築。ルートはSelector(セレクタ)で、左の子から優先的にtickする",
+    },
+  ];
+
+  const runScenario = (title: string, enemyVisible: boolean, close: boolean) => {
+    const nodeStates = initNodeStates(nodes, "idle");
+    const edgeStates = initEdgeStates(edges, "idle");
+    const push = (description: string) =>
+      frames.push({
+        nodeStates: { ...nodeStates },
+        edgeStates: { ...edgeStates },
+        distances: {},
+        description: `[${title}] ${description}`,
+      });
+
+    nodeStates.root = "visited";
+    push("root(Selector)をtick。1番目の子Seqから試す");
+
+    edgeStates["root-seqA"] = "checking";
+    nodeStates.seqA = "visited";
+    push("Seq(Sequence)をtick。1番目の子(見える?)から試す");
+
+    edgeStates["seqA-condVisible"] = "checking";
+    nodeStates.condVisible = "visited";
+    if (enemyVisible) {
+      edgeStates["seqA-condVisible"] = "tree";
+      nodeStates.condVisible = "settled";
+      push("見える? → SUCCESS。Seqは次の子(Sel)へ進む");
+
+      edgeStates["seqA-selB"] = "checking";
+      nodeStates.selB = "visited";
+      push("Sel(Selector)をtick。1番目の子Seq(近接攻撃判定)から試す");
+
+      edgeStates["selB-seqC"] = "checking";
+      nodeStates.seqC = "visited";
+      push("Seqをtick。1番目の子(近い?)から試す");
+
+      edgeStates["seqC-condDist"] = "checking";
+      nodeStates.condDist = "visited";
+      if (close) {
+        edgeStates["seqC-condDist"] = "tree";
+        nodeStates.condDist = "settled";
+        push("近い? → SUCCESS。Seqは次の子(攻撃)へ進む");
+
+        edgeStates["seqC-actAttack"] = "checking";
+        nodeStates.actAttack = "visited";
+        edgeStates["seqC-actAttack"] = "tree";
+        nodeStates.actAttack = "settled";
+        push("攻撃 → SUCCESS");
+
+        nodeStates.seqC = "settled";
+        push("Seq(近接攻撃判定)は全ての子が成功 → SUCCESS");
+
+        edgeStates["selB-seqC"] = "tree";
+        nodeStates.selB = "settled";
+        push("Selは1番目の子が成功したため即座にSUCCESS。2番目の子(追跡)は一切tickされない(短絡評価)");
+      } else {
+        edgeStates["seqC-condDist"] = "rejected";
+        push("近い? → FAILURE。Seqはこの時点で即座にFAILUREを返す(残りの子=攻撃は一切tickされない)");
+
+        edgeStates["selB-seqC"] = "rejected";
+        push("Selの1番目の子(Seq)が失敗したため、2番目の子(追跡)を試す");
+
+        edgeStates["selB-actChase"] = "checking";
+        nodeStates.actChase = "visited";
+        edgeStates["selB-actChase"] = "tree";
+        nodeStates.actChase = "settled";
+        nodeStates.selB = "settled";
+        push("追跡 → RUNNING。Selはこれを採用しSUCCESS/RUNNINGとして返す");
+      }
+
+      edgeStates["seqA-selB"] = "tree";
+      nodeStates.seqA = "settled";
+      push("Seq(root直下)は全ての子が成功 → SUCCESS");
+
+      edgeStates["root-seqA"] = "tree";
+      nodeStates.root = "settled";
+      push("rootは1番目の子が成功したため即座にSUCCESS。2番目の子(パトロール)は一切tickされない(短絡評価)");
+    } else {
+      edgeStates["seqA-condVisible"] = "rejected";
+      push("見える? → FAILURE。Seqはこの時点で即座にFAILUREを返す(Sel以下のサブツリーは一切tickされない)");
+
+      edgeStates["root-seqA"] = "rejected";
+      push("rootの1番目の子(Seq)が失敗したため、2番目の子(パトロール)を試す");
+
+      edgeStates["root-actPatrol"] = "checking";
+      nodeStates.actPatrol = "visited";
+      edgeStates["root-actPatrol"] = "tree";
+      nodeStates.actPatrol = "settled";
+      nodeStates.root = "settled";
+      push("パトロール → RUNNING。rootはこれを採用しフォールバックする");
+    }
+  };
+
+  runScenario("敵を発見・近距離", true, true);
+  runScenario("敵を発見できず", false, false);
+
+  frames.push({
+    nodeStates: initNodeStates(nodes, "idle"),
+    edgeStates: initEdgeStates(edges, "idle"),
+    distances: {},
+    description:
+      "計算完了。同じ木構造のまま、世界の状況(ブラックボード)が変わるだけでSelector/Sequenceの短絡評価が異なる行動を自動的に選び出した",
+  });
+
+  return frames;
+}
+
+/**
+ * GOAPのデモ用データ。content/algorithms/goap.mdの世界状態探索と対応する。開始状態
+ * {ammo:false, dead:false}から、行動PickupAmmo→Attackを適用して目標{dead:true}に至る
+ * 最小コストのプランをA*探索と同様の手法(優先度付きキュー)で求める過程を可視化する。
+ */
+export const GOAP_NODES: GraphNode[] = [
+  { id: "s0", label: "S0", x: 0.12, y: 0.5 },
+  { id: "sAmmo", label: "S1", x: 0.5, y: 0.5 },
+  { id: "sGoal", label: "Sゴール", x: 0.88, y: 0.5 },
+];
+export const GOAP_EDGES: GraphEdge[] = [
+  { id: "s0-sAmmo", from: "s0", to: "sAmmo", weight: 2 },
+  { id: "sAmmo-sGoal", from: "sAmmo", to: "sGoal", weight: 1 },
+];
+
+export function goapSteps(): GraphFrame[] {
+  const nodes = GOAP_NODES;
+  const edges = GOAP_EDGES;
+  const nodeStates = initNodeStates(nodes, "idle");
+  const edgeStates = initEdgeStates(edges, "idle");
+  const edgeLabels: Record<string, string> = { "s0-sAmmo": "", "sAmmo-sGoal": "" };
+
+  nodeStates.s0 = "visited";
+  const frames: GraphFrame[] = [
+    {
+      nodeStates: { ...nodeStates },
+      edgeStates: { ...edgeStates },
+      distances: {},
+      edgeLabels: { ...edgeLabels },
+      description: "初期世界状態 S0={ammo:false, dead:false}をフロンティア(コスト0)に投入。目標は{dead:true}",
+    },
+  ];
+  const push = (description: string) =>
+    frames.push({
+      nodeStates: { ...nodeStates },
+      edgeStates: { ...edgeStates },
+      distances: {},
+      edgeLabels: { ...edgeLabels },
+      description,
+    });
+
+  push("S0をフロンティアから取り出す。行動Attackの事前条件{ammo:true}を確認 → 満たさないため却下");
+
+  edgeStates["s0-sAmmo"] = "checking";
+  nodeStates.sAmmo = "visited";
+  push("行動PickupAmmoの事前条件({ammo:false})を確認 → 満たす。適用しS1={ammo:true, dead:false}を生成(コスト2)");
+
+  edgeLabels["s0-sAmmo"] = "PickupAmmo";
+  edgeStates["s0-sAmmo"] = "tree";
+  push("S1をフロンティアに追加。S0={ammo:false,dead:false}を展開済み集合へ");
+
+  push("フロンティアから最小コストのS1を取り出す。S1は目標{dead:true}を満たさないため展開を続ける");
+
+  edgeStates["sAmmo-sGoal"] = "checking";
+  nodeStates.sGoal = "visited";
+  push("行動Attackの事前条件({ammo:true})を確認 → 満たす。適用しSゴール={ammo:true, dead:true}を生成(累積コスト3)");
+
+  edgeLabels["sAmmo-sGoal"] = "Attack";
+  edgeStates["sAmmo-sGoal"] = "tree";
+  push("Sゴールをフロンティアに追加。S1を展開済み集合へ");
+
+  nodeStates.s0 = "settled";
+  nodeStates.sAmmo = "settled";
+  nodeStates.sGoal = "settled";
+  frames.push({
+    nodeStates: { ...nodeStates },
+    edgeStates: { ...edgeStates },
+    distances: {},
+    edgeLabels: { ...edgeLabels },
+    description:
+      "計算完了。Sゴールは目標{dead:true}を満たす。プラン=[PickupAmmo, Attack]、総コスト3が確定した(弾薬がなければ拾ってから攻撃する、というシナリオが手書きなしに導出された)",
+  });
+
+  return frames;
+}
+
+/**
+ * ウェイポイントグラフによる経路探索のデモ用データ。content/algorithms/waypoint-graph-navigation.mdの
+ * 「疎なグラフ上でA*探索やダイクストラ法を実行する」という核心を、6頂点の小さなウェイポイントグラフで示す。
+ */
+export const WAYPOINT_GRAPH_NODES: GraphNode[] = [
+  { id: "w1", label: "W1(start)", x: 0.08, y: 0.5 },
+  { id: "w2", label: "W2", x: 0.35, y: 0.2 },
+  { id: "w3", label: "W3", x: 0.35, y: 0.8 },
+  { id: "w4", label: "W4", x: 0.65, y: 0.2 },
+  { id: "w5", label: "W5", x: 0.65, y: 0.8 },
+  { id: "w6", label: "W6(goal)", x: 0.92, y: 0.5 },
+];
+export const WAYPOINT_GRAPH_EDGES: GraphEdge[] = [
+  { id: "w1-w2", from: "w1", to: "w2", weight: 3 },
+  { id: "w1-w3", from: "w1", to: "w3", weight: 3 },
+  { id: "w2-w3", from: "w2", to: "w3", weight: 5 },
+  { id: "w2-w4", from: "w2", to: "w4", weight: 4 },
+  { id: "w3-w5", from: "w3", to: "w5", weight: 4 },
+  { id: "w4-w5", from: "w4", to: "w5", weight: 5 },
+  { id: "w4-w6", from: "w4", to: "w6", weight: 3 },
+  { id: "w5-w6", from: "w5", to: "w6", weight: 3 },
+];
+
+/**
+ * ウェイポイントグラフ上のダイクストラ法探索のステップ列を生成する。W1(現在位置に最も近いウェイポイント)
+ * からW6(目的地に最も近いウェイポイント)までの最短経路を、辺の重み(2点間のユークリッド距離を想定)
+ * に基づいて求める。
+ */
+export function waypointGraphNavigationSteps(): GraphFrame[] {
+  const nodes = WAYPOINT_GRAPH_NODES;
+  const edges = WAYPOINT_GRAPH_EDGES;
+  const adjacency = new Map<string, { to: string; edgeId: string; weight: number }[]>();
+  for (const n of nodes) adjacency.set(n.id, []);
+  for (const e of edges) {
+    adjacency.get(e.from)!.push({ to: e.to, edgeId: e.id, weight: e.weight });
+    adjacency.get(e.to)!.push({ to: e.from, edgeId: e.id, weight: e.weight });
+  }
+
+  const dist = new Map<string, number>(nodes.map((n) => [n.id, Infinity]));
+  const parent = new Map<string, string>();
+  const settled = new Set<string>();
+  dist.set("w1", 0);
+
+  const nodeStates = initNodeStates(nodes, "idle");
+  const edgeStates = initEdgeStates(edges, "idle");
+  const frames: GraphFrame[] = [
+    {
+      nodeStates: { ...nodeStates },
+      edgeStates: { ...edgeStates },
+      distances: Object.fromEntries(nodes.map((n) => [n.id, n.id === "w1" ? 0 : null])),
+      description: "W1(現在地に最も近いウェイポイント)を起点にダイクストラ法で最短経路を探索する",
+    },
+  ];
+
+  while (settled.size < nodes.length) {
+    let current: string | null = null;
+    let currentDist = Infinity;
+    for (const [id, d] of dist) {
+      if (!settled.has(id) && d < currentDist) {
+        currentDist = d;
+        current = id;
+      }
+    }
+    if (current === null) break;
+    settled.add(current);
+    nodeStates[current] = "settled";
+    frames.push({
+      nodeStates: { ...nodeStates },
+      edgeStates: { ...edgeStates },
+      distances: Object.fromEntries(nodes.map((n) => [n.id, dist.get(n.id) === Infinity ? null : dist.get(n.id)!])),
+      description: `${current}を確定(距離${currentDist})`,
+    });
+    if (current === "w6") break;
+
+    for (const { to, edgeId, weight } of adjacency.get(current)!) {
+      if (settled.has(to)) continue;
+      edgeStates[edgeId] = "checking";
+      const newDist = currentDist + weight;
+      if (newDist < (dist.get(to) ?? Infinity)) {
+        dist.set(to, newDist);
+        parent.set(to, current);
+        edgeStates[edgeId] = "relaxed";
+        nodeStates[to] = nodeStates[to] === "settled" ? "settled" : "visited";
+      }
+    }
+    frames.push({
+      nodeStates: { ...nodeStates },
+      edgeStates: { ...edgeStates },
+      distances: Object.fromEntries(nodes.map((n) => [n.id, dist.get(n.id) === Infinity ? null : dist.get(n.id)!])),
+      description: `${current}から隣接ウェイポイントへ距離を緩和`,
+    });
+  }
+
+  let cur: string | undefined = "w6";
+  while (cur && parent.has(cur)) {
+    const prev: string = parent.get(cur)!;
+    const from = cur;
+    const edgeId = edges.find((e) => (e.from === prev && e.to === from) || (e.from === from && e.to === prev))!.id;
+    edgeStates[edgeId] = "tree";
+    cur = prev;
+  }
+
+  frames.push({
+    nodeStates: { ...nodeStates },
+    edgeStates: { ...edgeStates },
+    distances: Object.fromEntries(nodes.map((n) => [n.id, dist.get(n.id) === Infinity ? null : dist.get(n.id)!])),
+    description: `計算完了。W1→W6の最短経路(距離${dist.get("w6")})が確定した。この経路に沿ってseek/arriveで移動する`,
+  });
+
+  return frames;
+}
+
+/** ブラックボードアーキテクチャのデモ用データ。3つの知識源が共有ブラックボードへ段階的に書き込む星型構造。 */
+export const BLACKBOARD_NODES: GraphNode[] = [
+  { id: "board", label: "Blackboard", x: 0.5, y: 0.15 },
+  { id: "ksAudio", label: "聴覚KS", x: 0.18, y: 0.82 },
+  { id: "ksVisual", label: "視覚KS", x: 0.5, y: 0.92 },
+  { id: "ksTactics", label: "戦術KS", x: 0.82, y: 0.82 },
+];
+export const BLACKBOARD_EDGES: GraphEdge[] = [
+  { id: "ksAudio-board", from: "ksAudio", to: "board", weight: 1 },
+  { id: "ksVisual-board", from: "ksVisual", to: "board", weight: 1 },
+  { id: "ksTactics-board", from: "ksTactics", to: "board", weight: 1 },
+];
+
+/**
+ * ブラックボードアーキテクチャのステップ列を生成する。content/algorithms/blackboard-architecture.mdが
+ * 挙げる例(「敵らしき音を検知した(低確度)」→「視認できた(確度が上がる)」→「敵と確定、戦闘態勢へ」)を
+ * そのまま3つの知識源(聴覚KS・視覚KS・戦術KS)による段階的な黒板更新として可視化する。
+ * 各知識源は他の知識源を直接参照せず、黒板の内容だけを見て前提条件の充足を判定する。
+ */
+export function blackboardArchitectureSteps(): GraphFrame[] {
+  const nodes = BLACKBOARD_NODES;
+  const edges = BLACKBOARD_EDGES;
+  const nodeStates = initNodeStates(nodes, "idle");
+  const edgeStates = initEdgeStates(edges, "idle");
+  const edgeLabels: Record<string, string> = Object.fromEntries(edges.map((e) => [e.id, ""]));
+
+  const frames: GraphFrame[] = [
+    {
+      nodeStates: { ...nodeStates },
+      edgeStates: { ...edgeStates },
+      distances: {},
+      edgeLabels: { ...edgeLabels },
+      description: "黒板は空。3つの知識源(聴覚・視覚・戦術)がそれぞれ独立に黒板の内容を監視している",
+    },
+  ];
+  const push = (description: string) =>
+    frames.push({
+      nodeStates: { ...nodeStates },
+      edgeStates: { ...edgeStates },
+      distances: {},
+      edgeLabels: { ...edgeLabels },
+      description,
+    });
+
+  nodeStates.board = "visited";
+  edgeLabels["ksAudio-board"] = "書込み";
+  edgeStates["ksAudio-board"] = "tree";
+  nodeStates.ksAudio = "settled";
+  push("サイクル1: 聴覚KSの前提条件(常に監視中)が満たされ、黒板に「敵らしき音を検知(低確度)」を書き込む");
+
+  push("サイクル2: 視覚KSの前提条件(黒板に低確度の手がかりがある)が新たに満たされる");
+  edgeLabels["ksVisual-board"] = "書込み";
+  edgeStates["ksVisual-board"] = "tree";
+  nodeStates.ksVisual = "settled";
+  push("視覚KSが黒板を更新: 「視認できた(確度が上がる)」");
+
+  push("サイクル3: 戦術KSの前提条件(黒板の確度が十分高い)が新たに満たされる");
+  edgeLabels["ksTactics-board"] = "書込み";
+  edgeStates["ksTactics-board"] = "tree";
+  nodeStates.ksTactics = "settled";
+  nodeStates.board = "settled";
+  push("戦術KSが黒板を更新: 「敵と確定、戦闘態勢へ移行」");
+
+  frames.push({
+    nodeStates: { ...nodeStates },
+    edgeStates: { ...edgeStates },
+    distances: {},
+    edgeLabels: { ...edgeLabels },
+    description:
+      "計算完了。3つの知識源は互いの実装を一切知らず、黒板を介した間接的なやり取りだけで段階的に状況認識を確定させた",
+  });
+
+  return frames;
+}
+
+/** サブサンプションアーキテクチャのデモ用データ。層(下から障害物回避・徘徊・目的地志向)がアクチュエータ出力を奪い合う。 */
+export const SUBSUMPTION_NODES: GraphNode[] = [
+  { id: "l0", label: "L0 障害物回避", x: 0.5, y: 0.1 },
+  { id: "l1", label: "L1 徘徊", x: 0.5, y: 0.4 },
+  { id: "l2", label: "L2 目的地志向", x: 0.5, y: 0.7 },
+  { id: "output", label: "アクチュエータ", x: 0.5, y: 0.95 },
+];
+export const SUBSUMPTION_EDGES: GraphEdge[] = [
+  { id: "l0-output", from: "l0", to: "output", weight: 1 },
+  { id: "l1-output", from: "l1", to: "output", weight: 1 },
+  { id: "l2-output", from: "l2", to: "output", weight: 1 },
+];
+
+/**
+ * サブサンプションアーキテクチャのステップ列を生成する。content/algorithms/subsumption-architecture.mdの
+ * 「上位層は、自分が行動したいときだけ下位層のアクチュエータ出力を上書きする。上位層が何も言わなければ
+ * 下位層の信号がそのまま素通りする」という規則を2シナリオで対比する。障害物回避(最下層)と
+ * 目的地志向(最上層)が競合する複雑なケースは、記事本文が明示的に扱っていないため今回は含めない。
+ */
+export function subsumptionArchitectureSteps(): GraphFrame[] {
+  const nodes = SUBSUMPTION_NODES;
+  const edges = SUBSUMPTION_EDGES;
+
+  const frames: GraphFrame[] = [
+    {
+      nodeStates: initNodeStates(nodes, "idle"),
+      edgeStates: initEdgeStates(edges, "idle"),
+      distances: {},
+      description: "3層(L0障害物回避・L1徘徊・L2目的地志向)は常に並行して動作し、それぞれ独立にアクチュエータへの出力を計算し続ける",
+    },
+  ];
+
+  const runScenario = (title: string, goalKnown: boolean) => {
+    const nodeStates = initNodeStates(nodes, "idle");
+    const edgeStates = initEdgeStates(edges, "idle");
+    const push = (description: string) =>
+      frames.push({
+        nodeStates: { ...nodeStates },
+        edgeStates: { ...edgeStates },
+        distances: {},
+        description: `[${title}] ${description}`,
+      });
+
+    push("L0(障害物回避)は障害物を検知していないため行動を提案しない");
+
+    nodeStates.l1 = "visited";
+    edgeStates["l1-output"] = "checking";
+    push("L1(徘徊)はデフォルトで行動を提案する(ランダムに歩き回る信号)");
+
+    if (goalKnown) {
+      nodeStates.l2 = "visited";
+      edgeStates["l2-output"] = "checking";
+      push("L2(目的地志向)も目的地が分かっているため行動を提案する");
+
+      edgeStates["l1-output"] = "rejected";
+      edgeStates["l2-output"] = "tree";
+      nodeStates.l1 = "visited";
+      nodeStates.l2 = "settled";
+      push("L2はL1より上位のため、L1の信号を上書き(サブサンプト)する。アクチュエータにはL2の信号だけが届く");
+    } else {
+      edgeStates["l1-output"] = "tree";
+      nodeStates.l1 = "settled";
+      push("L2は目的地が不明なため何も提案しない。上位層が何も言わないのでL1の信号がそのまま素通りする");
+    }
+  };
+
+  runScenario("目的地が不明", false);
+  runScenario("目的地が既知", true);
+
+  frames.push({
+    nodeStates: initNodeStates(nodes, "idle"),
+    edgeStates: initEdgeStates(edges, "idle"),
+    distances: {},
+    description:
+      "計算完了。中央の世界モデルやプランナーを一切持たず、層同士の単純な上書き関係だけから一貫した行動が創発した",
+  });
+
+  return frames;
+}
+
+/** 効用ベースAIのデモ用データ。状況ハブから4つの行動候補への評価。 */
+export const UTILITY_AI_NODES: GraphNode[] = [
+  { id: "context", label: "状況", x: 0.5, y: 0.12 },
+  { id: "attack", label: "攻撃", x: 0.15, y: 0.75 },
+  { id: "flee", label: "逃げる", x: 0.4, y: 0.9 },
+  { id: "heal", label: "回復", x: 0.65, y: 0.9 },
+  { id: "wait", label: "待機", x: 0.88, y: 0.75 },
+];
+export const UTILITY_AI_EDGES: GraphEdge[] = [
+  { id: "context-attack", from: "context", to: "attack", weight: 1 },
+  { id: "context-flee", from: "context", to: "flee", weight: 1 },
+  { id: "context-heal", from: "context", to: "heal", weight: 1 },
+  { id: "context-wait", from: "context", to: "wait", weight: 1 },
+];
+
+/**
+ * 効用ベースAIのステップ列を生成する。content/algorithms/utility-ai.mdの評価カーブの積という仕組みを、
+ * 「体力30%・敵接近・弾薬わずか」という状況で4つの行動候補(攻撃/逃げる/回復/待機)を評価し、
+ * 最もスコアの高い行動を選ぶ過程として可視化する。
+ */
+export function utilityAiSteps(): GraphFrame[] {
+  const nodes = UTILITY_AI_NODES;
+  const edges = UTILITY_AI_EDGES;
+  const nodeStates = initNodeStates(nodes, "idle");
+  const edgeStates = initEdgeStates(edges, "idle");
+  const edgeLabels: Record<string, string> = Object.fromEntries(edges.map((e) => [e.id, ""]));
+  nodeStates.context = "visited";
+
+  const frames: GraphFrame[] = [
+    {
+      nodeStates: { ...nodeStates },
+      edgeStates: { ...edgeStates },
+      distances: {},
+      edgeLabels: { ...edgeLabels },
+      description: "状況: 体力30%・敵が接近・弾薬わずか。4つの行動候補それぞれの効用値を評価カーブの積で計算する",
+    },
+  ];
+
+  const scores: [string, string, number][] = [
+    ["context-attack", "attack", 0.2],
+    ["context-flee", "flee", 0.8],
+    ["context-heal", "heal", 0.3],
+    ["context-wait", "wait", 0.1],
+  ];
+  for (const [edgeId, nodeId, score] of scores) {
+    edgeStates[edgeId] = "checking";
+    nodeStates[nodeId] = "visited";
+    edgeLabels[edgeId] = score.toFixed(1);
+    frames.push({
+      nodeStates: { ...nodeStates },
+      edgeStates: { ...edgeStates },
+      distances: {},
+      edgeLabels: { ...edgeLabels },
+      description: `${nodeId}の効用値 = ${score.toFixed(1)}(複数の評価カーブの積)`,
+    });
+  }
+
+  const winner = scores.reduce((best, cur) => (cur[2] > best[2] ? cur : best));
+  for (const [edgeId, nodeId] of scores) {
+    if (nodeId === winner[1]) {
+      edgeStates[edgeId] = "tree";
+      nodeStates[nodeId] = "settled";
+    } else {
+      edgeStates[edgeId] = "rejected";
+    }
+  }
+  frames.push({
+    nodeStates: { ...nodeStates },
+    edgeStates: { ...edgeStates },
+    distances: {},
+    edgeLabels: { ...edgeLabels },
+    description: `計算完了。最も効用値が高い「${winner[1]}」(${winner[2].toFixed(1)})が選択された。次のサイクルで状況が変われば選択は滑らかに変わる`,
+  });
+
+  return frames;
+}
+
+/** スクワッド戦術ポジショニングのデモ用データ。2メンバー×3カバー地点の二部グラフ。 */
+export const SQUAD_POSITIONING_NODES: GraphNode[] = [
+  { id: "m1", label: "M1", x: 0.15, y: 0.3 },
+  { id: "m2", label: "M2", x: 0.15, y: 0.7 },
+  { id: "c1", label: "C1", x: 0.8, y: 0.15 },
+  { id: "c2", label: "C2", x: 0.8, y: 0.5 },
+  { id: "c3", label: "C3", x: 0.8, y: 0.85 },
+];
+export const SQUAD_POSITIONING_EDGES: GraphEdge[] = [
+  { id: "m1-c1", from: "m1", to: "c1", weight: 1 },
+  { id: "m1-c2", from: "m1", to: "c2", weight: 1 },
+  { id: "m1-c3", from: "m1", to: "c3", weight: 1 },
+  { id: "m2-c1", from: "m2", to: "c1", weight: 1 },
+  { id: "m2-c2", from: "m2", to: "c2", weight: 1 },
+  { id: "m2-c3", from: "m2", to: "c3", weight: 1 },
+];
+
+/**
+ * スクワッド戦術ポジショニングのステップ列を生成する。content/algorithms/squad-tactical-positioning.mdの
+ * 「スコアが高いメンバーから貪欲に地点を確保していく」逐次割り当てを、2メンバー×3カバー地点で示す。
+ * M1が確保した地点はM2の評価時に重複ペナルティ(-0.5)が適用され、M2は次善の地点を選ぶ。
+ */
+export function squadTacticalPositioningSteps(): GraphFrame[] {
+  const nodes = SQUAD_POSITIONING_NODES;
+  const edges = SQUAD_POSITIONING_EDGES;
+  const nodeStates = initNodeStates(nodes, "idle");
+  const edgeStates = initEdgeStates(edges, "idle");
+  const edgeLabels: Record<string, string> = Object.fromEntries(edges.map((e) => [e.id, ""]));
+
+  const frames: GraphFrame[] = [
+    {
+      nodeStates: { ...nodeStates },
+      edgeStates: { ...edgeStates },
+      distances: {},
+      edgeLabels: { ...edgeLabels },
+      description: "M1・M2それぞれが3つのカバー地点候補(C1〜C3)を被視認性・攻撃可能性・移動コストでスコアリングする",
+    },
+  ];
+  const push = (description: string) =>
+    frames.push({
+      nodeStates: { ...nodeStates },
+      edgeStates: { ...edgeStates },
+      distances: {},
+      edgeLabels: { ...edgeLabels },
+      description,
+    });
+
+  const m1Scores: Record<string, number> = { "m1-c1": 0.9, "m1-c2": 0.6, "m1-c3": 0.4 };
+  nodeStates.m1 = "visited";
+  for (const [edgeId, score] of Object.entries(m1Scores)) {
+    edgeStates[edgeId] = "checking";
+    edgeLabels[edgeId] = score.toFixed(1);
+  }
+  push("M1の各地点へのスコアを計算(まだ誰も地点を確保していない)");
+
+  edgeStates["m1-c1"] = "tree";
+  edgeStates["m1-c2"] = "rejected";
+  edgeStates["m1-c3"] = "rejected";
+  nodeStates.m1 = "settled";
+  nodeStates.c1 = "settled";
+  push("M1はスコア最高のC1(0.9)を確保する");
+
+  const m2RawScores: Record<string, number> = { "m2-c1": 0.7, "m2-c2": 0.65, "m2-c3": 0.5 };
+  const m2Penalized = { ...m2RawScores, "m2-c1": m2RawScores["m2-c1"] - 0.5 };
+  nodeStates.m2 = "visited";
+  for (const [edgeId, score] of Object.entries(m2Penalized)) {
+    edgeStates[edgeId] = "checking";
+    edgeLabels[edgeId] = score.toFixed(1);
+  }
+  push("M2の各地点へのスコアを再計算。C1は既にM1が確保済みのため重複ペナルティ(-0.5)を適用: 0.7→0.2");
+
+  edgeStates["m2-c2"] = "tree";
+  edgeStates["m2-c1"] = "rejected";
+  edgeStates["m2-c3"] = "rejected";
+  nodeStates.m2 = "settled";
+  nodeStates.c2 = "settled";
+  push("M2はペナルティ適用後のスコア最高であるC2(0.65)を確保する(C1ではなく重複を避けた地点を選んだ)");
+
+  frames.push({
+    nodeStates: { ...nodeStates },
+    edgeStates: { ...edgeStates },
+    distances: {},
+    edgeLabels: { ...edgeLabels },
+    description: "計算完了。各メンバーが独立に最善手を選ぶだけでは生まれない、重複のない連携したポジショニングが実現した",
+  });
+
+  return frames;
+}
+
+/**
+ * RRTのデモ用データ。content/algorithms/rrt.mdの「ランダムサンプル点へ向かって、木の中で
+ * 最も近い頂点から接続する」という核心を5頂点(start, p1〜p3, goal)で示す。座標はRRT*との
+ * 比較用に、RRT(単純な最近傍接続)とRRT*(コスト最小の親選択+リワイヤリング)が異なる木を
+ * 構築する(RRTは総距離約0.88、RRT*は約0.78)ように意図的に設計している。
+ */
+export const RRT_NODES: GraphNode[] = [
+  { id: "start", label: "start", x: 0.1, y: 0.5 },
+  { id: "p1", label: "p1", x: 0.35, y: 0.35 },
+  { id: "p2", label: "p2", x: 0.55, y: 0.55 },
+  { id: "p3", label: "p3", x: 0.4, y: 0.6 },
+  { id: "goal", label: "goal", x: 0.85, y: 0.5 },
+];
+export const RRT_EDGES: GraphEdge[] = [
+  { id: "start-p1", from: "start", to: "p1", weight: 1 },
+  { id: "p1-p2", from: "p1", to: "p2", weight: 1 },
+  { id: "p2-p3", from: "p2", to: "p3", weight: 1 },
+  { id: "p2-goal", from: "p2", to: "goal", weight: 1 },
+];
+
+function nodeDist(nodes: GraphNode[], a: string, b: string): number {
+  const na = nodes.find((n) => n.id === a)!;
+  const nb = nodes.find((n) => n.id === b)!;
+  return Math.hypot(na.x - nb.x, na.y - nb.y);
+}
+
+/**
+ * RRTのステップ列を生成する。スタートを根に、サンプル点p1→p2→p3→goalの順に、
+ * その時点の木の中で最も近い頂点だけを見て(コストの最適性は一切考えず)接続していく。
+ */
+export function rrtSteps(): GraphFrame[] {
+  const nodes = RRT_NODES;
+  const edges = RRT_EDGES;
+  const nodeStates = initNodeStates(nodes, "idle");
+  const edgeStates = initEdgeStates(edges, "idle");
+  nodeStates.start = "settled";
+
+  const frames: GraphFrame[] = [
+    { nodeStates: { ...nodeStates }, edgeStates: { ...edgeStates }, distances: {}, description: "スタートを根とする木を初期化する" },
+  ];
+  const push = (description: string) =>
+    frames.push({ nodeStates: { ...nodeStates }, edgeStates: { ...edgeStates }, distances: {}, description });
+
+  const order = ["p1", "p2", "p3", "goal"];
+  const tree: string[] = ["start"];
+  let totalCost = 0;
+
+  for (const sample of order) {
+    let nearest = tree[0];
+    let nearestDist = nodeDist(nodes, tree[0], sample);
+    for (const t of tree) {
+      const d = nodeDist(nodes, t, sample);
+      if (d < nearestDist) {
+        nearestDist = d;
+        nearest = t;
+      }
+    }
+    const edgeId = edges.find((e) => (e.from === nearest && e.to === sample) || (e.from === sample && e.to === nearest))!.id;
+    edgeStates[edgeId] = "tree";
+    nodeStates[sample] = "settled";
+    tree.push(sample);
+    totalCost += nearestDist;
+    push(`サンプル点${sample}を打ち、木の中で最も近い頂点${nearest}(距離${nearestDist.toFixed(2)})へ接続する`);
+  }
+
+  frames.push({
+    nodeStates: { ...nodeStates },
+    edgeStates: { ...edgeStates },
+    distances: {},
+    description: `計算完了。start→p1→p2→goalの経路(総距離約${totalCost.toFixed(2)})が見つかった。実行可能だが最短である保証はない(RRT*が改善する対象)`,
+  });
+
+  return frames;
+}
+
+/**
+ * RRT*のデモ用データ。RRTと同じ5頂点を使うが、新頂点の追加時に半径内の候補から
+ * コスト最小の親を選び直し(親の選び直し)、さらに追加後に周辺頂点のリワイヤリングを行う。
+ */
+export const RRT_STAR_NODES: GraphNode[] = RRT_NODES;
+export const RRT_STAR_EDGES: GraphEdge[] = [
+  { id: "start-p1", from: "start", to: "p1", weight: 1 },
+  { id: "p1-p2", from: "p1", to: "p2", weight: 1 },
+  { id: "start-p3", from: "start", to: "p3", weight: 1 },
+  { id: "p3-p2", from: "p3", to: "p2", weight: 1 },
+  { id: "p2-goal", from: "p2", to: "goal", weight: 1 },
+];
+const RRT_STAR_RADIUS = 0.35;
+
+export function rrtStarSteps(): GraphFrame[] {
+  const nodes = RRT_STAR_NODES;
+  const edges = RRT_STAR_EDGES;
+  const nodeStates = initNodeStates(nodes, "idle");
+  const edgeStates = initEdgeStates(edges, "idle");
+  nodeStates.start = "settled";
+  const cost = new Map<string, number>([["start", 0]]);
+  const parentEdge = new Map<string, string>();
+
+  const frames: GraphFrame[] = [
+    {
+      nodeStates: { ...nodeStates },
+      edgeStates: { ...edgeStates },
+      distances: {},
+      description: "スタートを根とする木を初期化する(半径内の候補からコスト最小の親を選び、追加のたびに周辺を再配線する)",
+    },
+  ];
+  const push = (description: string) =>
+    frames.push({ nodeStates: { ...nodeStates }, edgeStates: { ...edgeStates }, distances: {}, description });
+
+  const findEdge = (a: string, b: string) => edges.find((e) => (e.from === a && e.to === b) || (e.from === b && e.to === a))!.id;
+
+  const order = ["p1", "p2", "p3", "goal"];
+  const tree: string[] = ["start"];
+
+  for (const sample of order) {
+    const candidates = tree.filter((t) => nodeDist(nodes, t, sample) <= RRT_STAR_RADIUS);
+    const pool = candidates.length > 0 ? candidates : tree;
+    let bestParent = pool[0];
+    let bestCost = cost.get(pool[0])! + nodeDist(nodes, pool[0], sample);
+    for (const t of pool) {
+      const c = cost.get(t)! + nodeDist(nodes, t, sample);
+      if (c < bestCost - 1e-9) {
+        bestCost = c;
+        bestParent = t;
+      }
+    }
+    const edgeId = findEdge(bestParent, sample);
+    edgeStates[edgeId] = "tree";
+    parentEdge.set(sample, edgeId);
+    nodeStates[sample] = "settled";
+    cost.set(sample, bestCost);
+    tree.push(sample);
+    push(
+      `${sample}を追加。半径${RRT_STAR_RADIUS}内の候補のうち根からの累積コストが最小になる${bestParent}を親として選ぶ(コスト${bestCost.toFixed(2)})`,
+    );
+
+    for (const other of tree) {
+      if (other === sample || other === bestParent) continue;
+      if (nodeDist(nodes, sample, other) > RRT_STAR_RADIUS) continue;
+      const throughSample = cost.get(sample)! + nodeDist(nodes, sample, other);
+      if (throughSample < cost.get(other)! - 1e-9) {
+        const oldEdgeId = parentEdge.get(other);
+        if (oldEdgeId) edgeStates[oldEdgeId] = "rejected";
+        const newEdgeId = findEdge(sample, other);
+        edgeStates[newEdgeId] = "tree";
+        parentEdge.set(other, newEdgeId);
+        const oldCost = cost.get(other)!;
+        cost.set(other, throughSample);
+        push(
+          `リワイヤリング: ${other}にとって${sample}経由(コスト${throughSample.toFixed(2)})の方が現在の親経由(コスト${oldCost.toFixed(2)})より短い。親を${sample}へ付け替える`,
+        );
+      }
+    }
+  }
+
+  frames.push({
+    nodeStates: { ...nodeStates },
+    edgeStates: { ...edgeStates },
+    distances: {},
+    description: `計算完了。リワイヤリングにより、start→p3→p2→goalという経路(総距離約${cost.get("goal")!.toFixed(2)})に収束した。素のRRTの結果より短い`,
+  });
+
+  return frames;
+}
+
+/**
+ * PRMのデモ用データ。RRT/RRT*と同じ5点を使い、まず半径内の全ペアを結んだロードマップを
+ * 事前構築してから、クエリのたびにダイクストラ法でstart→goalの最短経路を探索する。
+ */
+export const PRM_NODES: GraphNode[] = RRT_NODES;
+export const PRM_EDGES: GraphEdge[] = [
+  { id: "start-p1", from: "start", to: "p1", weight: 1 },
+  { id: "start-p3", from: "start", to: "p3", weight: 1 },
+  { id: "p1-p2", from: "p1", to: "p2", weight: 1 },
+  { id: "p1-p3", from: "p1", to: "p3", weight: 1 },
+  { id: "p2-p3", from: "p2", to: "p3", weight: 1 },
+  { id: "p2-goal", from: "p2", to: "goal", weight: 1 },
+];
+const PRM_RADIUS = 0.35;
+
+export function probabilisticRoadmapSteps(): GraphFrame[] {
+  const nodes = PRM_NODES;
+  const edges = PRM_EDGES;
+  const nodeStates = initNodeStates(nodes, "idle");
+  const edgeStates = initEdgeStates(edges, "idle");
+
+  const frames: GraphFrame[] = [
+    {
+      nodeStates: { ...nodeStates },
+      edgeStates: { ...edgeStates },
+      distances: {},
+      description: "configuration space上にサンプル点を配置する(ロードマップ構築フェーズ)",
+    },
+  ];
+  const push = (description: string) =>
+    frames.push({ nodeStates: { ...nodeStates }, edgeStates: { ...edgeStates }, distances: {}, description });
+
+  for (const n of nodes) nodeStates[n.id] = "visited";
+  for (const e of edges) {
+    if (nodeDist(nodes, e.from, e.to) <= PRM_RADIUS) edgeStates[e.id] = "checking";
+  }
+  push(`半径${PRM_RADIUS}以内で障害物なく接続できる点同士を辺で結び、ロードマップを構築する`);
+  for (const e of edges) edgeStates[e.id] = "tree";
+  push("ロードマップが完成。このグラフはスタート・ゴールに依存せず、同じ環境なら何度でも再利用できる");
+
+  nodeStates.start = "visited";
+  nodeStates.goal = "visited";
+  push("クエリフェーズ: スタートとゴールをそれぞれ最寄りのロードマップ上の頂点に接続する");
+
+  const adjacency = new Map<string, { to: string; edgeId: string }[]>();
+  for (const n of nodes) adjacency.set(n.id, []);
+  for (const e of edges) {
+    adjacency.get(e.from)!.push({ to: e.to, edgeId: e.id });
+    adjacency.get(e.to)!.push({ to: e.from, edgeId: e.id });
+  }
+  const dist = new Map<string, number>(nodes.map((n) => [n.id, Infinity]));
+  const parentEdge = new Map<string, string>();
+  const settled = new Set<string>();
+  dist.set("start", 0);
+
+  while (settled.size < nodes.length) {
+    let current: string | null = null;
+    let best = Infinity;
+    for (const [id, d] of dist) {
+      if (!settled.has(id) && d < best) {
+        best = d;
+        current = id;
+      }
+    }
+    if (current === null) break;
+    settled.add(current);
+    if (current === "goal") break;
+    for (const { to, edgeId } of adjacency.get(current)!) {
+      if (settled.has(to)) continue;
+      const cand = dist.get(current)! + nodeDist(nodes, current, to);
+      if (cand < (dist.get(to) ?? Infinity)) {
+        dist.set(to, cand);
+        parentEdge.set(to, edgeId);
+      }
+    }
+  }
+
+  let cur: string | undefined = "goal";
+  while (cur && parentEdge.has(cur)) {
+    const edgeId: string = parentEdge.get(cur)!;
+    edgeStates[edgeId] = "tree";
+    const from: string = cur;
+    const e = edges.find((x) => x.id === edgeId)!;
+    cur = e.from === from ? e.to : e.from;
+  }
+  nodeStates.start = "settled";
+  nodeStates.goal = "settled";
+
+  frames.push({
+    nodeStates: { ...nodeStates },
+    edgeStates: { ...edgeStates },
+    distances: {},
+    description: `計算完了。ロードマップ上でダイクストラ法により最短経路(総距離約${dist.get("goal")!.toFixed(2)})が求まった。スタート・ゴールが変わってもロードマップ自体は再構築不要`,
+  });
+
+  return frames;
+}
+
+/** Dynamic Window Approachのデモ用データ。現在の動的窓から4つの速度候補を評価する。 */
+export const DWA_NODES: GraphNode[] = [
+  { id: "window", label: "動的窓", x: 0.5, y: 0.12 },
+  { id: "straight", label: "直進・高速", x: 0.15, y: 0.75 },
+  { id: "left", label: "左旋回", x: 0.4, y: 0.9 },
+  { id: "right", label: "右旋回", x: 0.65, y: 0.9 },
+  { id: "brake", label: "減速", x: 0.88, y: 0.75 },
+];
+export const DWA_EDGES: GraphEdge[] = [
+  { id: "window-straight", from: "window", to: "straight", weight: 1 },
+  { id: "window-left", from: "window", to: "left", weight: 1 },
+  { id: "window-right", from: "window", to: "right", weight: 1 },
+  { id: "window-brake", from: "window", to: "brake", weight: 1 },
+];
+
+/**
+ * Dynamic Window Approachのステップ列を生成する。content/algorithms/dynamic-window-approach.mdの
+ * 「目標への接近・安全マージン・速度維持を重み付けして合成したスコアで最良の速度候補を選ぶ」
+ * という仕組みを、4つの速度・角速度候補の評価として可視化する。
+ */
+export function dynamicWindowApproachSteps(): GraphFrame[] {
+  const nodes = DWA_NODES;
+  const edges = DWA_EDGES;
+  const nodeStates = initNodeStates(nodes, "idle");
+  const edgeStates = initEdgeStates(edges, "idle");
+  const edgeLabels: Record<string, string> = Object.fromEntries(edges.map((e) => [e.id, ""]));
+  nodeStates.window = "visited";
+
+  const frames: GraphFrame[] = [
+    {
+      nodeStates: { ...nodeStates },
+      edgeStates: { ...edgeStates },
+      distances: {},
+      edgeLabels: { ...edgeLabels },
+      description: "現在の速度・角速度から到達可能な動的窓を計算し、4つの速度候補をサンプリングする",
+    },
+  ];
+
+  // [目標接近度, 安全マージン, 速度維持] を重み(0.4, 0.4, 0.2)で合成
+  const candidates: [string, string, number, number, number][] = [
+    ["window-straight", "straight", 0.9, 0.8, 1.0],
+    ["window-left", "left", 0.5, 0.9, 0.6],
+    ["window-right", "right", 0.6, 0.2, 0.7],
+    ["window-brake", "brake", 0.3, 1.0, 0.1],
+  ];
+  const scored = candidates.map(([edgeId, nodeId, goal, safety, speed]) => {
+    const score = 0.4 * goal + 0.4 * safety + 0.2 * speed;
+    return { edgeId, nodeId, score };
+  });
+
+  for (const { edgeId, nodeId, score } of scored) {
+    edgeStates[edgeId] = "checking";
+    nodeStates[nodeId] = "visited";
+    edgeLabels[edgeId] = score.toFixed(2);
+    frames.push({
+      nodeStates: { ...nodeStates },
+      edgeStates: { ...edgeStates },
+      distances: {},
+      edgeLabels: { ...edgeLabels },
+      description: `${nodeId}の予測軌道をシミュレートし、目標接近度・安全マージン・速度維持を重み付け合成したスコア${score.toFixed(2)}を得る`,
+    });
+  }
+
+  const winner = scored.reduce((best, cur) => (cur.score > best.score ? cur : best));
+  for (const { edgeId, nodeId } of scored) {
+    if (nodeId === winner.nodeId) {
+      edgeStates[edgeId] = "tree";
+      nodeStates[nodeId] = "settled";
+    } else {
+      edgeStates[edgeId] = "rejected";
+    }
+  }
+  frames.push({
+    nodeStates: { ...nodeStates },
+    edgeStates: { ...edgeStates },
+    distances: {},
+    edgeLabels: { ...edgeLabels },
+    description: `計算完了。最もスコアの高い「${winner.nodeId}」(${winner.score.toFixed(2)})を制御指令として送る。次の制御周期でまた1から選び直す`,
+  });
+
+  return frames;
+}
+
+/** 階層型有限状態機械(HFSM)のデモ用データ。Combatは複合状態で、Attack/Defend/Evadeを子に持つ。 */
+export const HFSM_NODES: GraphNode[] = [
+  { id: "idleState", label: "Idle", x: 0.15, y: 0.15 },
+  { id: "combat", label: "Combat(複合)", x: 0.6, y: 0.15 },
+  { id: "attack", label: "Attack", x: 0.4, y: 0.55 },
+  { id: "defend", label: "Defend", x: 0.62, y: 0.55 },
+  { id: "evade", label: "Evade", x: 0.84, y: 0.55 },
+  { id: "stunned", label: "Stunned", x: 0.6, y: 0.92 },
+];
+export const HFSM_EDGES: GraphEdge[] = [
+  { id: "combat-attack", from: "combat", to: "attack", weight: 1 },
+  { id: "combat-defend", from: "combat", to: "defend", weight: 1 },
+  { id: "combat-evade", from: "combat", to: "evade", weight: 1 },
+  { id: "idleState-combat", from: "idleState", to: "combat", weight: 1 },
+  { id: "attack-defend", from: "attack", to: "defend", weight: 1 },
+  { id: "combat-stunned", from: "combat", to: "stunned", weight: 1 },
+];
+
+/**
+ * 階層型有限状態機械(HFSM)のステップ列を生成する。content/algorithms/hierarchical-fsm.mdの
+ * 「現在アクティブな葉状態から親方向へ遷移条件を探索する」という核心を、Combat(複合状態)に
+ * 1回だけ定義されたstunned遷移が、その子状態(Attack/Defend/Evade)のどこがアクティブでも
+ * 有効に働く様子として可視化する。combat-attack/defend/evade辺は親子の入れ子構造(常時存在する
+ * 構造)を表し、idleState-combat/attack-defend/combat-stunned辺が実際に発火するイベント遷移を表す。
+ */
+export function hierarchicalFsmSteps(): GraphFrame[] {
+  const nodes = HFSM_NODES;
+  const edges = HFSM_EDGES;
+  const nodeStates = initNodeStates(nodes, "idle");
+  const edgeStates = initEdgeStates(edges, "idle");
+  nodeStates.idleState = "settled";
+
+  const frames: GraphFrame[] = [
+    {
+      nodeStates: { ...nodeStates },
+      edgeStates: { ...edgeStates },
+      distances: {},
+      description: "現在アクティブな状態はIdle。Combatは複合状態で、初期子状態Attackを持つ(combat-attack/defend/evade辺は常設の親子構造)",
+    },
+  ];
+  const push = (description: string) =>
+    frames.push({ nodeStates: { ...nodeStates }, edgeStates: { ...edgeStates }, distances: {}, description });
+
+  edgeStates["idleState-combat"] = "checking";
+  push("start_combatイベントが発生。ルートレベルで定義された遷移Idle→Combatを検索して発見する");
+
+  edgeStates["idleState-combat"] = "tree";
+  nodeStates.idleState = "visited";
+  nodeStates.combat = "settled";
+  edgeStates["combat-attack"] = "tree";
+  nodeStates.attack = "settled";
+  push("Idleを退出しCombatへ進入。Combatの初期子状態Attackが連動してアクティブになる(現在の葉状態=Attack)");
+
+  edgeStates["attack-defend"] = "checking";
+  push("ユーザー操作でAttack→Defendへの切り替えを試みる(Combat内部の同階層の遷移)");
+
+  edgeStates["attack-defend"] = "tree";
+  nodeStates.attack = "visited";
+  nodeStates.defend = "settled";
+  push("Attackを退出しDefendへ進入。Combatは引き続きアクティブな祖先のまま(現在の葉状態=Defend)");
+
+  push("stunnedイベントが発生。現在アクティブな葉状態Defendを確認する → stunnedへの遷移は定義されていない");
+  push("1つ上の親Combatを確認する → stunnedへの遷移が見つかった(この1回の定義がどの子状態からでも有効に働く)");
+
+  edgeStates["combat-stunned"] = "tree";
+  nodeStates.defend = "visited";
+  nodeStates.combat = "visited";
+  nodeStates.stunned = "settled";
+  push("DefendとCombatの両方を退出し、Stunnedへ進入する");
+
+  frames.push({
+    nodeStates: { ...nodeStates },
+    edgeStates: { ...edgeStates },
+    distances: {},
+    description:
+      "計算完了。フラットなFSMならAttack・Defend・Evadeそれぞれに個別のstunned遷移を書く必要があったが、HFSMでは親Combatに1回書くだけで済んだ",
+  });
+
+  return frames;
+}
+
 /** Stateパターンのデモ用データ。content/algorithms/state-pattern.mdの自動販売機と対応する2状態。 */
 export const STATE_PATTERN_NODES: GraphNode[] = [
   { id: "waiting", label: "WaitingForCoin", x: 0.28, y: 0.5 },
@@ -8067,6 +9152,18 @@ Object.assign(GRAPH_DATASETS, {
     directed: true,
   },
   "memento-pattern": { nodes: MEMENTO_PATTERN_NODES, edges: MEMENTO_PATTERN_EDGES, directed: true },
+  "behavior-tree": { nodes: BEHAVIOR_TREE_NODES, edges: BEHAVIOR_TREE_EDGES, directed: true },
+  "waypoint-graph-navigation": { nodes: WAYPOINT_GRAPH_NODES, edges: WAYPOINT_GRAPH_EDGES, directed: false },
+  "blackboard-architecture": { nodes: BLACKBOARD_NODES, edges: BLACKBOARD_EDGES, directed: true },
+  "subsumption-architecture": { nodes: SUBSUMPTION_NODES, edges: SUBSUMPTION_EDGES, directed: true },
+  "utility-ai": { nodes: UTILITY_AI_NODES, edges: UTILITY_AI_EDGES, directed: true },
+  "squad-tactical-positioning": { nodes: SQUAD_POSITIONING_NODES, edges: SQUAD_POSITIONING_EDGES, directed: true },
+  rrt: { nodes: RRT_NODES, edges: RRT_EDGES, directed: true },
+  "rrt-star": { nodes: RRT_STAR_NODES, edges: RRT_STAR_EDGES, directed: true },
+  "probabilistic-roadmap": { nodes: PRM_NODES, edges: PRM_EDGES, directed: false },
+  "dynamic-window-approach": { nodes: DWA_NODES, edges: DWA_EDGES, directed: true },
+  "hierarchical-fsm": { nodes: HFSM_NODES, edges: HFSM_EDGES, directed: true },
+  goap: { nodes: GOAP_NODES, edges: GOAP_EDGES, directed: true },
 } satisfies Record<string, GraphDataset>);
 
 export const GRAPH_VISUALIZERS: Record<string, () => GraphFrame[]> = {
@@ -8139,4 +9236,16 @@ export const GRAPH_VISUALIZERS: Record<string, () => GraphFrame[]> = {
   "iterator-pattern": iteratorPatternSteps,
   "visitor-pattern": visitorPatternSteps,
   "memento-pattern": mementoPatternSteps,
+  "behavior-tree": behaviorTreeSteps,
+  "waypoint-graph-navigation": waypointGraphNavigationSteps,
+  "blackboard-architecture": blackboardArchitectureSteps,
+  "subsumption-architecture": subsumptionArchitectureSteps,
+  "utility-ai": utilityAiSteps,
+  "squad-tactical-positioning": squadTacticalPositioningSteps,
+  rrt: rrtSteps,
+  "rrt-star": rrtStarSteps,
+  "probabilistic-roadmap": probabilisticRoadmapSteps,
+  "dynamic-window-approach": dynamicWindowApproachSteps,
+  "hierarchical-fsm": hierarchicalFsmSteps,
+  goap: goapSteps,
 };
