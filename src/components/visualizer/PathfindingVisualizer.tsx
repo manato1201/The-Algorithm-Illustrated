@@ -6,6 +6,7 @@ import { PlaybackControls } from "./PlaybackControls";
 import { ZoomableStage } from "./ZoomableStage";
 import { useStepPlayer } from "./useStepPlayer";
 import { useWorkerFrames } from "./useWorkerFrames";
+import { ParticleBurstLayer, type ParticleBurst } from "./ParticleBurstLayer";
 import { coreColors, stateColors } from "@/lib/design-tokens";
 import { type GridCellState, type GridFrame } from "@/lib/pathfinding-visualizers";
 import type { WorkerRequest } from "@/workers/algorithm-worker";
@@ -89,12 +90,39 @@ export function PathfindingVisualizer({ algorithmId }: PathfindingVisualizerProp
     });
   }, [frames, stepIndex]);
 
+  const bursts = useMemo<ParticleBurst[]>(() => {
+    const currentFrame = frames[stepIndex];
+    const previousFrame = frames[stepIndex - 1];
+    if (!currentFrame) return [];
+    const rows = currentFrame.cellStates.length;
+    const cols = currentFrame.cellStates[0]?.length ?? 0;
+    const result: ParticleBurst[] = [];
+
+    currentFrame.cellStates.forEach((row, r) => {
+      row.forEach((state, c) => {
+        const previousState = previousFrame?.cellStates[r]?.[c];
+        if (state === "path" && previousState !== "path") {
+          result.push({
+            id: `${stepIndex}-${r}-${c}-path`,
+            xRatio: (c + 0.5) / cols,
+            yRatio: (r + 0.5) / rows,
+            color: stateColors.settled,
+          });
+        }
+      });
+    });
+    return result;
+  }, [frames, stepIndex]);
+
   const currentFrame = frames[stepIndex];
 
   return (
     <div className={styles.visualizer}>
       <ZoomableStage>
-        <canvas ref={canvasRef} className={styles.canvas} aria-hidden="true" />
+        <div className={styles.canvasWrap}>
+          <canvas ref={canvasRef} className={styles.canvas} aria-hidden="true" />
+          <ParticleBurstLayer bursts={bursts} />
+        </div>
       </ZoomableStage>
       <p className={styles.description} role="status">
         {isComputing ? "Web Workerで計算中…" : currentFrame?.description}
