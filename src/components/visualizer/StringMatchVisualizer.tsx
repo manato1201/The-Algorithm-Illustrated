@@ -6,6 +6,8 @@ import { PlaybackControls } from "./PlaybackControls";
 import { ZoomableStage } from "./ZoomableStage";
 import { useStepPlayer } from "./useStepPlayer";
 import { useWorkerFrames } from "./useWorkerFrames";
+import { ParticleBurstLayer, type ParticleBurst } from "./ParticleBurstLayer";
+import { stateColors } from "@/lib/design-tokens";
 import type { CharState, StringMatchFrame } from "@/lib/string-visualizers";
 import type { WorkerRequest } from "@/workers/algorithm-worker";
 
@@ -34,6 +36,28 @@ export function StringMatchVisualizer({ algorithmId }: StringMatchVisualizerProp
 
   const currentFrame = frames[stepIndex];
 
+  const bursts = useMemo<ParticleBurst[]>(() => {
+    const frame = frames[stepIndex];
+    const previousFrame = frames[stepIndex - 1];
+    if (!frame) return [];
+    const n = frame.pattern.length;
+    const result: ParticleBurst[] = [];
+
+    for (let i = 0; i < n; i++) {
+      const state = frame.patternHighlight[i];
+      const previousState = previousFrame?.patternHighlight[i];
+      if (state === "matched" && previousState !== "matched") {
+        result.push({
+          id: `${stepIndex}-${i}-matched`,
+          xRatio: (i + 0.5) / n,
+          yRatio: 0.5,
+          color: stateColors.settled,
+        });
+      }
+    }
+    return result;
+  }, [frames, stepIndex]);
+
   return (
     <div className={styles.visualizer}>
       <ZoomableStage>
@@ -59,6 +83,7 @@ export function StringMatchVisualizer({ algorithmId }: StringMatchVisualizerProp
                   {ch}
                 </span>
               ))}
+              <ParticleBurstLayer bursts={bursts} />
             </div>
           </div>
         </div>

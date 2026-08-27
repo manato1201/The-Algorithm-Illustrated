@@ -6,6 +6,7 @@ import { PlaybackControls } from "./PlaybackControls";
 import { ZoomableStage } from "./ZoomableStage";
 import { useStepPlayer } from "./useStepPlayer";
 import { useWorkerFrames } from "./useWorkerFrames";
+import { ParticleBurstLayer, type ParticleBurst } from "./ParticleBurstLayer";
 import { stateColors } from "@/lib/design-tokens";
 import {
   GRAPH_DATASETS,
@@ -193,6 +194,29 @@ export function GraphVisualizer({ algorithmId }: GraphVisualizerProps) {
     }
   }, [frames, stepIndex, dataset, bounds]);
 
+  const bursts = useMemo<ParticleBurst[]>(() => {
+    const currentFrame = frames[stepIndex];
+    const previousFrame = frames[stepIndex - 1];
+    if (!currentFrame || !dataset || !bounds) return [];
+    const spanX = Math.max(bounds.maxX - bounds.minX, 1e-6);
+    const spanY = Math.max(bounds.maxY - bounds.minY, 1e-6);
+    const result: ParticleBurst[] = [];
+
+    for (const node of dataset.nodes) {
+      const state = currentFrame.nodeStates[node.id] ?? "idle";
+      const previousState = previousFrame?.nodeStates[node.id];
+      if (state === "settled" && previousState !== "settled") {
+        result.push({
+          id: `${stepIndex}-${node.id}-settled`,
+          xRatio: (node.x - bounds.minX) / spanX,
+          yRatio: (node.y - bounds.minY) / spanY,
+          color: stateColors.settled,
+        });
+      }
+    }
+    return result;
+  }, [frames, stepIndex, dataset, bounds]);
+
   if (!dataset) return null;
 
   const currentFrame = frames[stepIndex];
@@ -201,7 +225,10 @@ export function GraphVisualizer({ algorithmId }: GraphVisualizerProps) {
   return (
     <div className={styles.visualizer}>
       <ZoomableStage>
-        <canvas ref={canvasRef} className={styles.canvas} aria-hidden="true" />
+        <div className={styles.canvasWrap}>
+          <canvas ref={canvasRef} className={styles.canvas} aria-hidden="true" />
+          <ParticleBurstLayer bursts={bursts} />
+        </div>
       </ZoomableStage>
       <p className={styles.description} role="status">
         {isComputing ? "Web Workerで計算中…" : currentFrame?.description}

@@ -31,6 +31,7 @@
 }
 
 .chars {
+  position: relative;
   display: flex;
   gap: 2px;
   transition: margin-left 0.25s ease;
