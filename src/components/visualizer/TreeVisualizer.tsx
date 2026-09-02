@@ -1,13 +1,13 @@
 "use client";
 
-import { useEffect, useMemo, useRef } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import styles from "./TreeVisualizer.module.css";
 import { PlaybackControls } from "./PlaybackControls";
 import { ZoomableStage } from "./ZoomableStage";
 import { useStepPlayer } from "./useStepPlayer";
 import { useWorkerFrames } from "./useWorkerFrames";
 import { ParticleBurstLayer, type ParticleBurst } from "./ParticleBurstLayer";
-import { stateColors } from "@/lib/design-tokens";
+import { coreColors, stateColors } from "@/lib/design-tokens";
 import type { TreeFrame, TreeNodeState } from "@/lib/tree-visualizers";
 import type { WorkerRequest } from "@/workers/algorithm-worker";
 
@@ -69,27 +69,19 @@ type TreeVisualizerProps = {
 export function TreeVisualizer({ algorithmId }: TreeVisualizerProps) {
   const request = useMemo<WorkerRequest>(() => ({ kind: "tree", algorithmId }), [algorithmId]);
   const { frames, isComputing } = useWorkerFrames<TreeFrame>(request);
-  const { stepIndex, isFinished, showPause, handlePlayPause, handleStep, reset } =
+  const { stepIndex, isFinished, showPause, speed, setSpeed, handlePlayPause, handleStep, handleScrub, reset } =
     useStepPlayer(frames.length);
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  // burstsのxRatio/yRatio計算にcanvasの実サイズが必要だが、useMemo内でref.currentを直接読むのは
+  // レンダー中のref参照になり許可されない(react-hooks/refs)。描画useEffectで測定した値をstateとして
+  // 保持し、bursts側はそのstateを参照する。
+  const [canvasSize, setCanvasSize] = useState<{ width: number; height: number } | null>(null);
 
-  useEffect(() => {
-    const canvas = canvasRef.current;
+  // 描画用useEffectとbursts用useMemoの両方が同じレイアウトを必要とするため、
+  // computeLayout()の再計算(木構造の再帰走査)を1箇所に集約する。
+  const layout = useMemo(() => {
     const currentFrame = frames[stepIndex];
-    if (!canvas || !currentFrame) return;
-    const ctx = canvas.getContext("2d");
-    if (!ctx) return;
-
-    const dpr = window.devicePixelRatio || 1;
-    const width = canvas.clientWidth;
-    const height = canvas.clientHeight;
-    if (canvas.width !== width * dpr || canvas.height !== height * dpr) {
-      canvas.width = width * dpr;
-      canvas.height = height * dpr;
-    }
-    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-    ctx.clearRect(0, 0, width, height);
-
+    if (!currentFrame) return null;
     const hasIntervalNodes = Object.values(currentFrame.nodes).some((n) => n.hi !== undefined);
     const marginX = 30;
     const marginTop = 30;
@@ -97,6 +89,28 @@ export function TreeVisualizer({ algorithmId }: TreeVisualizerProps) {
     // 通常木より広いマージンを確保しないとcanvas下端からはみ出る(見切れの原因だった)。
     const marginBottom = hasIntervalNodes ? 46 : 20;
     const positions = computeLayout(currentFrame.nodes, currentFrame.rootId);
+    return { positions, marginX, marginTop, marginBottom };
+  }, [frames, stepIndex]);
+
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    const currentFrame = frames[stepIndex];
+    if (!canvas || !currentFrame || !layout) return;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+
+    const dpr = window.devicePixelRatio || 1;
+    const width = canvas.clientWidth;
+    const height = canvas.clientHeight;
+    setCanvasSize((prev) => (prev && prev.width === width && prev.height === height ? prev : { width, height }));
+    if (canvas.width !== width * dpr || canvas.height !== height * dpr) {
+      canvas.width = width * dpr;
+      canvas.height = height * dpr;
+    }
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.clearRect(0, 0, width, height);
+
+    const { positions, marginX, marginTop, marginBottom } = layout;
 
     const point = (id: string) => {
       const pos = positions[id];
@@ -148,13 +162,15 @@ export function TreeVisualizer({ algorithmId }: TreeVisualizerProps) {
         ctx.stroke();
       }
 
-      ctx.fillStyle = isRedBlackNode && node.color === "black" ? "#edf0f5" : "#06070a";
+      // idleの塗り色(通常ノード)や黒(赤黒木)は暗色のため、黒文字だと同化して読めなくなる(視認性バグ)。
+      const fillIsDark = (isRedBlackNode && node.color === "black") || (!isRedBlackNode && state === "idle");
+      ctx.fillStyle = fillIsDark ? "#edf0f5" : "#06070a";
       if (isIntervalNode) {
         ctx.font = "10px var(--font-mono), monospace";
         ctx.fillText(`[${node.value},${node.hi}]`, x, y);
         ctx.font = "12px var(--font-mono), monospace";
         if (node.maxHigh !== undefined) {
-          ctx.fillStyle = NODE_COLORS[state];
+          ctx.fillStyle = state === "idle" ? coreColors.textMuted : NODE_COLORS[state];
           ctx.font = "10px var(--font-mono), monospace";
           ctx.fillText(`max=${node.maxHigh}`, x, y + radius + 10);
           ctx.font = "12px var(--font-mono), monospace";
@@ -163,13 +179,15 @@ export function TreeVisualizer({ algorithmId }: TreeVisualizerProps) {
         ctx.fillText(String(node.value), x, y);
       }
     });
-  }, [frames, stepIndex]);
+  }, [frames, stepIndex, layout]);
 
   const bursts = useMemo<ParticleBurst[]>(() => {
     const currentFrame = frames[stepIndex];
     const previousFrame = frames[stepIndex - 1];
-    if (!currentFrame) return [];
-    const positions = computeLayout(currentFrame.nodes, currentFrame.rootId);
+    if (!currentFrame || !layout || !canvasSize) return [];
+    // 描画用useEffectのpoint()と同じmargin込みの座標変換を再現する(canvas全体に対するratioが必要なため)。
+    const { width, height } = canvasSize;
+    const { positions, marginX, marginTop, marginBottom } = layout;
     const result: ParticleBurst[] = [];
 
     Object.values(currentFrame.nodes).forEach((node) => {
@@ -177,16 +195,18 @@ export function TreeVisualizer({ algorithmId }: TreeVisualizerProps) {
       const previousState = previousFrame?.nodeStates[node.id];
       if (state === "inserted" && previousState !== "inserted") {
         const pos = positions[node.id];
+        const px = marginX + pos.x * (width - marginX * 2);
+        const py = marginTop + pos.y * (height - marginTop - marginBottom);
         result.push({
           id: `${stepIndex}-${node.id}-inserted`,
-          xRatio: pos.x,
-          yRatio: pos.y,
+          xRatio: px / width,
+          yRatio: py / height,
           color: stateColors.settled,
         });
       }
     });
     return result;
-  }, [frames, stepIndex]);
+  }, [frames, stepIndex, layout, canvasSize]);
 
   const currentFrame = frames[stepIndex];
   const isRedBlackTree = algorithmId === "red-black-tree";
@@ -207,8 +227,11 @@ export function TreeVisualizer({ algorithmId }: TreeVisualizerProps) {
         frameCount={frames.length}
         showPause={showPause}
         isFinished={isFinished}
+        speed={speed}
         onPlayPause={handlePlayPause}
         onStep={handleStep}
+        onScrub={handleScrub}
+        onSpeedChange={setSpeed}
         onReset={reset}
         resetLabel="最初から"
       />

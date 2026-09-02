@@ -31,7 +31,7 @@ type StringMatchVisualizerProps = {
 export function StringMatchVisualizer({ algorithmId }: StringMatchVisualizerProps) {
   const request = useMemo<WorkerRequest>(() => ({ kind: "string", algorithmId }), [algorithmId]);
   const { frames, isComputing } = useWorkerFrames<StringMatchFrame>(request);
-  const { stepIndex, isFinished, showPause, handlePlayPause, handleStep, reset } =
+  const { stepIndex, isFinished, showPause, speed, setSpeed, handlePlayPause, handleStep, handleScrub, reset } =
     useStepPlayer(frames.length);
 
   const currentFrame = frames[stepIndex];
@@ -97,8 +97,11 @@ export function StringMatchVisualizer({ algorithmId }: StringMatchVisualizerProp
         frameCount={frames.length}
         showPause={showPause}
         isFinished={isFinished}
+        speed={speed}
         onPlayPause={handlePlayPause}
         onStep={handleStep}
+        onScrub={handleScrub}
+        onSpeedChange={setSpeed}
         onReset={reset}
         resetLabel="最初から"
       />

@@ -48,7 +48,7 @@ type SearchVisualizerProps = {
 export function SearchVisualizer({ algorithmId }: SearchVisualizerProps) {
   const request = useMemo<WorkerRequest>(() => ({ kind: "search", algorithmId }), [algorithmId]);
   const { frames, isComputing } = useWorkerFrames<SearchFrame>(request);
-  const { stepIndex, isFinished, showPause, handlePlayPause, handleStep, reset } =
+  const { stepIndex, isFinished, showPause, speed, setSpeed, handlePlayPause, handleStep, handleScrub, reset } =
     useStepPlayer(frames.length);
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
@@ -137,8 +137,11 @@ export function SearchVisualizer({ algorithmId }: SearchVisualizerProps) {
         frameCount={frames.length}
         showPause={showPause}
         isFinished={isFinished}
+        speed={speed}
         onPlayPause={handlePlayPause}
         onStep={handleStep}
+        onScrub={handleScrub}
+        onSpeedChange={setSpeed}
         onReset={reset}
         resetLabel="最初から"
       />

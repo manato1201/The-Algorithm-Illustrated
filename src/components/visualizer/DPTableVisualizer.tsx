@@ -30,7 +30,7 @@ type DPTableVisualizerProps = {
 export function DPTableVisualizer({ algorithmId }: DPTableVisualizerProps) {
   const request = useMemo<WorkerRequest>(() => ({ kind: "dp", algorithmId }), [algorithmId]);
   const { frames, isComputing } = useWorkerFrames<DPFrame>(request);
-  const { stepIndex, isFinished, showPause, handlePlayPause, handleStep, reset } =
+  const { stepIndex, isFinished, showPause, speed, setSpeed, handlePlayPause, handleStep, handleScrub, reset } =
     useStepPlayer(frames.length);
 
   const meta = DP_TABLE_META[algorithmId];
@@ -110,8 +110,11 @@ export function DPTableVisualizer({ algorithmId }: DPTableVisualizerProps) {
         frameCount={frames.length}
         showPause={showPause}
         isFinished={isFinished}
+        speed={speed}
         onPlayPause={handlePlayPause}
         onStep={handleStep}
+        onScrub={handleScrub}
+        onSpeedChange={setSpeed}
         onReset={reset}
         resetLabel="最初から"
       />
