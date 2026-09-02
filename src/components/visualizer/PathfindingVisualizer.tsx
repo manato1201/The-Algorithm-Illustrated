@@ -47,7 +47,7 @@ export function PathfindingVisualizer({ algorithmId }: PathfindingVisualizerProp
     [algorithmId],
   );
   const { frames, isComputing } = useWorkerFrames<GridFrame>(request);
-  const { stepIndex, isFinished, showPause, handlePlayPause, handleStep, reset } =
+  const { stepIndex, isFinished, showPause, speed, setSpeed, handlePlayPause, handleStep, handleScrub, reset } =
     useStepPlayer(frames.length);
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
@@ -132,8 +132,11 @@ export function PathfindingVisualizer({ algorithmId }: PathfindingVisualizerProp
         frameCount={frames.length}
         showPause={showPause}
         isFinished={isFinished}
+        speed={speed}
         onPlayPause={handlePlayPause}
         onStep={handleStep}
+        onScrub={handleScrub}
+        onSpeedChange={setSpeed}
         onReset={reset}
         resetLabel="最初から"
       />

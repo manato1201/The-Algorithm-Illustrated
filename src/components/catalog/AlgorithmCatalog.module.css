@@ -218,6 +218,15 @@
 }
 
 /* 代表アルゴリズム(同一装置の連続回避: 1件のみ大きいショーケースタイル) */
+.recent {
+  padding: var(--space-6) var(--space-6) 0;
+  max-width: 56rem;
+}
+
+.recent .chipRow {
+  margin-top: var(--space-3);
+}
+
 .showcase {
   padding: var(--space-8) var(--space-6);
   border-top: 1px solid var(--color-line);
@@ -382,12 +391,19 @@
   }
 }
 
+.listRowTop {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  margin-bottom: var(--space-1);
+}
+
 .listRowHead {
   display: flex;
   align-items: center;
   flex-wrap: wrap;
   gap: var(--space-3);
-  margin-bottom: var(--space-1);
   width: fit-content;
   max-width: 100%;
 }

@@ -1,6 +1,9 @@
 import { notFound } from "next/navigation";
 import Link from "next/link";
 import styles from "./page.module.css";
+import { MarkdownBody } from "./MarkdownBody";
+import { FavoriteButton } from "./FavoriteButton";
+import { ViewTracker } from "./ViewTracker";
 import { ComplexityBadge } from "@/components/hud/ComplexityBadge";
 import {
   AlgorithmVisualizer,
@@ -9,6 +12,7 @@ import {
 import {
   getAllAlgorithmIds,
   getAlgorithmDetail,
+  getRelatedAlgorithms,
 } from "@/lib/content/algorithms";
 
 type AlgorithmDetailPageProps = {
@@ -29,8 +33,11 @@ export default async function AlgorithmDetailPage({
     notFound();
   }
 
+  const relatedAlgorithms = getRelatedAlgorithms(id);
+
   return (
     <div className={styles.page}>
+      <ViewTracker id={id} />
       <Link href="/" className={styles.backLink}>
         ← カタログに戻る
       </Link>
@@ -41,6 +48,7 @@ export default async function AlgorithmDetailPage({
         </span>
         <h1 className={styles.title}>{algorithm.name}</h1>
         <ComplexityBadge notation={algorithm.complexity} />
+        <FavoriteButton id={id} />
       </header>
 
       <div className={styles.layout}>
@@ -52,8 +60,12 @@ export default async function AlgorithmDetailPage({
             <AlgorithmVisualizer algorithmId={id} />
           ) : (
             <div className={styles.placeholder}>
-              可視化は準備中です。現在はソート系17種・探索系(線形/二分/三分/ジャンプ/補間/指数/フィボナッチ探索/カダンのアルゴリズム/エラトステネスの篩/フェニック木/ブルームフィルタ/山登り法/焼きなまし法/タブーサーチ/勾配降下法/k近傍法/マナカーのアルゴリズム)・グリッド経路探索(BFS/DFS/ダイクストラ法/A*探索/IDDFS/ライフゲーム/ラングトンのアリ)・グラフ(ベルマン・フォード法/プリム法/クラスカル法/ボルーフカ法/トポロジカルソート/カーンのアルゴリズム/Union-Find/Tarjanの強連結成分分解/Edmonds-Karp法/Dinic法/Ford-Fulkerson法/ホップクロフト・カープ法/ジョンソンのアルゴリズム/ハフマン符号化/フロイドの循環検出法/セグメント木/スキップリスト/PageRank/HITS/一貫性ハッシュ法/ブリー・アルゴリズム/二相コミット/Raft/Paxos/ベクタークロック/決定木/高速フーリエ変換/分枝限定法)・動的計画法39種(...LRUキャッシュ/TF-IDF/BM25/RRF/パーセプトロン/誤差逆伝播法/ナイーブベイズ/遺伝的アルゴリズム/モンテカルロ法/巡回セールスマン問題(bitDP)/MinHash・LSH/接尾辞配列/シンプレックス法)・木構造(二分探索木/AVL木/Treap/赤黒木/スプレー木/区間木/トライ木/Aho-Corasick法)・文字列パターンマッチング(KMP法/ラビン-カープ法/Z
-              algorithm/ボイヤー・ムーア法/連長圧縮)のみ対応しています。
+              このアルゴリズムの可視化はまだ準備中です。
+              <br />
+              <Link href="/" className={styles.placeholderLink}>
+                カタログの「可視化対応のみ」フィルタ
+              </Link>
+              で対応済みのアルゴリズムを確認できます。
             </div>
           )}
         </section>
@@ -65,13 +77,32 @@ export default async function AlgorithmDetailPage({
           <h2 id="explain-heading" className={styles.sectionLabel}>
             ■ ABOUT 概要
           </h2>
-          <div
+          <MarkdownBody
+            html={algorithm.bodyHtml}
             className={styles.markdownBody}
-            // content/algorithms/*.md はリポジトリで管理する信頼済みコンテンツのみ(外部入力なし)
-            dangerouslySetInnerHTML={{ __html: algorithm.bodyHtml }}
           />
         </section>
       </div>
+
+      {relatedAlgorithms.length > 0 ? (
+        <section className={styles.related} aria-labelledby="related-heading">
+          <h2 id="related-heading" className={styles.sectionLabel}>
+            ■ RELATED 関連アルゴリズム({algorithm.subcategory})
+          </h2>
+          <ul className={styles.relatedList}>
+            {relatedAlgorithms.map((related) => (
+              <li key={related.id}>
+                <Link
+                  href={`/algorithms/${related.id}`}
+                  className={styles.relatedLink}
+                >
+                  {related.name}
+                </Link>
+              </li>
+            ))}
+          </ul>
+        </section>
+      ) : null}
     </div>
   );
 }

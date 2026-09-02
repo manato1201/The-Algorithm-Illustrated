@@ -1,13 +1,13 @@
 "use client";
 
-import { useEffect, useMemo, useRef } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import styles from "./GeometryVisualizer.module.css";
 import { PlaybackControls } from "./PlaybackControls";
 import { ZoomableStage } from "./ZoomableStage";
 import { useStepPlayer } from "./useStepPlayer";
 import { useWorkerFrames } from "./useWorkerFrames";
 import { ParticleBurstLayer, type ParticleBurst } from "./ParticleBurstLayer";
-import { stateColors } from "@/lib/design-tokens";
+import { coreColors, stateColors } from "@/lib/design-tokens";
 import {
   GEOMETRY_DATASETS,
   type GeometryFrame,
@@ -72,9 +72,13 @@ export function GeometryVisualizer({ algorithmId }: GeometryVisualizerProps) {
     [algorithmId],
   );
   const { frames, isComputing } = useWorkerFrames<GeometryFrame>(request);
-  const { stepIndex, isFinished, showPause, handlePlayPause, handleStep, reset } =
+  const { stepIndex, isFinished, showPause, speed, setSpeed, handlePlayPause, handleStep, handleScrub, reset } =
     useStepPlayer(frames.length);
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  // burstsのxRatio/yRatio計算にcanvasの実サイズが必要だが、useMemo内でref.currentを直接読むのは
+  // レンダー中のref参照になり許可されない(react-hooks/refs)。描画useEffectで測定した値をstateとして
+  // 保持し、bursts側はそのstateを参照する。
+  const [canvasSize, setCanvasSize] = useState<{ width: number; height: number } | null>(null);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -86,6 +90,7 @@ export function GeometryVisualizer({ algorithmId }: GeometryVisualizerProps) {
     const dpr = window.devicePixelRatio || 1;
     const width = canvas.clientWidth;
     const height = canvas.clientHeight;
+    setCanvasSize((prev) => (prev && prev.width === width && prev.height === height ? prev : { width, height }));
     if (canvas.width !== width * dpr || canvas.height !== height * dpr) {
       canvas.width = width * dpr;
       canvas.height = height * dpr;
@@ -141,7 +146,8 @@ export function GeometryVisualizer({ algorithmId }: GeometryVisualizerProps) {
       ctx.fill();
 
       ctx.shadowBlur = 0;
-      ctx.fillStyle = color;
+      // idleの色は背景(canvas void)と同系統の暗色のため、そのまま文字色に使うと読めなくなる。
+      ctx.fillStyle = state === "idle" ? coreColors.textMuted : color;
       ctx.fillText(point.id, x, y - radius - 8);
     }
   }, [frames, stepIndex, dataset, bounds]);
@@ -149,25 +155,32 @@ export function GeometryVisualizer({ algorithmId }: GeometryVisualizerProps) {
   const bursts = useMemo<ParticleBurst[]>(() => {
     const currentFrame = frames[stepIndex];
     const previousFrame = frames[stepIndex - 1];
-    if (!currentFrame || !dataset || !bounds) return [];
+    if (!currentFrame || !dataset || !bounds || !canvasSize) return [];
+    // 描画用useEffectのproject()と同じpadding込み・y軸反転の座標変換を再現する。
+    const { width, height } = canvasSize;
+    const padding = 30;
     const spanX = Math.max(bounds.maxX - bounds.minX, 1e-6);
     const spanY = Math.max(bounds.maxY - bounds.minY, 1e-6);
+    const usableW = Math.max(width - padding * 2, 1);
+    const usableH = Math.max(height - padding * 2, 1);
     const result: ParticleBurst[] = [];
 
     for (const point of dataset.points) {
       const state = currentFrame.pointStates[point.id] ?? "idle";
       const previousState = previousFrame?.pointStates[point.id];
       if (state === "hull" && previousState !== "hull") {
+        const nx = (point.x - bounds.minX) / spanX;
+        const ny = 1 - (point.y - bounds.minY) / spanY;
         result.push({
           id: `${stepIndex}-${point.id}-hull`,
-          xRatio: (point.x - bounds.minX) / spanX,
-          yRatio: 1 - (point.y - bounds.minY) / spanY,
+          xRatio: (padding + nx * usableW) / width,
+          yRatio: (padding + ny * usableH) / height,
           color: stateColors.settled,
         });
       }
     }
     return result;
-  }, [frames, stepIndex, dataset, bounds]);
+  }, [frames, stepIndex, dataset, bounds, canvasSize]);
 
   if (!dataset) return null;
 
@@ -189,8 +202,11 @@ export function GeometryVisualizer({ algorithmId }: GeometryVisualizerProps) {
         frameCount={frames.length}
         showPause={showPause}
         isFinished={isFinished}
+        speed={speed}
         onPlayPause={handlePlayPause}
         onStep={handleStep}
+        onScrub={handleScrub}
+        onSpeedChange={setSpeed}
         onReset={reset}
         resetLabel="最初から"
       />

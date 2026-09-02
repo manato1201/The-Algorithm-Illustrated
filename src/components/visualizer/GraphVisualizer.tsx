@@ -1,13 +1,13 @@
 "use client";
 
-import { useEffect, useMemo, useRef } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import styles from "./GraphVisualizer.module.css";
 import { PlaybackControls } from "./PlaybackControls";
 import { ZoomableStage } from "./ZoomableStage";
 import { useStepPlayer } from "./useStepPlayer";
 import { useWorkerFrames } from "./useWorkerFrames";
 import { ParticleBurstLayer, type ParticleBurst } from "./ParticleBurstLayer";
-import { stateColors } from "@/lib/design-tokens";
+import { coreColors, stateColors } from "@/lib/design-tokens";
 import {
   GRAPH_DATASETS,
   type GraphEdgeState,
@@ -78,9 +78,13 @@ export function GraphVisualizer({ algorithmId }: GraphVisualizerProps) {
     [algorithmId],
   );
   const { frames, isComputing } = useWorkerFrames<GraphFrame>(request);
-  const { stepIndex, isFinished, showPause, handlePlayPause, handleStep, reset } =
+  const { stepIndex, isFinished, showPause, speed, setSpeed, handlePlayPause, handleStep, handleScrub, reset } =
     useStepPlayer(frames.length);
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  // burstsのxRatio/yRatio計算にcanvasの実サイズが必要だが、useMemo内でref.currentを直接読むのは
+  // レンダー中のref参照になり許可されない(react-hooks/refs)。描画useEffectで測定した値をstateとして
+  // 保持し、bursts側はそのstateを参照する。
+  const [canvasSize, setCanvasSize] = useState<{ width: number; height: number } | null>(null);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -92,6 +96,7 @@ export function GraphVisualizer({ algorithmId }: GraphVisualizerProps) {
     const dpr = window.devicePixelRatio || 1;
     const width = canvas.clientWidth;
     const height = canvas.clientHeight;
+    setCanvasSize((prev) => (prev && prev.width === width && prev.height === height ? prev : { width, height }));
     if (canvas.width !== width * dpr || canvas.height !== height * dpr) {
       canvas.width = width * dpr;
       canvas.height = height * dpr;
@@ -162,7 +167,8 @@ export function GraphVisualizer({ algorithmId }: GraphVisualizerProps) {
       ctx.shadowBlur = 0;
       ctx.fillStyle = "#06070a";
       ctx.fillRect(midX - labelWidth / 2, midY - 8, labelWidth, 16);
-      ctx.fillStyle = color;
+      // idle(未探索)の色は背景と同系統の暗色のため、そのまま文字色に使うと読めなくなる。
+      ctx.fillStyle = state === "idle" ? coreColors.textMuted : color;
       ctx.fillText(label, midX, midY);
     }
 
@@ -179,12 +185,13 @@ export function GraphVisualizer({ algorithmId }: GraphVisualizerProps) {
       ctx.fill();
 
       ctx.shadowBlur = 0;
-      ctx.fillStyle = "#06070a";
+      // idleの塗り色は暗色のため、黒文字だと同化して読めなくなる(視認性バグ)。塗りが暗いidleのときだけ明るい文字色にする。
+      ctx.fillStyle = state === "idle" ? coreColors.text : "#06070a";
       ctx.fillText(node.label, x, y);
 
       const distance = currentFrame.distances[node.id];
       if (distance !== undefined) {
-        ctx.fillStyle = color;
+        ctx.fillStyle = state === "idle" ? coreColors.textMuted : color;
         ctx.font = "10px var(--font-mono), monospace";
         // 下寄りの頂点はラベルがcanvas下端からはみ出るため、その場合は上に描く(見切れ防止)。
         const labelBelow = y + 26 <= height - 4;
@@ -197,25 +204,32 @@ export function GraphVisualizer({ algorithmId }: GraphVisualizerProps) {
   const bursts = useMemo<ParticleBurst[]>(() => {
     const currentFrame = frames[stepIndex];
     const previousFrame = frames[stepIndex - 1];
-    if (!currentFrame || !dataset || !bounds) return [];
+    if (!currentFrame || !dataset || !bounds || !canvasSize) return [];
+    // 描画用useEffectのpoint()と同じpadding込みの座標変換を再現する(canvas全体に対するratioが必要なため)。
+    const { width, height } = canvasSize;
+    const padding = 30;
     const spanX = Math.max(bounds.maxX - bounds.minX, 1e-6);
     const spanY = Math.max(bounds.maxY - bounds.minY, 1e-6);
+    const usableW = Math.max(width - padding * 2, 1);
+    const usableH = Math.max(height - padding * 2, 1);
     const result: ParticleBurst[] = [];
 
     for (const node of dataset.nodes) {
       const state = currentFrame.nodeStates[node.id] ?? "idle";
       const previousState = previousFrame?.nodeStates[node.id];
       if (state === "settled" && previousState !== "settled") {
+        const nx = (node.x - bounds.minX) / spanX;
+        const ny = (node.y - bounds.minY) / spanY;
         result.push({
           id: `${stepIndex}-${node.id}-settled`,
-          xRatio: (node.x - bounds.minX) / spanX,
-          yRatio: (node.y - bounds.minY) / spanY,
+          xRatio: (padding + nx * usableW) / width,
+          yRatio: (padding + ny * usableH) / height,
           color: stateColors.settled,
         });
       }
     }
     return result;
-  }, [frames, stepIndex, dataset, bounds]);
+  }, [frames, stepIndex, dataset, bounds, canvasSize]);
 
   if (!dataset) return null;
 
@@ -238,8 +252,11 @@ export function GraphVisualizer({ algorithmId }: GraphVisualizerProps) {
         frameCount={frames.length}
         showPause={showPause}
         isFinished={isFinished}
+        speed={speed}
         onPlayPause={handlePlayPause}
         onStep={handleStep}
+        onScrub={handleScrub}
+        onSpeedChange={setSpeed}
         onReset={reset}
         resetLabel="最初から"
       />

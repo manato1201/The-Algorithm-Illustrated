@@ -8316,7 +8316,9 @@ export function probabilisticRoadmapSteps(): GraphFrame[] {
     if (nodeDist(nodes, e.from, e.to) <= PRM_RADIUS) edgeStates[e.id] = "checking";
   }
   push(`半径${PRM_RADIUS}以内で障害物なく接続できる点同士を辺で結び、ロードマップを構築する`);
-  for (const e of edges) edgeStates[e.id] = "tree";
+  for (const e of edges) {
+    if (nodeDist(nodes, e.from, e.to) <= PRM_RADIUS) edgeStates[e.id] = "tree";
+  }
   push("ロードマップが完成。このグラフはスタート・ゴールに依存せず、同じ環境なら何度でも再利用できる");
 
   nodeStates.start = "visited";
