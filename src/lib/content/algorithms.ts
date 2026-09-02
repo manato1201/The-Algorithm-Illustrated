@@ -30,9 +30,12 @@ function escapeHtml(value: string): string {
 const contentRenderer = {
   code({ text, lang }: { text: string; lang?: string }): string {
     const label = lang ? (CODE_LANGUAGE_LABELS[lang] ?? lang) : null;
-    const labelHtml = label ? `<div class="codeLangLabel">${escapeHtml(label)}</div>` : "";
+    const labelHtml = label
+      ? `<span class="codeLangLabel">${escapeHtml(label)}</span>`
+      : "<span></span>";
     const langClass = lang ? ` class="language-${escapeHtml(lang)}"` : "";
-    return `<div class="codeBlock">${labelHtml}<pre><code${langClass}>${escapeHtml(text)}</code></pre></div>`;
+    const header = `<div class="codeBlockHeader">${labelHtml}<button type="button" class="codeCopyButton">コピー</button></div>`;
+    return `<div class="codeBlock">${header}<pre><code${langClass}>${escapeHtml(text)}</code></pre></div>`;
   },
 };
 marked.use({ renderer: contentRenderer });
@@ -78,15 +81,33 @@ function readFrontmatter(
   return { frontmatter: data as AlgorithmFrontmatter, content };
 }
 
-/** カタログ一覧向けの軽量メタデータ。Markdown本文のHTML変換は行わない。 */
+/**
+ * カタログ一覧向けの軽量メタデータ。Markdown本文のHTML変換は行わない。
+ * 詳細ページ(generateStaticParamsで698件を静的生成)の各ページがgetRelatedAlgorithms経由で
+ * 呼ぶため、プロセス内でメモ化して全frontmatterの再読み込みをビルド全体で1回に抑える。
+ */
+let cachedMeta: AlgorithmMeta[] | null = null;
+
 export function getAllAlgorithmsMeta(): AlgorithmMeta[] {
-  return getAllAlgorithmIds()
+  if (cachedMeta) return cachedMeta;
+  cachedMeta = getAllAlgorithmIds()
     .map((id) => {
       const parsed = readFrontmatter(id);
       if (!parsed) return null;
       return { id, ...parsed.frontmatter, hasVisualizer: hasVisualizer(id) };
     })
     .filter((meta): meta is AlgorithmMeta => meta !== null);
+  return cachedMeta;
+}
+
+/** 詳細ページの「関連アルゴリズム」欄向け。同じサブカテゴリの他アルゴリズムを最大limit件返す。 */
+export function getRelatedAlgorithms(id: string, limit = 6): AlgorithmMeta[] {
+  const all = getAllAlgorithmsMeta();
+  const current = all.find((meta) => meta.id === id);
+  if (!current) return [];
+  return all
+    .filter((meta) => meta.id !== id && meta.subcategory === current.subcategory)
+    .slice(0, limit);
 }
 
 /** 詳細ページ向け。Markdown本文をHTMLへ変換して返す。 */

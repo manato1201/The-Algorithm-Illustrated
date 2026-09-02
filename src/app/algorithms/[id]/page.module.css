@@ -78,10 +78,51 @@
   font-family: var(--font-body);
   color: var(--color-text-muted);
   text-align: center;
+  line-height: 1.8;
+}
+
+.placeholderLink {
+  color: var(--color-accent-amber);
+}
+
+.placeholderLink:hover {
+  text-decoration: underline;
 }
 
 .explainPane {
   padding-top: var(--space-1);
+}
+
+.related {
+  margin-top: var(--space-8);
+  padding-top: var(--space-6);
+  border-top: 1px solid var(--color-line);
+}
+
+.relatedList {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  list-style: none;
+  margin-top: var(--space-3);
+}
+
+.relatedLink {
+  display: inline-block;
+  font-family: var(--font-mono);
+  font-size: 0.8125rem;
+  color: var(--color-text-muted);
+  border: 1px solid var(--color-line);
+  border-radius: 999px;
+  padding: var(--space-1) var(--space-3);
+  transition:
+    color 0.15s ease,
+    border-color 0.15s ease;
+}
+
+.relatedLink:hover {
+  color: var(--color-accent-amber);
+  border-color: var(--color-accent-amber);
 }
 
 /* content/algorithms/*.md をmarked経由でHTML化したものの表示スタイル */
@@ -139,15 +180,46 @@
   overflow: hidden;
 }
 
+.markdownBody :global(.codeBlockHeader) {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  background: var(--color-bg-surface);
+  padding: var(--space-1) var(--space-2) var(--space-1) var(--space-3);
+  border-bottom: 1px solid var(--color-line);
+}
+
 .markdownBody :global(.codeLangLabel) {
   font-family: var(--font-display-en);
   font-size: 0.75rem;
   font-weight: 700;
   letter-spacing: 0.05em;
   color: var(--color-accent-amber);
-  background: var(--color-bg-surface);
-  padding: var(--space-1) var(--space-3);
-  border-bottom: 1px solid var(--color-line);
+}
+
+.markdownBody :global(.codeCopyButton) {
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+  color: var(--color-text-muted);
+  background: transparent;
+  border: 1px solid var(--color-line);
+  border-radius: 3px;
+  padding: 0.125rem var(--space-2);
+  cursor: pointer;
+  transition:
+    color 0.15s ease,
+    border-color 0.15s ease;
+}
+
+.markdownBody :global(.codeCopyButton:hover) {
+  color: var(--color-accent-amber);
+  border-color: var(--color-accent-amber);
+}
+
+.markdownBody :global(.codeCopyButton.copied) {
+  color: var(--color-accent-green);
+  border-color: var(--color-accent-green);
 }
 
 .markdownBody :global(.codeBlock) pre {

@@ -4,11 +4,14 @@ import { useMemo, useState } from "react";
 import Link from "next/link";
 import styles from "./AlgorithmCatalog.module.css";
 import { ComplexityBadge } from "@/components/hud/ComplexityBadge";
+import { FavoriteToggleButton } from "@/components/hud/FavoriteToggleButton";
 import {
   CATEGORY_ORDER,
   SUBCATEGORIES_BY_CATEGORY,
 } from "@/lib/algorithm-categories";
 import { matchesSearchQuery } from "@/lib/algorithm-search";
+import { useFavorites } from "@/lib/use-favorites";
+import { useRecentlyViewed } from "@/lib/recently-viewed";
 import type { AlgorithmMeta } from "@/lib/content/algorithms";
 
 type SortOrder = "category" | "name";
@@ -34,10 +37,14 @@ export function AlgorithmCatalog({
     null,
   );
   const [visualizedOnly, setVisualizedOnly] = useState(false);
+  const [favoritesOnly, setFavoritesOnly] = useState(false);
   const [sortOrder, setSortOrder] = useState<SortOrder>("category");
+  const { favorites, isLoaded: favoritesLoaded, toggleFavorite } = useFavorites();
+  const recentIds = useRecentlyViewed();
   const trimmedQuery = query.trim().toLowerCase();
   const isSearching = trimmedQuery.length > 0;
-  const isFiltering = isSearching || activeCategory !== null || visualizedOnly;
+  const isFiltering =
+    isSearching || activeCategory !== null || visualizedOnly || favoritesOnly;
 
   const visualizedCount = useMemo(
     () => algorithms.reduce((count, a) => count + (a.hasVisualizer ? 1 : 0), 0),
@@ -85,6 +92,7 @@ export function AlgorithmCatalog({
       if (activeSubcategory && algorithm.subcategory !== activeSubcategory)
         return false;
       if (visualizedOnly && !algorithm.hasVisualizer) return false;
+      if (favoritesOnly && !favorites.has(algorithm.id)) return false;
       if (isSearching && !matchesSearchQuery(algorithm, query)) return false;
       return true;
     });
@@ -97,6 +105,8 @@ export function AlgorithmCatalog({
     activeCategory,
     activeSubcategory,
     visualizedOnly,
+    favoritesOnly,
+    favorites,
     query,
     isSearching,
     isFiltering,
@@ -112,8 +122,16 @@ export function AlgorithmCatalog({
     );
   }
   if (visualizedOnly) filterLabelParts.push("可視化対応のみ");
+  if (favoritesOnly) filterLabelParts.push("お気に入りのみ");
   if (isSearching) filterLabelParts.push(`「${query}」`);
   const filterLabel = filterLabelParts.join(" ／ ");
+
+  const recentAlgorithms = useMemo(() => {
+    const byId = new Map(algorithms.map((a) => [a.id, a]));
+    return recentIds
+      .map((id) => byId.get(id))
+      .filter((a): a is AlgorithmMeta => a !== undefined);
+  }, [algorithms, recentIds]);
 
   const groupedByCategory = useMemo(() => {
     const rest = algorithms.filter((algorithm) => algorithm.id !== featured.id);
@@ -227,7 +245,7 @@ export function AlgorithmCatalog({
         <div
           className={styles.chipRow}
           role="group"
-          aria-label="可視化対応で絞り込む"
+          aria-label="可視化対応・お気に入りで絞り込む"
         >
           <button
             type="button"
@@ -239,8 +257,37 @@ export function AlgorithmCatalog({
             可視化対応のみ
             <span className={styles.chipCount}>{visualizedCount}</span>
           </button>
+          <button
+            type="button"
+            className={`${styles.chip} ${favoritesOnly ? styles.chipActive : ""}`}
+            aria-pressed={favoritesOnly}
+            disabled={!favoritesLoaded || favorites.size === 0}
+            onClick={() => setFavoritesOnly((current) => !current)}
+          >
+            ★ お気に入りのみ
+            <span className={styles.chipCount}>{favorites.size}</span>
+          </button>
         </div>
       </section>
+
+      {!isFiltering && recentAlgorithms.length > 0 ? (
+        <section className={styles.recent} aria-labelledby="recent-heading">
+          <h2 id="recent-heading" className={styles.sectionLabel}>
+            ■ RECENT 最近見た
+          </h2>
+          <div className={styles.chipRow}>
+            {recentAlgorithms.map((algorithm) => (
+              <Link
+                key={algorithm.id}
+                href={`/algorithms/${algorithm.id}`}
+                className={styles.chip}
+              >
+                {algorithm.name}
+              </Link>
+            ))}
+          </div>
+        </section>
+      ) : null}
 
       {isFiltering ? (
         <section className={styles.results} aria-labelledby="results-heading">
@@ -274,6 +321,9 @@ export function AlgorithmCatalog({
                   key={algorithm.id}
                   algorithm={algorithm}
                   showCategory
+                  isFavorite={favorites.has(algorithm.id)}
+                  favoritesLoaded={favoritesLoaded}
+                  onToggleFavorite={toggleFavorite}
                 />
               ))}
             </ul>
@@ -316,7 +366,13 @@ export function AlgorithmCatalog({
                 </h3>
                 <ul className={styles.listItems}>
                   {items.map((algorithm) => (
-                    <AlgorithmRow key={algorithm.id} algorithm={algorithm} />
+                    <AlgorithmRow
+                      key={algorithm.id}
+                      algorithm={algorithm}
+                      isFavorite={favorites.has(algorithm.id)}
+                      favoritesLoaded={favoritesLoaded}
+                      onToggleFavorite={toggleFavorite}
+                    />
                   ))}
                 </ul>
               </div>
@@ -331,22 +387,35 @@ export function AlgorithmCatalog({
 function AlgorithmRow({
   algorithm,
   showCategory = false,
+  isFavorite,
+  favoritesLoaded,
+  onToggleFavorite,
 }: {
   algorithm: AlgorithmMeta;
   showCategory?: boolean;
+  isFavorite: boolean;
+  favoritesLoaded: boolean;
+  onToggleFavorite: (id: string) => void;
 }) {
   return (
     <li className={styles.listRow}>
-      <Link href={`/algorithms/${algorithm.id}`} className={styles.listRowHead}>
-        <span className={styles.listName}>{algorithm.name}</span>
-        {showCategory ? (
-          <span className={styles.listCategory}>
-            {algorithm.category} ・ {algorithm.subcategory}
-          </span>
-        ) : null}
-        <ComplexityBadge notation={algorithm.complexity} />
-        {algorithm.hasVisualizer ? <VisualizedBadge /> : null}
-      </Link>
+      <div className={styles.listRowTop}>
+        <Link href={`/algorithms/${algorithm.id}`} className={styles.listRowHead}>
+          <span className={styles.listName}>{algorithm.name}</span>
+          {showCategory ? (
+            <span className={styles.listCategory}>
+              {algorithm.category} ・ {algorithm.subcategory}
+            </span>
+          ) : null}
+          <ComplexityBadge notation={algorithm.complexity} />
+          {algorithm.hasVisualizer ? <VisualizedBadge /> : null}
+        </Link>
+        <FavoriteToggleButton
+          active={isFavorite}
+          disabled={!favoritesLoaded}
+          onToggle={() => onToggleFavorite(algorithm.id)}
+        />
+      </div>
       <p className={styles.listSummary}>{algorithm.summary}</p>
     </li>
   );
