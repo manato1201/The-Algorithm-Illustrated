@@ -17,11 +17,14 @@
   margin-bottom: var(--space-4);
 }
 
+/* サイズでヒエラルキーを作る(AlgorithmDESIGN.md参考: 80-160px級のディスプレイタイプ+タイトな行間・字間)。
+   和文はフルセル字形のため英字ほど字間を詰められない — 負のトラッキングは控えめ(-0.02em)に留める。 */
 .heroTitle {
   font-family: var(--font-display);
   font-weight: 900;
-  font-size: clamp(2rem, 5vw, 3.5rem);
-  line-height: 1.25;
+  font-size: clamp(2.75rem, 8vw, 6.5rem);
+  line-height: 0.95;
+  letter-spacing: -0.02em;
   margin-bottom: var(--space-6);
   animation: flicker-in 0.6s ease-out both;
 }
@@ -65,9 +68,12 @@
   margin-bottom: var(--space-6);
 }
 
+/* 数字そのものをディスプレイ要素として扱う(AlgorithmDESIGN.md参考の「大きい数字+小さいラベル」統計表現)。
+   等幅の数字だけなので和文と違い強めの負トラッキングでも字が潰れない。 */
 .countNumber {
-  font-size: 1.5rem;
-  font-weight: 700;
+  font-size: 3rem;
+  font-weight: 900;
+  letter-spacing: -0.03em;
   color: var(--color-accent-amber);
 }
 
@@ -266,8 +272,10 @@
 
 .featuredName {
   font-family: var(--font-display);
-  font-size: 1.75rem;
+  font-size: 2.25rem;
   font-weight: 700;
+  line-height: 1.1;
+  letter-spacing: -0.02em;
   margin-bottom: var(--space-3);
 }
 
