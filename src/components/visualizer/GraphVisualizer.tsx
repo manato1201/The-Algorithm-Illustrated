@@ -7,7 +7,7 @@ import { ZoomableStage } from "./ZoomableStage";
 import { useStepPlayer } from "./useStepPlayer";
 import { useWorkerFrames } from "./useWorkerFrames";
 import { ParticleBurstLayer, type ParticleBurst } from "./ParticleBurstLayer";
-import { coreColors, stateColors } from "@/lib/design-tokens";
+import { coreColors, readableTextColor, stateColors } from "@/lib/design-tokens";
 import {
   GRAPH_DATASETS,
   type GraphEdgeState,
@@ -185,8 +185,8 @@ export function GraphVisualizer({ algorithmId }: GraphVisualizerProps) {
       ctx.fill();
 
       ctx.shadowBlur = 0;
-      // idleの塗り色は暗色のため、黒文字だと同化して読めなくなる(視認性バグ)。塗りが暗いidleのときだけ明るい文字色にする。
-      ctx.fillStyle = state === "idle" ? coreColors.text : "#06070a";
+      // 頂点の塗り色(color)の実際の輝度から文字色を決める。状態色が増減しても常に読める組み合わせになる。
+      ctx.fillStyle = readableTextColor(color);
       ctx.fillText(node.label, x, y);
 
       const distance = currentFrame.distances[node.id];

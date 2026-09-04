@@ -7,7 +7,7 @@ import { ZoomableStage } from "./ZoomableStage";
 import { useStepPlayer } from "./useStepPlayer";
 import { useWorkerFrames } from "./useWorkerFrames";
 import { ParticleBurstLayer, type ParticleBurst } from "./ParticleBurstLayer";
-import { coreColors, stateColors } from "@/lib/design-tokens";
+import { readableTextColor, stateColors } from "@/lib/design-tokens";
 import type { TrieFrame, TrieNodeState } from "@/lib/trie-visualizer";
 import type { WorkerRequest } from "@/workers/algorithm-worker";
 
@@ -183,8 +183,8 @@ export function TrieVisualizer({ algorithmId }: TrieVisualizerProps) {
       }
 
       ctx.shadowBlur = 0;
-      // idleの塗り色は暗色のため、黒文字だと同化して読めなくなる(視認性バグ)。塗りが暗いidleのときだけ明るい文字色にする。
-      ctx.fillStyle = state === "idle" ? coreColors.text : "#06070a";
+      // ノードの塗り色(color)の実際の輝度から文字色を決める。状態色が増減しても常に読める組み合わせになる。
+      ctx.fillStyle = readableTextColor(color);
       ctx.fillText(node.char || "∅", x, y);
     });
   }, [frames, stepIndex, layout]);
