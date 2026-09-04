@@ -23,6 +23,17 @@ export const SEARCH_ARRAY = [
 ];
 export const SEARCH_TARGET = 62;
 
+/** 尺取り法(two-pointers-sliding-window)用の配列。和がK以下になる最長区間を探す。 */
+export const TWO_POINTERS_ARRAY = [4, 2, 1, 7, 3, 1, 5, 2];
+export const TWO_POINTERS_K = 8;
+
+/** ボイヤー・ムーアの多数決(boyer-moore-majority-vote)用の配列。値3が5/8回で過半数を占める。 */
+export const BOYER_MOORE_MAJORITY_ARRAY = [3, 3, 4, 2, 3, 3, 5, 3];
+
+/** リザーバサンプリング(reservoir-sampling)用のストリーム配列とサンプル数k。 */
+export const RESERVOIR_STREAM = [11, 22, 33, 44, 55, 66, 77, 88];
+export const RESERVOIR_K = 2;
+
 /** 線形探索。先頭から順番に1つずつ比較する、最も素朴で前提条件を必要としない探索。 */
 export function linearSearchSteps(): SearchFrame[] {
   const array = SEARCH_ARRAY;
@@ -1981,6 +1992,180 @@ export function hyperloglogSteps(): SearchFrame[] {
   return frames;
 }
 
+/**
+ * 尺取り法(Two Pointers / Sliding Window)のステップ列を生成する。右端rを1つずつ伸ばしながら
+ * 区間の和を更新し、和がk以下になるまで左端lを1つずつ縮める。l・rはどちらも後戻りしないため
+ * 全体でO(n)になる。最長区間(和がk以下)を記録する。
+ */
+export function twoPointersSlidingWindowSteps(): SearchFrame[] {
+  const array = TWO_POINTERS_ARRAY;
+  const k = TWO_POINTERS_K;
+  const frames: SearchFrame[] = [frame(array, {}, `初期状態(和が${k}以下になる最長区間を尺取り法で探す)`)];
+
+  let l = 0;
+  let total = 0;
+  let bestLen = 0;
+  let bestL = 0;
+  let bestR = -1;
+
+  for (let r = 0; r < array.length; r++) {
+    total += array[r];
+    const hl: Partial<Record<number, StateColorKey>> = {};
+    for (let i = l; i <= r; i++) hl[i] = i === r ? "comparing" : "pivot";
+    frames.push(frame(array, hl, `右端rを${r + 1}番目(値${array[r]})へ拡張。区間[${l + 1},${r + 1}]の和=${total}`));
+
+    while (total > k) {
+      const hl2: Partial<Record<number, StateColorKey>> = { [l]: "comparing" };
+      for (let i = l + 1; i <= r; i++) hl2[i] = "pivot";
+      total -= array[l];
+      frames.push(frame(array, hl2, `和が${k}を超えたため左端l(値${array[l]})を1つ縮める。新しい和=${total}`));
+      l++;
+    }
+
+    if (r - l + 1 > bestLen) {
+      bestLen = r - l + 1;
+      bestL = l;
+      bestR = r;
+    }
+  }
+
+  const finalHl: Partial<Record<number, StateColorKey>> = {};
+  for (let i = bestL; i <= bestR; i++) finalHl[i] = "settled";
+  frames.push(frame(array, finalHl, `最長区間は[${bestL + 1},${bestR + 1}](長さ${bestLen})、和は${k}以下`));
+  return frames;
+}
+
+/**
+ * ボイヤー・ムーアの多数決アルゴリズム(Boyer-Moore Majority Vote)のステップ列を生成する。
+ * 「候補」と「相殺カウンタ」の2変数だけを保持しながら配列を1回線形走査し、カウンタが0なら
+ * 新しい候補を採用、一致すればカウンタを増やし、不一致なら減らす。走査後、候補の実際の
+ * 出現回数を数える検証パスまで含めてO(n)時間・O(1)空間で多数派要素を求める。
+ */
+export function boyerMooreMajorityVoteSteps(): SearchFrame[] {
+  const array = BOYER_MOORE_MAJORITY_ARRAY;
+  const frames: SearchFrame[] = [frame(array, {}, "初期状態(候補=なし、相殺カウンタ=0)")];
+
+  let candidate: number | null = null;
+  let count = 0;
+  for (let i = 0; i < array.length; i++) {
+    const x = array[i];
+    if (count === 0) {
+      candidate = x;
+      count = 1;
+      frames.push(frame(array, { [i]: "pivot" }, `カウンタ=0のため、値${x}を新しい候補に採用(カウンタ=1)`));
+    } else if (x === candidate) {
+      count++;
+      frames.push(frame(array, { [i]: "settled" }, `値${x}は候補${candidate}と一致 → カウンタ+1(カウンタ=${count})`));
+    } else {
+      count--;
+      frames.push(frame(array, { [i]: "swapping" }, `値${x}は候補${candidate}と不一致 → カウンタ-1(カウンタ=${count})`));
+    }
+  }
+
+  const verifyCount = array.filter((v) => v === candidate).length;
+  const hl: Partial<Record<number, StateColorKey>> = {};
+  array.forEach((v, i) => {
+    if (v === candidate) hl[i] = "settled";
+  });
+  const majorityThreshold = Math.floor(array.length / 2) + 1;
+  const isMajority = verifyCount >= majorityThreshold;
+  frames.push(
+    frame(
+      array,
+      hl,
+      `検証パス: 候補${candidate}の実際の出現回数は${verifyCount}回(配列長${array.length}の過半数=${majorityThreshold}以上か) → ${
+        isMajority ? `多数派要素として確定` : "多数派要素は存在しない"
+      }`,
+    ),
+  );
+  return frames;
+}
+
+/** 固定シードの線形合同法による疑似乱数生成器(0〜1未満)。再現性のため乱数は決定的にする。 */
+function reservoirSeededRandom(seed: number): () => number {
+  let s = seed >>> 0;
+  return () => {
+    s = (s * 1664525 + 1013904223) >>> 0;
+    return s / 4294967296;
+  };
+}
+
+/**
+ * リザーバサンプリング(貯水池標本法)のステップ列を生成する。ストリームの最初のk個を
+ * そのまま貯水池に入れ、以降のi番目(1-indexed)の要素は確率k/iで貯水池内のランダムな
+ * スロットと置き換える。この方針により、走査完了後の貯水池は全n個の要素から均等な確率で
+ * 選ばれた標本になっている。乱数は固定シードで決定的に生成する。
+ */
+export function reservoirSamplingSteps(): SearchFrame[] {
+  const array = RESERVOIR_STREAM;
+  const k = RESERVOIR_K;
+  const rng = reservoirSeededRandom(9999);
+  const frames: SearchFrame[] = [
+    frame(array, {}, `ストリームからk=${k}個を均等な確率でサンプリングする(貯水池標本法)`),
+  ];
+
+  const reservoir: number[] = [];
+  const highlightForReservoir = (extra: Partial<Record<number, StateColorKey>>) => {
+    const hl: Partial<Record<number, StateColorKey>> = {};
+    reservoir.forEach((idx) => {
+      hl[idx] = "settled";
+    });
+    return { ...hl, ...extra };
+  };
+
+  for (let i = 0; i < array.length; i++) {
+    if (i < k) {
+      reservoir.push(i);
+      frames.push(
+        frame(
+          array,
+          highlightForReservoir({ [i]: "pivot" }),
+          `${i + 1}番目の要素(値${array[i]})をそのまま貯水池に入れる(貯水池: ${reservoir.length}/${k})`,
+        ),
+      );
+      continue;
+    }
+
+    const prob = k / (i + 1);
+    const roll = rng();
+    frames.push(
+      frame(
+        array,
+        highlightForReservoir({ [i]: "comparing" }),
+        `${i + 1}番目の要素(値${array[i]})を検討。採用確率k/i=${k}/${i + 1}=${prob.toFixed(3)}、乱数=${roll.toFixed(3)}`,
+      ),
+    );
+
+    if (roll < prob) {
+      const slot = Math.floor(rng() * k);
+      const evictedIdx = reservoir[slot];
+      frames.push(
+        frame(
+          array,
+          highlightForReservoir({ [i]: "pivot", [evictedIdx]: "swapping" }),
+          `採用(乱数${roll.toFixed(3)} < ${prob.toFixed(3)}) → 貯水池のスロット${slot}(値${array[evictedIdx]}、元${
+            evictedIdx + 1
+          }番目)を値${array[i]}と置き換える`,
+        ),
+      );
+      reservoir[slot] = i;
+    } else {
+      frames.push(
+        frame(array, highlightForReservoir({}), `不採用(乱数${roll.toFixed(3)} ≥ ${prob.toFixed(3)}) → この要素は捨てる`),
+      );
+    }
+  }
+
+  frames.push(
+    frame(
+      array,
+      highlightForReservoir({}),
+      `走査完了。最終的な貯水池: [${reservoir.map((idx) => array[idx]).join(", ")}](各要素が均等な確率k/nで選ばれたことが保証される)`,
+    ),
+  );
+  return frames;
+}
+
 export const SEARCH_VISUALIZERS: Record<string, () => SearchFrame[]> = {
   "linear-search": linearSearchSteps,
   "binary-search": binarySearchSteps,
@@ -2012,4 +2197,7 @@ export const SEARCH_VISUALIZERS: Record<string, () => SearchFrame[]> = {
   "count-min-sketch": countMinSketchSteps,
   "cuckoo-hashing": cuckooHashingSteps,
   hyperloglog: hyperloglogSteps,
+  "two-pointers-sliding-window": twoPointersSlidingWindowSteps,
+  "boyer-moore-majority-vote": boyerMooreMajorityVoteSteps,
+  "reservoir-sampling": reservoirSamplingSteps,
 };

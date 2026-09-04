@@ -7,7 +7,7 @@ import { ZoomableStage } from "./ZoomableStage";
 import { useStepPlayer } from "./useStepPlayer";
 import { useWorkerFrames } from "./useWorkerFrames";
 import { ParticleBurstLayer, type ParticleBurst } from "./ParticleBurstLayer";
-import { coreColors, stateColors } from "@/lib/design-tokens";
+import { coreColors, readableTextColor, stateColors } from "@/lib/design-tokens";
 import type { TreeFrame, TreeNodeState } from "@/lib/tree-visualizers";
 import type { WorkerRequest } from "@/workers/algorithm-worker";
 
@@ -162,9 +162,8 @@ export function TreeVisualizer({ algorithmId }: TreeVisualizerProps) {
         ctx.stroke();
       }
 
-      // idleの塗り色(通常ノード)や黒(赤黒木)は暗色のため、黒文字だと同化して読めなくなる(視認性バグ)。
-      const fillIsDark = (isRedBlackNode && node.color === "black") || (!isRedBlackNode && state === "idle");
-      ctx.fillStyle = fillIsDark ? "#edf0f5" : "#06070a";
+      // ノードの塗り色(fillColor)の実際の輝度から文字色を決める。状態色が増減しても常に読める組み合わせになる。
+      ctx.fillStyle = readableTextColor(fillColor);
       if (isIntervalNode) {
         ctx.font = "10px var(--font-mono), monospace";
         ctx.fillText(`[${node.value},${node.hi}]`, x, y);
