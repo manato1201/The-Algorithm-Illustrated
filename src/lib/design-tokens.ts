@@ -30,3 +30,20 @@ export const lineColors = {
 } as const;
 
 export type StateColorKey = keyof typeof stateColors;
+
+/**
+ * 背景色(hex)の上に置く文字色を、WCAG相対輝度から機械的に選ぶ。
+ * 「idleだけ暗いから特別扱いする」という決め打ちだと、状態色が増えたときに
+ * 同じ視認性バグ(黒文字が暗い背景に同化)を再発させかねないため、
+ * 任意の背景色に対して安全な文字色を計算で保証する。
+ * しきい値0.179は、黒文字との contrast と 白文字との contrast が釣り合う相対輝度(WCAG公式から導出)。
+ */
+export function readableTextColor(hexColor: string): string {
+  const hex = hexColor.replace("#", "");
+  const r = parseInt(hex.slice(0, 2), 16) / 255;
+  const g = parseInt(hex.slice(2, 4), 16) / 255;
+  const b = parseInt(hex.slice(4, 6), 16) / 255;
+  const linear = (c: number) => (c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4);
+  const luminance = 0.2126 * linear(r) + 0.7152 * linear(g) + 0.0722 * linear(b);
+  return luminance > 0.179 ? "#06070a" : coreColors.text;
+}

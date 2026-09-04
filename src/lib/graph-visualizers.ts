@@ -9168,6 +9168,691 @@ Object.assign(GRAPH_DATASETS, {
   goap: { nodes: GOAP_NODES, edges: GOAP_EDGES, directed: true },
 } satisfies Record<string, GraphDataset>);
 
+/**
+ * n分木を子リストから汎用的にレイアウトする(computeSegmentTreeLayout/computeDecisionTreeLayoutと
+ * 同じ「葉の並び順→x座標、深さ→y座標」の手法をn分木向けに一般化したもの)。
+ * BSPツリー・ダブリング・重心分解・小から大へのマージの4種類で共有する。
+ */
+function computeRootedTreeLayout(
+  childrenOf: Record<string, string[]>,
+  rootId: string,
+): Record<string, { x: number; y: number }> {
+  const positions: Record<string, { x: number; y: number }> = {};
+  let counter = 0;
+  let maxDepth = 0;
+
+  const visit = (id: string, depth: number) => {
+    maxDepth = Math.max(maxDepth, depth);
+    const children = childrenOf[id] ?? [];
+    if (children.length === 0) {
+      positions[id] = { x: counter, y: depth };
+      counter++;
+      return;
+    }
+    children.forEach((c) => visit(c, depth + 1));
+    const xs = children.map((c) => positions[c].x);
+    positions[id] = { x: (Math.min(...xs) + Math.max(...xs)) / 2, y: depth };
+  };
+  visit(rootId, 0);
+
+  const totalLeaves = counter;
+  Object.keys(positions).forEach((id) => {
+    positions[id] = {
+      x: totalLeaves > 1 ? positions[id].x / (totalLeaves - 1) : 0.5,
+      y: maxDepth > 0 ? positions[id].y / maxDepth : 0,
+    };
+  });
+  return positions;
+}
+
+// ============================================================
+// BSPツリーによる描画順序決定 (bsp-tree-rendering)
+// ============================================================
+
+type BspSegment = { id: string; x1: number; y1: number; x2: number; y2: number };
+
+/**
+ * 2D平面上の5本の壁(線分)。手作業で「どのノードを分割平面に選んでも残りの線分が
+ * 分割直線の片側だけに収まる(またがらない)」ように座標を選んである(実際のBSP構築では
+ * 平面をまたぐポリゴンは分割してそれぞれの側に振り分けるが、このデモでは分割処理は省略する)。
+ */
+const BSP_SEGMENTS: BspSegment[] = [
+  { id: "S1", x1: 5, y1: 0, x2: 5, y2: 10 },
+  { id: "S2", x1: 2, y1: 2, x2: 2, y2: 8 },
+  { id: "S3", x1: 8, y1: 2, x2: 8, y2: 8 },
+  { id: "S4", x1: 3, y1: 1, x2: 4, y2: 1 },
+  { id: "S5", x1: 6, y1: 4, x2: 7, y2: 4 },
+];
+
+/** 点(x,y)が線分lineが乗る直線のどちら側にあるかを符号付きで返す。 */
+function bspSide(line: BspSegment, x: number, y: number): number {
+  const dx = line.x2 - line.x1;
+  const dy = line.y2 - line.y1;
+  return dx * (y - line.y1) - dy * (x - line.x1);
+}
+
+/** 線分segの両端点が、分割平面lineに対してどちらの側にあるか(合計の符号で判定)。 */
+function bspClassify(line: BspSegment, seg: BspSegment): "front" | "back" {
+  const sum = bspSide(line, seg.x1, seg.y1) + bspSide(line, seg.x2, seg.y2);
+  return sum >= 0 ? "front" : "back";
+}
+
+type BspNode = { seg: BspSegment; front: BspNode | null; back: BspNode | null };
+
+function buildBspTree(segments: BspSegment[]): BspNode | null {
+  if (segments.length === 0) return null;
+  const [root, ...rest] = segments;
+  const front: BspSegment[] = [];
+  const back: BspSegment[] = [];
+  for (const s of rest) {
+    if (bspClassify(root, s) === "front") front.push(s);
+    else back.push(s);
+  }
+  return { seg: root, front: buildBspTree(front), back: buildBspTree(back) };
+}
+
+const BSP_TREE_ROOT: BspNode = buildBspTree(BSP_SEGMENTS)!;
+
+function bspChildrenMap(node: BspNode | null, map: Record<string, string[]>): void {
+  if (!node) return;
+  const children: string[] = [];
+  if (node.front) {
+    children.push(node.front.seg.id);
+    bspChildrenMap(node.front, map);
+  }
+  if (node.back) {
+    children.push(node.back.seg.id);
+    bspChildrenMap(node.back, map);
+  }
+  map[node.seg.id] = children;
+}
+const BSP_CHILDREN_MAP: Record<string, string[]> = {};
+bspChildrenMap(BSP_TREE_ROOT, BSP_CHILDREN_MAP);
+const BSP_LAYOUT = computeRootedTreeLayout(BSP_CHILDREN_MAP, BSP_TREE_ROOT.seg.id);
+
+export const BSP_TREE_NODES: GraphNode[] = BSP_SEGMENTS.map((s) => ({
+  id: s.id,
+  label: s.id,
+  x: BSP_LAYOUT[s.id].x,
+  y: BSP_LAYOUT[s.id].y,
+}));
+
+export const BSP_TREE_EDGES: GraphEdge[] = (() => {
+  const result: GraphEdge[] = [];
+  const visit = (node: BspNode | null) => {
+    if (!node) return;
+    if (node.front) {
+      result.push({ id: `${node.seg.id}-${node.front.seg.id}-F`, from: node.seg.id, to: node.front.seg.id, weight: 1 });
+      visit(node.front);
+    }
+    if (node.back) {
+      result.push({ id: `${node.seg.id}-${node.back.seg.id}-B`, from: node.seg.id, to: node.back.seg.id, weight: 1 });
+      visit(node.back);
+    }
+  };
+  visit(BSP_TREE_ROOT);
+  return result;
+})();
+
+/**
+ * BSPツリーによる描画順序決定のステップ列を生成する。まず5本の2D線分(壁)から
+ * BSPツリーを構築し(各ノードの分割直線に対する残りの線分の符号で表側/裏側に分類、再帰)、
+ * 次にカメラ位置から木を辿って「カメラと反対側の子→自分自身→カメラと同じ側の子」の順に
+ * 訪問することで、Zバッファなしでも常に奥から手前への正しい描画順序が得られる様子を示す。
+ */
+export function bspTreeRenderingSteps(): GraphFrame[] {
+  const nodes = BSP_TREE_NODES;
+  const edges = BSP_TREE_EDGES;
+  const nodeStates = initNodeStates(nodes, "idle");
+  const edgeStates = initEdgeStates(edges, "idle");
+
+  const frames: GraphFrame[] = [
+    {
+      nodeStates: { ...nodeStates },
+      edgeStates: { ...edgeStates },
+      distances: {},
+      description: "5本の線分(壁)からBSPツリーをオフラインで構築する",
+    },
+  ];
+  const push = (description: string) =>
+    frames.push({ nodeStates: { ...nodeStates }, edgeStates: { ...edgeStates }, distances: {}, description });
+
+  const buildVisit = (node: BspNode | null, parentId: string | null) => {
+    if (!node) return;
+    nodeStates[node.seg.id] = "settled";
+    if (parentId !== null) {
+      const edge = edges.find((e) => e.from === parentId && e.to === node.seg.id)!;
+      edgeStates[edge.id] = "tree";
+    }
+    push(
+      `${node.seg.id}(線分[(${node.seg.x1},${node.seg.y1})-(${node.seg.x2},${node.seg.y2})])を分割平面として登録。` +
+        `残りの線分を表側${node.front ? "あり" : "なし"}/裏側${node.back ? "あり" : "なし"}に分類する`,
+    );
+    buildVisit(node.front, node.seg.id);
+    buildVisit(node.back, node.seg.id);
+  };
+  buildVisit(BSP_TREE_ROOT, null);
+
+  nodes.forEach((n) => {
+    nodeStates[n.id] = "idle";
+  });
+  const camera = { x: 9, y: 9 };
+  push(`BSPツリーの構築完了。カメラ位置(${camera.x},${camera.y})から木を辿り、描画順序を決定する`);
+
+  const order: string[] = [];
+  const traverse = (node: BspNode | null) => {
+    if (!node) return;
+    const cameraIsFront = bspSide(node.seg, camera.x, camera.y) >= 0;
+    const near = cameraIsFront ? node.front : node.back;
+    const far = cameraIsFront ? node.back : node.front;
+    nodeStates[node.seg.id] = "visited";
+    push(`${node.seg.id}: カメラは${cameraIsFront ? "表側" : "裏側"}にいる → 反対側の子から先に(奥から)描画する`);
+    traverse(far);
+    nodeStates[node.seg.id] = "settled";
+    order.push(node.seg.id);
+    push(`${node.seg.id}上のポリゴンを描画(${order.length}番目)`);
+    traverse(near);
+  };
+  traverse(BSP_TREE_ROOT);
+
+  push(`描画完了。奥から手前への正しい描画順序: ${order.join(" → ")}(木を辿り直すだけでカメラが動いても瞬時に求まる)`);
+  return frames;
+}
+
+// ============================================================
+// ポータルカリング (portal-culling)
+// ============================================================
+
+export const PORTAL_CULLING_NODES: GraphNode[] = [
+  { id: "R0", label: "R0", x: 0.5, y: 0.08 },
+  { id: "R1", label: "R1", x: 0.25, y: 0.4 },
+  { id: "R2", label: "R2", x: 0.75, y: 0.4 },
+  { id: "R3", label: "R3", x: 0.15, y: 0.78 },
+  { id: "R4", label: "R4", x: 0.62, y: 0.78 },
+  { id: "R5", label: "R5", x: 0.92, y: 0.78 },
+];
+
+export const PORTAL_CULLING_EDGES: GraphEdge[] = [
+  { id: "P01", from: "R0", to: "R1", weight: 1 },
+  { id: "P02", from: "R0", to: "R2", weight: 1 },
+  { id: "P13", from: "R1", to: "R3", weight: 1 },
+  { id: "P24", from: "R2", to: "R4", weight: 1 },
+  { id: "P25", from: "R2", to: "R5", weight: 1 },
+];
+
+/** 視錐台・ポータルの投影範囲を単純化してxy平面上の矩形(x0,y0,x1,y1)で表す。 */
+type FrustumRect = [number, number, number, number];
+
+const PORTAL_CULLING_BOUNDS: Record<string, FrustumRect> = {
+  P01: [-20, -20, 20, 20],
+  P02: [-30, -10, 30, 10],
+  P13: [-5, -5, 15, 15],
+  P24: [0, -5, 10, 5],
+  P25: [50, 50, 60, 60],
+};
+const PORTAL_CULLING_INITIAL_FRUSTUM: FrustumRect = [-100, -100, 100, 100];
+
+/** 2つの矩形の共通部分を返す(空ならnull)。ポータルの投影形状による視錐台の絞り込みを表す。 */
+function intersectFrustumRect(a: FrustumRect, b: FrustumRect): FrustumRect | null {
+  const x0 = Math.max(a[0], b[0]);
+  const y0 = Math.max(a[1], b[1]);
+  const x1 = Math.min(a[2], b[2]);
+  const y1 = Math.min(a[3], b[3]);
+  if (x0 >= x1 || y0 >= y1) return null;
+  return [x0, y0, x1, y1];
+}
+
+/**
+ * ポータルカリングのステップ列を生成する。部屋(セル)をノード、ドア(ポータル)を辺とし、
+ * カメラのいる部屋R0から出発して、各ポータルの投影範囲(矩形)を現在の視錐台と交差判定する。
+ * 交差すればその先の部屋を可視と判定し、絞り込まれた視錐台を引き継いで再帰する。
+ * 交差しなければ、その先の部屋(と、さらにその先の部屋群)は幾何学的に確実に見えないため
+ * 計算コストほぼゼロで除外できる。
+ */
+export function portalCullingSteps(): GraphFrame[] {
+  const nodes = PORTAL_CULLING_NODES;
+  const edges = PORTAL_CULLING_EDGES;
+  const nodeStates = initNodeStates(nodes, "idle");
+  const edgeStates = initEdgeStates(edges, "idle");
+  nodeStates.R0 = "settled";
+
+  const frames: GraphFrame[] = [
+    {
+      nodeStates: { ...nodeStates },
+      edgeStates: { ...edgeStates },
+      distances: {},
+      description: "カメラは部屋R0にいる。R0のジオメトリは常に描画対象に加える",
+    },
+  ];
+  const push = (description: string) =>
+    frames.push({ nodeStates: { ...nodeStates }, edgeStates: { ...edgeStates }, distances: {}, description });
+
+  const visible: string[] = ["R0"];
+  const visit = (roomId: string, frustum: FrustumRect) => {
+    const outgoing = edges.filter((e) => e.from === roomId);
+    for (const edge of outgoing) {
+      edgeStates[edge.id] = "checking";
+      const bounds = PORTAL_CULLING_BOUNDS[edge.id];
+      push(
+        `ポータル${edge.id}(${roomId}→${edge.to})の投影範囲[${bounds.join(",")}]を現在の視錐台` +
+          `[${frustum.map((v) => v.toFixed(0)).join(",")}]と照合する`,
+      );
+      const next = intersectFrustumRect(frustum, bounds);
+      if (next === null) {
+        edgeStates[edge.id] = "rejected";
+        push(`視錐台と交差しない → 部屋${edge.to}とその先の部屋は確実に見えないため除外する`);
+        continue;
+      }
+      edgeStates[edge.id] = "tree";
+      nodeStates[edge.to] = "visited";
+      push(
+        `交差あり(絞り込み後の視錐台[${next.map((v) => v.toFixed(0)).join(",")}]) → 部屋${edge.to}を可視と判定`,
+      );
+      nodeStates[edge.to] = "settled";
+      visible.push(edge.to);
+      visit(edge.to, next);
+    }
+  };
+  visit("R0", PORTAL_CULLING_INITIAL_FRUSTUM);
+
+  const culled = nodes.map((n) => n.id).filter((id) => !visible.includes(id));
+  push(
+    `探索完了。描画対象の部屋: ${visible.join(", ")}。` +
+      `${culled.length > 0 ? `除外された部屋: ${culled.join(", ")}(ポータルが視錐台と交差しなかった)` : "全ての部屋が可視だった"}`,
+  );
+  return frames;
+}
+
+// ============================================================
+// ダブリング(Binary Lifting) (binary-lifting-doubling)
+// ============================================================
+
+const BINARY_LIFTING_PARENT: Record<string, string> = {
+  "1": "0",
+  "2": "0",
+  "3": "1",
+  "4": "1",
+  "5": "2",
+  "6": "2",
+  "7": "4",
+};
+const BINARY_LIFTING_CHILDREN: Record<string, string[]> = {
+  "0": ["1", "2"],
+  "1": ["3", "4"],
+  "2": ["5", "6"],
+  "3": [],
+  "4": ["7"],
+  "5": [],
+  "6": [],
+  "7": [],
+};
+const BINARY_LIFTING_ALL_IDS = ["0", "1", "2", "3", "4", "5", "6", "7"];
+const BINARY_LIFTING_LAYOUT = computeRootedTreeLayout(BINARY_LIFTING_CHILDREN, "0");
+
+export const BINARY_LIFTING_NODES: GraphNode[] = BINARY_LIFTING_ALL_IDS.map((id) => ({
+  id,
+  label: id,
+  x: BINARY_LIFTING_LAYOUT[id].x,
+  y: BINARY_LIFTING_LAYOUT[id].y,
+}));
+
+/**
+ * up[0](親ポインタ、実線の木の辺)と、up[1](2個上への仮想ジャンプ辺、点線のイメージ)を
+ * 両方まとめて辺集合として定義する。up[1][v]=up[0][up[0][v]]の結果がup[0][v]と一致してしまう
+ * (=親が根で、それ以上意味のある情報が増えない)頂点1・2は仮想辺を省略している。
+ */
+export const BINARY_LIFTING_EDGES: GraphEdge[] = [
+  { id: "p-0-1", from: "0", to: "1", weight: 1 },
+  { id: "p-0-2", from: "0", to: "2", weight: 1 },
+  { id: "p-1-3", from: "1", to: "3", weight: 1 },
+  { id: "p-1-4", from: "1", to: "4", weight: 1 },
+  { id: "p-2-5", from: "2", to: "5", weight: 1 },
+  { id: "p-2-6", from: "2", to: "6", weight: 1 },
+  { id: "p-4-7", from: "4", to: "7", weight: 1 },
+  { id: "j-3-0", from: "3", to: "0", weight: 2 },
+  { id: "j-4-0", from: "4", to: "0", weight: 2 },
+  { id: "j-5-0", from: "5", to: "0", weight: 2 },
+  { id: "j-6-0", from: "6", to: "0", weight: 2 },
+  { id: "j-7-1", from: "7", to: "1", weight: 2 },
+];
+
+/**
+ * ダブリング(Binary Lifting)のステップ列を生成する。木の親ポインタup[0]を構築した後、
+ * up[1][v] = up[0][up[0][v]]という漸化式で「2個上の祖先」への仮想的なジャンプ辺を追加する
+ * (前処理)。最後に、頂点7の3個上の祖先を求めるクエリを、k=3の二進展開(2+1)に沿って
+ * up[1]の辺(2段ジャンプ)→up[0]の辺(1段ジャンプ)の順に合成することでO(log n)で解く。
+ */
+export function binaryLiftingDoublingSteps(): GraphFrame[] {
+  const nodes = BINARY_LIFTING_NODES;
+  const edges = BINARY_LIFTING_EDGES;
+  const nodeStates = initNodeStates(nodes, "idle");
+  const edgeStates = initEdgeStates(edges, "idle");
+  const depth: Record<string, number> = { "0": 0 };
+  nodeStates["0"] = "settled";
+
+  const frames: GraphFrame[] = [
+    {
+      nodeStates: { ...nodeStates },
+      edgeStates: { ...edgeStates },
+      distances: { ...depth },
+      description: "根0を持つ木を初期化する。まずup[0][v]=親(v)を構築する",
+    },
+  ];
+  const push = (description: string) =>
+    frames.push({ nodeStates: { ...nodeStates }, edgeStates: { ...edgeStates }, distances: { ...depth }, description });
+
+  const buildOrder = ["1", "2", "3", "4", "5", "6", "7"];
+  for (const v of buildOrder) {
+    const p = BINARY_LIFTING_PARENT[v];
+    edgeStates[`p-${p}-${v}`] = "tree";
+    nodeStates[v] = "settled";
+    depth[v] = depth[p] + 1;
+    push(`up[0][${v}] = ${p}(深さ${depth[v]})を確定`);
+  }
+
+  push("up[0]の構築完了。次にup[1][v] = up[0][up[0][v]]で「2個上」への仮想ジャンプ辺を追加する");
+
+  const up0: Record<string, string> = { ...BINARY_LIFTING_PARENT, "0": "0" };
+  for (const v of buildOrder) {
+    const mid = up0[v];
+    const dest = up0[mid];
+    const jumpEdgeId = `j-${v}-${dest}`;
+    if (!(jumpEdgeId in edgeStates)) continue;
+    edgeStates[jumpEdgeId] = "relaxed";
+    push(`up[1][${v}] = up[0][up[0][${v}]] = up[0][${mid}] = ${dest} → 仮想辺${v}→${dest}(2個上ジャンプ)を追加`);
+  }
+
+  push("前処理完了。クエリ: 頂点7の3個上の祖先を求める(k=3の二進展開 = 2 + 1)");
+
+  let current = "7";
+  nodeStates[current] = "visited";
+  const afterJump1 = up0[up0[current]];
+  edgeStates[`j-${current}-${afterJump1}`] = "checking";
+  push(`現在頂点=${current}。k=3のビット1(値2)が立っているので、up[1]の仮想辺で2段ジャンプする`);
+  current = afterJump1;
+  nodeStates[current] = "visited";
+  push(`2段ジャンプして頂点${current}に移動`);
+
+  const afterJump2 = up0[current];
+  edgeStates[`p-${afterJump2}-${current}`] = "checking";
+  push("k=3のビット0(値1)が立っているので、up[0]の辺で1段ジャンプする");
+  current = afterJump2;
+  nodeStates[current] = "settled";
+  push(`1段ジャンプして頂点${current}に移動。合計2+1=3段ジャンプした`);
+
+  push(`計算完了。頂点7の3個上の祖先は${current}(愚直に1段ずつ辿るより少ないジャンプ回数で求まった)`);
+  return frames;
+}
+
+// ============================================================
+// 重心分解(Centroid Decomposition) (centroid-decomposition)
+// ============================================================
+
+const CENTROID_IDS = ["0", "1", "2", "3", "4", "5", "6"];
+export const CENTROID_NODES: GraphNode[] = CENTROID_IDS.map((id, i) => ({
+  id,
+  label: id,
+  x: 0.05 + (i / (CENTROID_IDS.length - 1)) * 0.9,
+  y: 0.5,
+}));
+
+const CENTROID_PATH_EDGES: [string, string][] = [
+  ["0", "1"],
+  ["1", "2"],
+  ["2", "3"],
+  ["3", "4"],
+  ["4", "5"],
+  ["5", "6"],
+];
+
+/** パスの原本の辺に加え、重心木でのみ現れる非隣接な親子関係(3-1, 3-5)用の仮想辺を含む。 */
+export const CENTROID_EDGES: GraphEdge[] = [
+  ...CENTROID_PATH_EDGES.map(([from, to]) => ({ id: `e-${from}-${to}`, from, to, weight: 1 })),
+  { id: "cd-3-1", from: "3", to: "1", weight: 1 },
+  { id: "cd-3-5", from: "3", to: "5", weight: 1 },
+];
+
+function centroidAdjacency(edges: [string, string][]): Record<string, string[]> {
+  const adj: Record<string, string[]> = {};
+  const add = (a: string, b: string) => {
+    if (!adj[a]) adj[a] = [];
+    adj[a].push(b);
+  };
+  edges.forEach(([a, b]) => {
+    add(a, b);
+    add(b, a);
+  });
+  return adj;
+}
+const CENTROID_ADJ = centroidAdjacency(CENTROID_PATH_EDGES);
+
+function centroidSubtreeInfo(
+  adj: Record<string, string[]>,
+  root: string,
+  removed: Set<string>,
+): { parent: Record<string, string | null>; size: Record<string, number>; order: string[] } {
+  const parent: Record<string, string | null> = {};
+  const size: Record<string, number> = {};
+  const order: string[] = [];
+  const visit = (id: string, par: string | null): number => {
+    parent[id] = par;
+    order.push(id);
+    let s = 1;
+    for (const nb of adj[id] ?? []) {
+      if (nb === par || removed.has(nb)) continue;
+      s += visit(nb, id);
+    }
+    size[id] = s;
+    return s;
+  };
+  visit(root, null);
+  return { parent, size, order };
+}
+
+/** 部分木サイズから重心(取り除くと各連結成分のサイズがtotal/2以下になる頂点)を探す。 */
+function findCentroidVertex(
+  adj: Record<string, string[]>,
+  root: string,
+  removed: Set<string>,
+): { centroid: string; total: number } {
+  const { parent, size, order } = centroidSubtreeInfo(adj, root, removed);
+  const total = size[root];
+  for (const node of order) {
+    let maxComponent = total - size[node];
+    for (const nb of adj[node] ?? []) {
+      if (nb === parent[node] || removed.has(nb)) continue;
+      maxComponent = Math.max(maxComponent, size[nb]);
+    }
+    if (maxComponent <= Math.floor(total / 2)) return { centroid: node, total };
+  }
+  return { centroid: root, total };
+}
+
+/**
+ * 重心分解(Centroid Decomposition)のステップ列を生成する。7頂点のパス木(0-1-2-…-6)に対し、
+ * 部分木サイズをDFSで計算して重心を求め、重心を取り除いて残った各連結成分に再帰する。
+ * 元の木の辺は重心が取り除かれるたびに用済みになる(rejected)一方、重心同士を結ぶ
+ * 新しい「重心木(centroid tree)」の辺が最終的にtree状態で浮かび上がる。
+ */
+export function centroidDecompositionSteps(): GraphFrame[] {
+  const nodes = CENTROID_NODES;
+  const edges = CENTROID_EDGES;
+  const adj = CENTROID_ADJ;
+  const nodeStates = initNodeStates(nodes, "idle");
+  const edgeStates = initEdgeStates(edges, "idle");
+
+  const frames: GraphFrame[] = [
+    {
+      nodeStates: { ...nodeStates },
+      edgeStates: { ...edgeStates },
+      distances: {},
+      description: "7頂点のパス木(0-1-2-3-4-5-6)を重心分解する",
+    },
+  ];
+  const push = (description: string) =>
+    frames.push({ nodeStates: { ...nodeStates }, edgeStates: { ...edgeStates }, distances: {}, description });
+
+  const removed = new Set<string>();
+  const centroidParent: Record<string, string | null> = {};
+  const findOriginalEdgeId = (a: string, b: string): string | undefined =>
+    edges.find((e) => (e.from === a && e.to === b) || (e.from === b && e.to === a))?.id;
+
+  const decompose = (start: string, parentCentroid: string | null) => {
+    const { order } = centroidSubtreeInfo(adj, start, removed);
+    order.forEach((id) => {
+      nodeStates[id] = "visited";
+    });
+    push(`連結成分{${order.join(",")}}(サイズ${order.length})を処理する`);
+
+    const { centroid, total } = findCentroidVertex(adj, start, removed);
+    nodeStates[centroid] = "settled";
+    centroidParent[centroid] = parentCentroid;
+    push(
+      `重心として${centroid}を選択(取り除くと各連結成分のサイズが${Math.floor(total / 2)}以下になる)。` +
+        (parentCentroid ? `重心木では${parentCentroid}の子になる` : "重心木の根になる"),
+    );
+
+    removed.add(centroid);
+    for (const nb of adj[centroid] ?? []) {
+      const originalEdgeId = findOriginalEdgeId(centroid, nb);
+      if (originalEdgeId) edgeStates[originalEdgeId] = "rejected";
+    }
+    push(`${centroid}を取り除く。隣接していた元の木の辺は用済みになる`);
+
+    for (const nb of adj[centroid] ?? []) {
+      if (removed.has(nb)) continue;
+      decompose(nb, centroid);
+    }
+  };
+  decompose(nodes[0].id, null);
+
+  for (const child of Object.keys(centroidParent)) {
+    const parent = centroidParent[child];
+    if (parent === null) continue;
+    const edgeId = findOriginalEdgeId(parent, child) ?? `cd-${parent}-${child}`;
+    edgeStates[edgeId] = "tree";
+  }
+  const links = Object.keys(centroidParent)
+    .filter((c) => centroidParent[c] !== null)
+    .map((c) => `${centroidParent[c]}→${c}`)
+    .join(", ");
+  push(`分解完了。重心木(centroid tree)の親子関係: ${links}`);
+
+  return frames;
+}
+
+// ============================================================
+// 小から大へのマージ(Small-to-Large Merging) (small-to-large-merging)
+// ============================================================
+
+const STL_CHILDREN: Record<string, string[]> = {
+  "0": ["1", "2"],
+  "1": ["3", "4"],
+  "2": ["5", "6"],
+  "3": [],
+  "4": [],
+  "5": [],
+  "6": [],
+};
+const STL_VALUES: Record<string, number> = { "0": 1, "1": 2, "2": 1, "3": 1, "4": 3, "5": 2, "6": 2 };
+const STL_LAYOUT = computeRootedTreeLayout(STL_CHILDREN, "0");
+const STL_IDS = ["0", "1", "2", "3", "4", "5", "6"];
+
+export const STL_NODES: GraphNode[] = STL_IDS.map((id) => ({
+  id,
+  label: `${id}:${STL_VALUES[id]}`,
+  x: STL_LAYOUT[id].x,
+  y: STL_LAYOUT[id].y,
+}));
+
+export const STL_EDGES: GraphEdge[] = [
+  { id: "e-0-1", from: "0", to: "1", weight: 1 },
+  { id: "e-0-2", from: "0", to: "2", weight: 1 },
+  { id: "e-1-3", from: "1", to: "3", weight: 1 },
+  { id: "e-1-4", from: "1", to: "4", weight: 1 },
+  { id: "e-2-5", from: "2", to: "5", weight: 1 },
+  { id: "e-2-6", from: "2", to: "6", weight: 1 },
+];
+
+/**
+ * 小から大へのマージ(Small-to-Large Merging, DSU on Tree)のステップ列を生成する。
+ * 各頂点を根とする部分木に含まれる値(頂点ラベルの":"以降の数字)の種類数を、
+ * 子から親へポストオーダーでマージしながら求める。マージの際は常に最大サイズの子の集合を
+ * そのまま再利用し、それ以外の(小さい)集合の要素だけを1つずつ挿入することで、
+ * 全頂点を通した総挿入回数がO(n log n)に収まる。
+ */
+export function smallToLargeMergingSteps(): GraphFrame[] {
+  const nodes = STL_NODES;
+  const edges = STL_EDGES;
+  const nodeStates = initNodeStates(nodes, "idle");
+  const edgeStates = initEdgeStates(edges, "idle");
+  const distinctCounts: Record<string, number | null> = {};
+  nodes.forEach((n) => {
+    distinctCounts[n.id] = null;
+  });
+
+  const frames: GraphFrame[] = [
+    {
+      nodeStates: { ...nodeStates },
+      edgeStates: { ...edgeStates },
+      distances: { ...distinctCounts },
+      description: "各頂点が値を持つ木(ラベルの':'以降が値)。部分木ごとの値の種類数を小から大へのマージで求める",
+    },
+  ];
+  const push = (description: string) =>
+    frames.push({
+      nodeStates: { ...nodeStates },
+      edgeStates: { ...edgeStates },
+      distances: { ...distinctCounts },
+      description,
+    });
+
+  const findEdgeId = (parent: string, child: string): string => edges.find((e) => e.from === parent && e.to === child)!.id;
+
+  const dfs = (id: string): Set<number> => {
+    nodeStates[id] = "visited";
+    push(`頂点${id}(値${STL_VALUES[id]})に到達`);
+
+    const childSets: { child: string; set: Set<number> }[] = [];
+    for (const c of STL_CHILDREN[id]) {
+      const set = dfs(c);
+      childSets.push({ child: c, set });
+      edgeStates[findEdgeId(id, c)] = "tree";
+    }
+
+    let target: Set<number>;
+    if (childSets.length === 0) {
+      target = new Set<number>();
+    } else {
+      childSets.sort((a, b) => b.set.size - a.set.size);
+      target = childSets[0].set;
+      push(`頂点${id}: 子${childSets[0].child}の集合(サイズ${target.size})が最大なのでそのまま使い回す`);
+      for (let i = 1; i < childSets.length; i++) {
+        const { child, set } = childSets[i];
+        push(`頂点${id}: 子${child}の集合(サイズ${set.size})を1要素ずつ挿入`);
+        set.forEach((v) => target.add(v));
+      }
+    }
+    target.add(STL_VALUES[id]);
+    distinctCounts[id] = target.size;
+    nodeStates[id] = "settled";
+    push(`頂点${id}を根とする部分木の値の種類数 = ${target.size}`);
+    return target;
+  };
+
+  dfs("0");
+  push("全頂点の部分木ごとの値の種類数が求まった(小さい方を大きい方へ挿入する方針により総挿入回数はO(n log n)に収まる)");
+  return frames;
+}
+
+Object.assign(GRAPH_DATASETS, {
+  "bsp-tree-rendering": { nodes: BSP_TREE_NODES, edges: BSP_TREE_EDGES, directed: true },
+  "portal-culling": { nodes: PORTAL_CULLING_NODES, edges: PORTAL_CULLING_EDGES, directed: true },
+  "binary-lifting-doubling": { nodes: BINARY_LIFTING_NODES, edges: BINARY_LIFTING_EDGES, directed: true },
+  "centroid-decomposition": { nodes: CENTROID_NODES, edges: CENTROID_EDGES, directed: false },
+  "small-to-large-merging": { nodes: STL_NODES, edges: STL_EDGES, directed: true },
+} satisfies Record<string, GraphDataset>);
+
 export const GRAPH_VISUALIZERS: Record<string, () => GraphFrame[]> = {
   "dining-philosophers": diningPhilosophersSteps,
   "petersons-algorithm": petersonsAlgorithmSteps,
@@ -9250,4 +9935,9 @@ export const GRAPH_VISUALIZERS: Record<string, () => GraphFrame[]> = {
   "dynamic-window-approach": dynamicWindowApproachSteps,
   "hierarchical-fsm": hierarchicalFsmSteps,
   goap: goapSteps,
+  "bsp-tree-rendering": bspTreeRenderingSteps,
+  "portal-culling": portalCullingSteps,
+  "binary-lifting-doubling": binaryLiftingDoublingSteps,
+  "centroid-decomposition": centroidDecompositionSteps,
+  "small-to-large-merging": smallToLargeMergingSteps,
 };
