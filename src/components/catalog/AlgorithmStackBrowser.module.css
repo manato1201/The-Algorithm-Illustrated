@@ -1,0 +1,76 @@
+.stackTrack {
+  display: flex;
+  overflow-x: auto;
+  scroll-snap-type: x mandatory;
+  gap: var(--space-4);
+  padding: var(--space-8) 10%;
+  -webkit-overflow-scrolling: touch;
+}
+
+.stackCard {
+  scroll-snap-align: center;
+  flex: 0 0 80vw;
+  max-width: 24rem;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-3);
+  border: 1px solid var(--color-line);
+  border-radius: 8px;
+  padding: var(--space-4);
+  background: var(--color-bg-surface);
+  transition:
+    transform 0.2s ease,
+    opacity 0.2s ease;
+}
+
+.stackCard[data-peek="true"] {
+  transform: scale(0.9) translateY(var(--space-2));
+  opacity: 0.6;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .stackCard {
+    transition: none;
+  }
+
+  .stackCard[data-peek="true"] {
+    transform: none;
+  }
+}
+
+.stackCardHead {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-2);
+}
+
+.stackCardCategory {
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+  color: var(--color-text-muted);
+  letter-spacing: 0.04em;
+}
+
+.stackCardName {
+  font-family: var(--font-display);
+  font-size: 1.25rem;
+  font-weight: 700;
+  line-height: 1.3;
+}
+
+.stackCardSummary {
+  font-family: var(--font-body);
+  font-size: 0.8125rem;
+  line-height: 1.6;
+  color: var(--color-text-muted);
+}
+
+/* Phase 1のグリッド表示に切り替わる640px以上では、JS側(isMobile判定)で
+   そもそも描画しないが、状態の揺らぎに対する保険として非表示にしておく。 */
+@media (min-width: 640px) {
+  .stackTrack {
+    display: none;
+  }
+}
