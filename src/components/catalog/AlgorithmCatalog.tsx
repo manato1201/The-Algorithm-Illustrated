@@ -1,8 +1,9 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import styles from "./AlgorithmCatalog.module.css";
+import { AlgorithmStackBrowser } from "./AlgorithmStackBrowser";
 import { ComplexityBadge } from "@/components/hud/ComplexityBadge";
 import { FavoriteToggleButton } from "@/components/hud/FavoriteToggleButton";
 import {
@@ -12,7 +13,10 @@ import {
 import { matchesSearchQuery } from "@/lib/algorithm-search";
 import { useFavorites } from "@/lib/use-favorites";
 import { useRecentlyViewed } from "@/lib/recently-viewed";
+import { useMediaQuery } from "@/lib/use-media-query";
 import type { AlgorithmMeta } from "@/lib/content/algorithms";
+
+type ChipIndicatorRect = { left: number; top: number; width: number; height: number };
 
 type SortOrder = "category" | "name";
 
@@ -41,6 +45,10 @@ export function AlgorithmCatalog({
   const [sortOrder, setSortOrder] = useState<SortOrder>("category");
   const { favorites, isLoaded: favoritesLoaded, toggleFavorite } = useFavorites();
   const recentIds = useRecentlyViewed();
+  const isMobile = useMediaQuery("(max-width: 639px)");
+  const [stackMode, setStackMode] = useState(false);
+  const categoryChipRowRef = useRef<HTMLDivElement>(null);
+  const [chipIndicator, setChipIndicator] = useState<ChipIndicatorRect | null>(null);
   const trimmedQuery = query.trim().toLowerCase();
   const isSearching = trimmedQuery.length > 0;
   const isFiltering =
@@ -60,6 +68,35 @@ export function AlgorithmCatalog({
     }
     return counts;
   }, [algorithms]);
+
+  // リキッドタブ(IMPROVEMENT_PLAN.md Phase 5): 選択中のカテゴリチップの位置・サイズを測定し、
+  // 背景ハイライト(.chipIndicator)をそこへtransformで追従させる。flex-wrapで行が変わっても
+  // left/top両方をtransformするため自然に追従する。
+  useEffect(() => {
+    const measure = () => {
+      const container = categoryChipRowRef.current;
+      const activeEl = container?.querySelector<HTMLElement>(`.${styles.chipActive}`);
+      if (!container || !activeEl) {
+        setChipIndicator(null);
+        return;
+      }
+      const containerRect = container.getBoundingClientRect();
+      const elRect = activeEl.getBoundingClientRect();
+      setChipIndicator({
+        left: elRect.left - containerRect.left,
+        top: elRect.top - containerRect.top,
+        width: elRect.width,
+        height: elRect.height,
+      });
+    };
+    // react-hooks/set-state-in-effectを避けるため、初回反映のsetStateはtimeoutコールバック内で行う。
+    const timer = setTimeout(measure, 0);
+    window.addEventListener("resize", measure);
+    return () => {
+      clearTimeout(timer);
+      window.removeEventListener("resize", measure);
+    };
+  }, [activeCategory, categoryCounts]);
 
   const subcategoryCounts = useMemo(() => {
     const counts = new Map<string, number>();
@@ -187,7 +224,19 @@ export function AlgorithmCatalog({
           className={styles.chipRow}
           role="group"
           aria-label="カテゴリで絞り込む"
+          ref={categoryChipRowRef}
         >
+          {chipIndicator ? (
+            <span
+              className={styles.chipIndicator}
+              style={{
+                transform: `translate(${chipIndicator.left}px, ${chipIndicator.top}px)`,
+                width: chipIndicator.width,
+                height: chipIndicator.height,
+              }}
+              aria-hidden="true"
+            />
+          ) : null}
           <button
             type="button"
             className={`${styles.chip} ${activeCategory === null ? styles.chipActive : ""}`}
@@ -295,6 +344,16 @@ export function AlgorithmCatalog({
             <h2 id="results-heading" className={styles.sectionLabel}>
               ■ RESULTS {filterLabel}の絞り込み結果 — {filteredResults.length}件
             </h2>
+            {isMobile ? (
+              <button
+                type="button"
+                className={styles.stackToggle}
+                aria-pressed={stackMode}
+                onClick={() => setStackMode((current) => !current)}
+              >
+                {stackMode ? "≡ リスト表示" : "▤ スタック表示"}
+              </button>
+            ) : null}
             {filteredResults.length > 1 ? (
               <label className={styles.sortControl}>
                 並び替え
@@ -314,6 +373,13 @@ export function AlgorithmCatalog({
             <div className={styles.emptyState}>
               該当するアルゴリズムが見つかりませんでした。別のキーワードやカテゴリでお試しください。
             </div>
+          ) : isMobile && stackMode ? (
+            <AlgorithmStackBrowser
+              algorithms={filteredResults}
+              favorites={favorites}
+              favoritesLoaded={favoritesLoaded}
+              onToggleFavorite={toggleFavorite}
+            />
           ) : (
             <ul className={styles.listItems}>
               {filteredResults.map((algorithm) => (
