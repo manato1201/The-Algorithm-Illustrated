@@ -788,6 +788,529 @@ export function wireworldSteps(): GridFrame[] {
   return frames;
 }
 
+/** 固定シードの線形合同法による疑似乱数生成器(0〜1未満)。再現性のため乱数は決定的にする。 */
+function seededRandom(seed: number): () => number {
+  let s = seed >>> 0;
+  return () => {
+    s = (s * 1664525 + 1013904223) >>> 0;
+    return s / 4294967296;
+  };
+}
+
+export const ELEMENTARY_CA_ROWS = 30;
+export const ELEMENTARY_CA_COLS = 61;
+export const ELEMENTARY_CA_RULE = 30;
+
+/** ルール番号(0〜255)を8通りの近傍パターン(パターン値0=000〜7=111)ごとの次状態(true=1)へ展開する。 */
+function elementaryCaRuleBits(rule: number): boolean[] {
+  return Array.from({ length: 8 }, (_, i) => ((rule >> i) & 1) === 1);
+}
+
+function elementaryCaAliveAt(row: GridCellState[], c: number): 0 | 1 {
+  if (c < 0 || c >= row.length) return 0;
+  return row[c] === "visited" ? 1 : 0;
+}
+
+/**
+ * 初等セルオートマトン(Rule 30)のステップ列を生成する。content/algorithms/elementary-cellular-automaton.mdの
+ * elementary_ca()と同じ規則を、1次元のセル列を1世代ごとに1行ずつ下に積み重ねて2次元グリッドとして
+ * 表示することで、時間発展がそのまま模様として見えるようにする。各セルの次状態は「自分自身と左右の
+ * 隣接セル」というたった3セル(2³=8パターン)の現在状態だけで決まり、ルール番号を2進展開した8ビットが
+ * その対応表そのものになる(Rule 30は00011110)。完全に決定論的な規則にもかかわらず、
+ * 生成される模様は統計的検定をパスするほど「ランダムに見える」ことで知られる。
+ */
+export function elementaryCellularAutomatonSteps(): GridFrame[] {
+  const grid: GridCellState[][] = Array.from({ length: ELEMENTARY_CA_ROWS }, () =>
+    Array<GridCellState>(ELEMENTARY_CA_COLS).fill("idle"),
+  );
+  const mid = Math.floor(ELEMENTARY_CA_COLS / 2);
+  grid[0][mid] = "visited";
+  const bits = elementaryCaRuleBits(ELEMENTARY_CA_RULE);
+
+  const frames: GridFrame[] = [
+    {
+      cellStates: cloneGrid(grid),
+      description: `初等セルオートマトン(Rule ${ELEMENTARY_CA_RULE})を開始。1行目は中央のセルのみ生きている(1)状態`,
+    },
+  ];
+
+  for (let r = 1; r < ELEMENTARY_CA_ROWS; r++) {
+    const prev = grid[r - 1];
+    for (let c = 0; c < ELEMENTARY_CA_COLS; c++) {
+      const left = elementaryCaAliveAt(prev, c - 1);
+      const center = elementaryCaAliveAt(prev, c);
+      const right = elementaryCaAliveAt(prev, c + 1);
+      const pattern = left * 4 + center * 2 + right;
+      grid[r][c] = bits[pattern] ? "visited" : "idle";
+    }
+    frames.push({
+      cellStates: cloneGrid(grid),
+      description: `${r + 1}行目: 各セルは真上とその左右計3セルの状態(8パターン)をRule ${ELEMENTARY_CA_RULE}の変換表(00011110)に当てはめて計算`,
+    });
+  }
+
+  frames.push({
+    cellStates: cloneGrid(grid),
+    description: `計算完了(${ELEMENTARY_CA_ROWS}世代)。局所規則の反復だけで、一見ランダムだが実は完全に決定的な三角形フラクタル模様が生まれた`,
+  });
+
+  return frames;
+}
+
+export const BRIANS_BRAIN_ROWS = 14;
+export const BRIANS_BRAIN_COLS = 18;
+export const BRIANS_BRAIN_GENERATIONS = 14;
+
+/** 初期状態: 発火中(firing)セルを数か所に配置した固定パターン。 */
+const BRIANS_BRAIN_SEED: [number, number][] = [
+  [5, 8],
+  [5, 9],
+  [6, 8],
+  [6, 9],
+  [8, 3],
+  [9, 3],
+  [10, 3],
+  [3, 13],
+  [4, 14],
+  [5, 13],
+];
+
+function buildBriansBrainGrid(): GridCellState[][] {
+  const grid: GridCellState[][] = Array.from({ length: BRIANS_BRAIN_ROWS }, () =>
+    Array<GridCellState>(BRIANS_BRAIN_COLS).fill("idle"),
+  );
+  BRIANS_BRAIN_SEED.forEach(([r, c]) => {
+    grid[r][c] = "visited";
+  });
+  return grid;
+}
+
+function briansBrainCountFiringNeighbors(grid: GridCellState[][], r: number, c: number): number {
+  let count = 0;
+  for (let dr = -1; dr <= 1; dr++) {
+    for (let dc = -1; dc <= 1; dc++) {
+      if (dr === 0 && dc === 0) continue;
+      const nr = r + dr;
+      const nc = c + dc;
+      if (nr >= 0 && nr < BRIANS_BRAIN_ROWS && nc >= 0 && nc < BRIANS_BRAIN_COLS && grid[nr][nc] === "visited") {
+        count++;
+      }
+    }
+  }
+  return count;
+}
+
+/**
+ * ブライアンの脳(Brian's Brain)のステップ列を生成する。ライフゲームを3状態(off/firing/refractory)に
+ * 拡張したセルオートマトンで、conwaysGameOfLifeSteps()と同じ「全マス同時適用」の枠組みをそのまま使う。
+ * off(休止)=idle、firing(発火中)=visited、refractory(不応期、発火直後で1世代だけ休む)=frontierに転用する。
+ * 規則は次の3つだけ: 「firingのセルは次に必ずrefractoryになる」「refractoryのセルは次に必ずoffに戻る」
+ * 「offのセルは、8近傍のfiring数がちょうど2のときだけ次にfiringになる」。ライフゲームと違い発火セル自体は
+ * 生存し続けられない(必ず1世代で消える)ため、パターンは静止状態に落ち着かず常に移動・拡散し続ける。
+ */
+export function briansBrainCellularAutomatonSteps(): GridFrame[] {
+  let grid = buildBriansBrainGrid();
+  const frames: GridFrame[] = [
+    { cellStates: cloneGrid(grid), description: "初期状態。数か所に発火中(firing)セルを配置" },
+  ];
+
+  for (let gen = 1; gen <= BRIANS_BRAIN_GENERATIONS; gen++) {
+    const next: GridCellState[][] = Array.from({ length: BRIANS_BRAIN_ROWS }, () =>
+      Array<GridCellState>(BRIANS_BRAIN_COLS).fill("idle"),
+    );
+    for (let r = 0; r < BRIANS_BRAIN_ROWS; r++) {
+      for (let c = 0; c < BRIANS_BRAIN_COLS; c++) {
+        const state = grid[r][c];
+        if (state === "visited") {
+          next[r][c] = "frontier";
+        } else if (state === "frontier") {
+          next[r][c] = "idle";
+        } else {
+          const firingNeighbors = briansBrainCountFiringNeighbors(grid, r, c);
+          next[r][c] = firingNeighbors === 2 ? "visited" : "idle";
+        }
+      }
+    }
+    grid = next;
+    frames.push({
+      cellStates: cloneGrid(grid),
+      description: `世代${gen}: 発火中→不応期→休止の遷移と、休止セルのうち発火中隣接がちょうど2つのものだけ新規発火、を全マスへ同時適用`,
+    });
+  }
+
+  frames.push({
+    cellStates: cloneGrid(grid),
+    description: `計算完了(${BRIANS_BRAIN_GENERATIONS}世代経過)。ライフゲームと違い、発火セルは静止せず常にパターンが移動し続ける`,
+  });
+  return frames;
+}
+
+export const FOREST_FIRE_ROWS = 16;
+export const FOREST_FIRE_COLS = 20;
+export const FOREST_FIRE_GENERATIONS = 18;
+const FOREST_FIRE_P_SPREAD = 0.9;
+const FOREST_FIRE_P_LIGHTNING = 0.01;
+const FOREST_FIRE_P_GROWTH = 0.03;
+
+function buildForestFireGrid(): GridCellState[][] {
+  const grid: GridCellState[][] = Array.from({ length: FOREST_FIRE_ROWS }, () =>
+    Array<GridCellState>(FOREST_FIRE_COLS).fill("path"),
+  );
+  const clearings: [number, number][] = [
+    [3, 4],
+    [3, 5],
+    [4, 5],
+    [11, 14],
+    [12, 14],
+    [12, 15],
+  ];
+  clearings.forEach(([r, c]) => {
+    grid[r][c] = "idle";
+  });
+  grid[8][10] = "difficult";
+  return grid;
+}
+
+function forestFireBurningNeighborCount(grid: GridCellState[][], r: number, c: number): number {
+  let count = 0;
+  for (let dr = -1; dr <= 1; dr++) {
+    for (let dc = -1; dc <= 1; dc++) {
+      if (dr === 0 && dc === 0) continue;
+      const nr = r + dr;
+      const nc = c + dc;
+      if (nr >= 0 && nr < FOREST_FIRE_ROWS && nc >= 0 && nc < FOREST_FIRE_COLS && grid[nr][nc] === "difficult") {
+        count++;
+      }
+    }
+  }
+  return count;
+}
+
+/**
+ * 森林火災モデル(Drossel-Schwabl forest-fire model)のステップ列を生成する。木(path=緑)・
+ * 燃えている木(difficult=赤)・空き地(idle)の3状態が、確率的な規則で遷移する:
+ * 「燃えている木は次に必ず空き地になる」「隣接8マスに燃えている木がある木は確率P_SPREADで延焼する」
+ * 「隣接に火がなくても木は確率P_LIGHTNINGで自然発火(落雷)する」「空き地は確率P_GROWTHで新たに木が育つ」。
+ * 乱数は再現性のため固定シードの疑似乱数(seededRandom)を使う。延焼が止まった後も低確率の落雷と成長が
+ * 続くことで、外部から手を加えなくても火事のサイクルを自己組織的に繰り返し続ける
+ * (十分長く走らせると火事のサイズがべき乗則に従う「自己組織臨界現象」の代表例として知られる)。
+ */
+export function forestFireModelSteps(): GridFrame[] {
+  let grid = buildForestFireGrid();
+  const rng = seededRandom(20240601);
+  const frames: GridFrame[] = [
+    { cellStates: cloneGrid(grid), description: "森林火災モデルを開始。中央付近に火種(燃えている木)を1本配置" },
+  ];
+
+  for (let gen = 1; gen <= FOREST_FIRE_GENERATIONS; gen++) {
+    const next: GridCellState[][] = grid.map((row) => [...row]);
+    for (let r = 0; r < FOREST_FIRE_ROWS; r++) {
+      for (let c = 0; c < FOREST_FIRE_COLS; c++) {
+        const state = grid[r][c];
+        if (state === "difficult") {
+          next[r][c] = "idle";
+        } else if (state === "path") {
+          const burningNeighbors = forestFireBurningNeighborCount(grid, r, c);
+          if (burningNeighbors > 0) {
+            next[r][c] = rng() < FOREST_FIRE_P_SPREAD ? "difficult" : "path";
+          } else {
+            next[r][c] = rng() < FOREST_FIRE_P_LIGHTNING ? "difficult" : "path";
+          }
+        } else {
+          next[r][c] = rng() < FOREST_FIRE_P_GROWTH ? "path" : "idle";
+        }
+      }
+    }
+    grid = next;
+    frames.push({
+      cellStates: cloneGrid(grid),
+      description: `世代${gen}: 燃えている木→空き地、隣接に火がある木は確率${FOREST_FIRE_P_SPREAD}で延焼、それ以外の木も確率${FOREST_FIRE_P_LIGHTNING}で自然発火、空き地は確率${FOREST_FIRE_P_GROWTH}で新たな木が成長`,
+    });
+  }
+
+  frames.push({
+    cellStates: cloneGrid(grid),
+    description: `計算完了(${FOREST_FIRE_GENERATIONS}世代経過)。延焼・消火・成長のサイクルが繰り返され続ける自己組織的なシステムになった`,
+  });
+  return frames;
+}
+
+export const ROCK_PAPER_SCISSORS_CA_ROWS = 20;
+export const ROCK_PAPER_SCISSORS_CA_COLS = 24;
+export const ROCK_PAPER_SCISSORS_CA_GENERATIONS = 20;
+const ROCK_PAPER_SCISSORS_CA_THRESHOLD = 3;
+
+type RpsHand = "rock" | "paper" | "scissors";
+const RPS_STATE_OF: Record<RpsHand, GridCellState> = {
+  rock: "frontier",
+  paper: "visited",
+  scissors: "difficult",
+};
+/** キー(自分の手)に対して、その手に「勝つ手」を値として持つ表。 */
+const RPS_BEATEN_BY: Record<RpsHand, RpsHand> = {
+  rock: "paper",
+  paper: "scissors",
+  scissors: "rock",
+};
+const RPS_HAND_OF: Record<string, RpsHand> = { frontier: "rock", visited: "paper", difficult: "scissors" };
+
+/** 固定シードの疑似乱数でグー・チョキ・パーをほぼ均等にばらまいた初期盤面。 */
+function buildRockPaperScissorsGrid(): GridCellState[][] {
+  const rng = seededRandom(908070);
+  const hands: RpsHand[] = ["rock", "paper", "scissors"];
+  return Array.from({ length: ROCK_PAPER_SCISSORS_CA_ROWS }, () =>
+    Array.from({ length: ROCK_PAPER_SCISSORS_CA_COLS }, () => RPS_STATE_OF[hands[Math.floor(rng() * 3)]]),
+  );
+}
+
+function rpsCountBeatingNeighbors(grid: GridCellState[][], r: number, c: number, beatingHand: RpsHand): number {
+  let count = 0;
+  const beatingState = RPS_STATE_OF[beatingHand];
+  for (let dr = -1; dr <= 1; dr++) {
+    for (let dc = -1; dc <= 1; dc++) {
+      if (dr === 0 && dc === 0) continue;
+      const nr = r + dr;
+      const nc = c + dc;
+      if (
+        nr >= 0 &&
+        nr < ROCK_PAPER_SCISSORS_CA_ROWS &&
+        nc >= 0 &&
+        nc < ROCK_PAPER_SCISSORS_CA_COLS &&
+        grid[nr][nc] === beatingState
+      ) {
+        count++;
+      }
+    }
+  }
+  return count;
+}
+
+/**
+ * じゃんけんセルオートマトン(循環優性モデル、Rock-Paper-Scissors CA)のステップ列を生成する。
+ * 各セルはグー/チョキ/パーのいずれかの手を持ち(frontier=グー、visited=パー、difficult=チョキに転用)、
+ * 8近傍のうち「自分に勝つ手」を持つセルがROCK_PAPER_SCISSORS_CA_THRESHOLD個以上あれば、
+ * そのセルは次の世代でその「勝つ手」に置き換わる(侵食される)。グーはパーに負け、パーはチョキに負け、
+ * チョキはグーに負けるという循環的な優劣関係(どの手も絶対的な強者ではない)により、特定の手が
+ * 盤面を制圧することはなく、三すくみのまま渦を巻くように勢力が入れ替わり続ける、非平衡系の
+ * 自己組織化の代表例。初期配置は固定シードの疑似乱数で3種類をほぼ均等にばらまく
+ * (完全に規則的な初期配置だと対称性が壊れず渦が発生しにくいため)。
+ */
+export function rockPaperScissorsCellularAutomatonSteps(): GridFrame[] {
+  let grid = buildRockPaperScissorsGrid();
+  const frames: GridFrame[] = [
+    {
+      cellStates: cloneGrid(grid),
+      description: "グー(水色)・チョキ(赤)・パー(黄)を固定シードの疑似乱数でほぼ均等にばらまいて開始",
+    },
+  ];
+
+  for (let gen = 1; gen <= ROCK_PAPER_SCISSORS_CA_GENERATIONS; gen++) {
+    const next: GridCellState[][] = grid.map((row) => [...row]);
+    for (let r = 0; r < ROCK_PAPER_SCISSORS_CA_ROWS; r++) {
+      for (let c = 0; c < ROCK_PAPER_SCISSORS_CA_COLS; c++) {
+        const hand = RPS_HAND_OF[grid[r][c]];
+        const beatingHand = RPS_BEATEN_BY[hand];
+        const beatingCount = rpsCountBeatingNeighbors(grid, r, c, beatingHand);
+        if (beatingCount >= ROCK_PAPER_SCISSORS_CA_THRESHOLD) {
+          next[r][c] = RPS_STATE_OF[beatingHand];
+        }
+      }
+    }
+    grid = next;
+    frames.push({
+      cellStates: cloneGrid(grid),
+      description: `世代${gen}: 8近傍に自分に勝つ手が${ROCK_PAPER_SCISSORS_CA_THRESHOLD}個以上あるセルは、その勝つ手に置き換わる(侵食)`,
+    });
+  }
+
+  frames.push({
+    cellStates: cloneGrid(grid),
+    description: `計算完了(${ROCK_PAPER_SCISSORS_CA_GENERATIONS}世代経過)。三すくみの循環優位性により、どの手も盤面を制圧できず勢力が渦を巻きながら入れ替わり続ける`,
+  });
+  return frames;
+}
+
+export const SANDPILE_SIZE = 17;
+export const SANDPILE_INITIAL_GRAINS = 130;
+const SANDPILE_TOPPLE_THRESHOLD = 4;
+
+/** 閾値以上のセルをすべて同時に崩す1スイープ。境界の外に出た分は消失する(開放境界)。 */
+function sandpileSweep(counts: number[][]): { next: number[][]; toppled: number } {
+  const size = counts.length;
+  const next = counts.map((row) => [...row]);
+  let toppled = 0;
+  for (let r = 0; r < size; r++) {
+    for (let c = 0; c < size; c++) {
+      if (counts[r][c] < SANDPILE_TOPPLE_THRESHOLD) continue;
+      toppled++;
+      next[r][c] -= SANDPILE_TOPPLE_THRESHOLD;
+      const neighbors: [number, number][] = [
+        [r - 1, c],
+        [r + 1, c],
+        [r, c - 1],
+        [r, c + 1],
+      ];
+      for (const [nr, nc] of neighbors) {
+        if (nr >= 0 && nr < size && nc >= 0 && nc < size) next[nr][nc] += 1;
+      }
+    }
+  }
+  return { next, toppled };
+}
+
+function sandpileStateOf(count: number): GridCellState {
+  if (count <= 0) return "idle";
+  if (count === 1) return "frontier";
+  if (count === 2) return "visited";
+  if (count === 3) return "difficult";
+  return "path";
+}
+
+function sandpileGridFrom(counts: number[][]): GridCellState[][] {
+  return counts.map((row) => row.map(sandpileStateOf));
+}
+
+/**
+ * 砂山モデル(Bak-Tang-Wiesenfeldモデル、Abelian sandpile model)のステップ列を生成する。
+ * 各セルは積もった砂粒の数を持ち(0=idle,1=frontier,2=visited,3=difficult,4以上=path「崩れる寸前」に転用)、
+ * 4粒以上積もったセルは同時に4粒を失い、上下左右の4近傍へ1粒ずつ配る(格子の外に出た分は消失する)。
+ * 中心に大量の砂を一度に落とし、閾値を超えたセルが同時に崩れる「並列スイープ」を安定するまで繰り返す。
+ * 1回の崩れが隣接セルを新たに閾値超えにし、それがまた崩れて…という連鎖(カスケード、雪崩)が起こる点が
+ * 本質で、初期投入量に対して雪崩のサイズがべき乗則に従う(自己組織臨界性)ことで知られる。
+ */
+export function sandpileModelSteps(): GridFrame[] {
+  const size = SANDPILE_SIZE;
+  const counts: number[][] = Array.from({ length: size }, () => Array(size).fill(0));
+  const center = Math.floor(size / 2);
+  counts[center][center] = SANDPILE_INITIAL_GRAINS;
+
+  const frames: GridFrame[] = [
+    {
+      cellStates: sandpileGridFrom(counts),
+      description: `中心セルに${SANDPILE_INITIAL_GRAINS}粒の砂を一度に落とす(閾値${SANDPILE_TOPPLE_THRESHOLD}粒を大きく超えている)`,
+    },
+  ];
+
+  let current = counts;
+  let sweep = 0;
+  let stable = false;
+  const maxSweeps = 500;
+  while (sweep < maxSweeps) {
+    const { next, toppled } = sandpileSweep(current);
+    if (toppled === 0) {
+      stable = true;
+      break;
+    }
+    sweep++;
+    current = next;
+    frames.push({
+      cellStates: sandpileGridFrom(current),
+      description: `スイープ${sweep}: 閾値以上の${toppled}セルが同時に崩れ、それぞれ隣接4セルへ1粒ずつ配る(盤外に出た分は消失)`,
+    });
+  }
+
+  frames.push({
+    cellStates: sandpileGridFrom(current),
+    description: stable
+      ? `計算完了(${sweep}回のスイープで安定)。どのセルも3粒以下に落ち着いたが、崩れの連鎖(カスケード)は初期投入量からは予測しにくい大きさになった`
+      : `計算未完了(${maxSweeps}回のスイープでも一部のセルがまだ崩れ続けている)`,
+  });
+
+  return frames;
+}
+
+export const TRAFFIC_CA_ROWS = 30;
+export const TRAFFIC_CA_COLS = 40;
+const TRAFFIC_CA_VMAX = 3;
+const TRAFFIC_CA_P_BRAKE = 0.3;
+const TRAFFIC_CA_SPACING = 3;
+
+/** 環状道路上で、各車の位置から見た「次の車までの空きセル数」を位置→gapの対応表として計算する。 */
+function trafficCaGaps(positions: number[], roadLength: number): Map<number, number> {
+  const sorted = [...positions].sort((a, b) => a - b);
+  const n = sorted.length;
+  const gaps = new Map<number, number>();
+  for (let i = 0; i < n; i++) {
+    const cur = sorted[i];
+    const next = sorted[(i + 1) % n];
+    const gap = ((next - cur + roadLength) % roadLength) - 1;
+    gaps.set(cur, gap);
+  }
+  return gaps;
+}
+
+function trafficCaStateForVelocity(v: number): GridCellState {
+  if (v <= 0) return "difficult";
+  if (v === 1) return "frontier";
+  if (v === 2) return "visited";
+  return "path";
+}
+
+/**
+ * 交通流のセルオートマトン(Nagel-Schreckenbergモデル)のステップ列を生成する。1車線・環状(周期境界)の
+ * 道路上で、各車が持つ整数速度v(0〜vmax)に対して次の4規則を全車に同時適用する:
+ * (1)加速: v<vmaxならv+1。(2)減速(車間距離による安全制動): 前の車までの空きセル数(gap)より速いと
+ * 衝突するため、v>gapならv=gapまで落とす。(3)ランダムブレーキ: 確率P_BRAKEでv>0ならさらにv-1
+ * (現実の運転者の「不必要なブレーキ」を模したノイズ)。(4)移動: 各車を新しい速度vだけ前進させる。
+ * 全車が最初は停止(v=0)から出発するにもかかわらず、ランダムブレーキという小さなノイズだけから
+ * 「幽霊渋滞(phantom traffic jam)」——事故も車線変更もないのに自然発生し後方へ伝播する渋滞の波——が
+ * 生まれることが、このモデル最大の見どころ。時間発展を1世代ずつ下へ積み重ねた時空間図として表示し、
+ * 車の速度が低いほど赤(渋滞)、高いほど緑(自由走行)に着色する。
+ */
+export function trafficCellularAutomatonSteps(): GridFrame[] {
+  const rng = seededRandom(19700101);
+  let positions: number[] = [];
+  for (let i = 0; i < TRAFFIC_CA_COLS; i += TRAFFIC_CA_SPACING) positions.push(i);
+  let velocities: number[] = positions.map(() => 0);
+
+  const renderRow = (): GridCellState[] => {
+    const row = Array<GridCellState>(TRAFFIC_CA_COLS).fill("idle");
+    positions.forEach((p, i) => {
+      row[p] = trafficCaStateForVelocity(velocities[i]);
+    });
+    return row;
+  };
+
+  const grid: GridCellState[][] = Array.from({ length: TRAFFIC_CA_ROWS }, () =>
+    Array<GridCellState>(TRAFFIC_CA_COLS).fill("idle"),
+  );
+  grid[0] = renderRow();
+
+  const frames: GridFrame[] = [
+    {
+      cellStates: cloneGrid(grid),
+      description: `環状道路(長さ${TRAFFIC_CA_COLS}マス)に${positions.length}台の車を等間隔・停止状態(v=0)で配置`,
+    },
+  ];
+
+  for (let t = 1; t < TRAFFIC_CA_ROWS; t++) {
+    const gaps = trafficCaGaps(positions, TRAFFIC_CA_COLS);
+    const newVelocities = velocities.map((v, i) => {
+      let nv = Math.min(v + 1, TRAFFIC_CA_VMAX);
+      const gap = gaps.get(positions[i])!;
+      nv = Math.min(nv, gap);
+      if (nv > 0 && rng() < TRAFFIC_CA_P_BRAKE) nv -= 1;
+      return nv;
+    });
+    const newPositions = positions.map((p, i) => (p + newVelocities[i]) % TRAFFIC_CA_COLS);
+    positions = newPositions;
+    velocities = newVelocities;
+    grid[t] = renderRow();
+    const avgV = (velocities.reduce((s, v) => s + v, 0) / velocities.length).toFixed(2);
+    frames.push({
+      cellStates: cloneGrid(grid),
+      description: `世代${t}: 加速→車間による減速→確率${TRAFFIC_CA_P_BRAKE}のランダムブレーキ→前進、を全車に同時適用(平均速度${avgV})`,
+    });
+  }
+
+  frames.push({
+    cellStates: cloneGrid(grid),
+    description: "計算完了。障害物も車線変更もないのに、ランダムブレーキだけから後方へ伝播する渋滞の波(幽霊渋滞)が自己組織的に発生した",
+  });
+
+  return frames;
+}
+
 /**
  * フローフィールド経路探索のステップ列を生成する。content/algorithms/flow-field-pathfinding.mdの
  * build_integration_field()と同じ要領で、ゴールを起点に逆方向BFSでコストを伝播させる
@@ -1359,6 +1882,532 @@ export function continuumCrowdModelSteps(): GridFrame[] {
   return frames;
 }
 
+// ============================================================
+// コンピュータビジョン: 画像処理を小さいピクセルグリッドとして表現する5アルゴリズム
+// ============================================================
+
+/** 3×3ソーベルカーネルによる勾配計算(gx, gy, 大きさ, 角度)を行う共通ヘルパー。
+ * Cannyエッジ検出・ソーベルフィルタの両方から利用する(単純な畳み込みなのでコードを共有する)。
+ * 境界は端の画素を複製(クランプ)して処理する。 */
+function computeSobelGradients(
+  img: number[][],
+  rows: number,
+  cols: number,
+): { gx: number[][]; gy: number[][]; mag: number[][]; angleDeg: number[][] } {
+  const gxKernel = [
+    [-1, 0, 1],
+    [-2, 0, 2],
+    [-1, 0, 1],
+  ];
+  const gyKernel = [
+    [-1, -2, -1],
+    [0, 0, 0],
+    [1, 2, 1],
+  ];
+  const gx: number[][] = Array.from({ length: rows }, () => new Array(cols).fill(0));
+  const gy: number[][] = Array.from({ length: rows }, () => new Array(cols).fill(0));
+  const mag: number[][] = Array.from({ length: rows }, () => new Array(cols).fill(0));
+  const angleDeg: number[][] = Array.from({ length: rows }, () => new Array(cols).fill(0));
+
+  for (let y = 0; y < rows; y++) {
+    for (let x = 0; x < cols; x++) {
+      let sx = 0;
+      let sy = 0;
+      for (let ky = -1; ky <= 1; ky++) {
+        for (let kx = -1; kx <= 1; kx++) {
+          const yy = Math.min(Math.max(y + ky, 0), rows - 1);
+          const xx = Math.min(Math.max(x + kx, 0), cols - 1);
+          sx += img[yy][xx] * gxKernel[ky + 1][kx + 1];
+          sy += img[yy][xx] * gyKernel[ky + 1][kx + 1];
+        }
+      }
+      gx[y][x] = sx;
+      gy[y][x] = sy;
+      mag[y][x] = Math.hypot(sx, sy);
+      const deg = (Math.atan2(sy, sx) * 180) / Math.PI;
+      angleDeg[y][x] = ((deg % 180) + 180) % 180;
+    }
+  }
+  return { gx, gy, mag, angleDeg };
+}
+
+// ------------------------------------------------------------
+// Cannyエッジ検出 (canny-edge-detection)
+// ------------------------------------------------------------
+
+export const CANNY_ROWS = 8;
+export const CANNY_COLS = 8;
+
+/** 明るい矩形(値8)+右に隣接する中間の明るさの帯(値4、矩形と連結した弱いエッジになる)+
+ * 孤立したノイズ画素(値8、周囲が全て背景で連結成分を持たない)を配置した合成画像。 */
+const CANNY_IMAGE: number[][] = [
+  [0, 0, 0, 0, 0, 0, 0, 0],
+  [0, 8, 8, 8, 4, 0, 0, 0],
+  [0, 8, 8, 8, 4, 0, 0, 0],
+  [0, 8, 8, 8, 4, 0, 0, 0],
+  [0, 0, 0, 0, 0, 0, 0, 0],
+  [0, 0, 0, 0, 0, 0, 0, 0],
+  [0, 0, 0, 0, 0, 0, 8, 0],
+  [0, 0, 0, 0, 0, 0, 0, 0],
+];
+
+/**
+ * Cannyエッジ検出のステップ列を生成する。①勾配強度計算(ソーベルフィルタ)→②非最大値抑制→
+ * ③ヒステリシス閾値処理、の3段階を順番に可視化する。閾値は画像内の最大勾配強度からの
+ * 相対値(highは最大値の50%、lowは20%)として動的に決定し、決め打ちの定数に依存しない。
+ * 矩形右に連結した弱い帯は強いエッジへ8近傍で連結しているため昇格し、孤立したノイズ画素の
+ * 周囲にできる弱い勾配のリングはどの強いエッジにも連結していないため最終的に棄却される。
+ */
+export function cannyEdgeDetectionSteps(): GridFrame[] {
+  const rows = CANNY_ROWS;
+  const cols = CANNY_COLS;
+  const initialGrid: GridCellState[][] = CANNY_IMAGE.map((row) => row.map((v) => (v > 0 ? "difficult" : "idle")));
+  const frames: GridFrame[] = [
+    {
+      cellStates: cloneGrid(initialGrid),
+      description: "入力画像(明るい矩形+それに連結した弱い帯+孤立したノイズ画素)からCannyエッジ検出を開始する",
+    },
+  ];
+
+  const { mag, angleDeg } = computeSobelGradients(CANNY_IMAGE, rows, cols);
+  const maxMag = Math.max(0, ...mag.flat());
+  const high = maxMag * 0.5;
+  const low = maxMag * 0.2;
+
+  const bucketByMag = (v: number): GridCellState => {
+    if (v <= 0) return "idle";
+    return v < low ? "frontier" : v < high ? "difficult" : "wall";
+  };
+
+  const magGrid: GridCellState[][] = mag.map((row) => row.map(bucketByMag));
+  frames.push({
+    cellStates: cloneGrid(magGrid),
+    description: `段階1: 各画素でソーベルフィルタにより勾配強度を計算(明るいほど強い勾配、最大値≈${maxMag.toFixed(1)})`,
+  });
+
+  // 段階2: 非最大値抑制(勾配方向に沿った前後の画素と比較し、局所的な最大値でなければ0に抑制)
+  const suppressed: number[][] = Array.from({ length: rows }, () => new Array(cols).fill(0));
+  for (let y = 0; y < rows; y++) {
+    for (let x = 0; x < cols; x++) {
+      const m = mag[y][x];
+      if (m === 0) continue;
+      const a = angleDeg[y][x];
+      let n1 = 0;
+      let n2 = 0;
+      if (a < 22.5 || a >= 157.5) {
+        n1 = x > 0 ? mag[y][x - 1] : 0;
+        n2 = x < cols - 1 ? mag[y][x + 1] : 0;
+      } else if (a < 67.5) {
+        n1 = y > 0 && x < cols - 1 ? mag[y - 1][x + 1] : 0;
+        n2 = y < rows - 1 && x > 0 ? mag[y + 1][x - 1] : 0;
+      } else if (a < 112.5) {
+        n1 = y > 0 ? mag[y - 1][x] : 0;
+        n2 = y < rows - 1 ? mag[y + 1][x] : 0;
+      } else {
+        n1 = y > 0 && x > 0 ? mag[y - 1][x - 1] : 0;
+        n2 = y < rows - 1 && x < cols - 1 ? mag[y + 1][x + 1] : 0;
+      }
+      suppressed[y][x] = m >= n1 && m >= n2 ? m : 0;
+    }
+  }
+  const nmsGrid: GridCellState[][] = suppressed.map((row) => row.map(bucketByMag));
+  frames.push({
+    cellStates: cloneGrid(nmsGrid),
+    description:
+      "段階2: 非最大値抑制。勾配方向に沿った前後の画素と比較し、局所的な最大値でない画素を0に抑制する(太いエッジを細い線に絞り込む)",
+  });
+
+  // 段階3: ヒステリシス閾値処理
+  const strong: boolean[][] = suppressed.map((row) => row.map((v) => v >= high));
+  const weak: boolean[][] = suppressed.map((row) => row.map((v) => v >= low && v < high));
+  const result: boolean[][] = strong.map((row) => [...row]);
+
+  const renderHysteresis = (): GridCellState[][] =>
+    result.map((row, y) => row.map((isEdge, x) => (isEdge ? "wall" : weak[y][x] ? "frontier" : "idle")));
+
+  frames.push({
+    cellStates: renderHysteresis(),
+    description: `段階3: ヒステリシス閾値処理を開始。強い勾配(≥${high.toFixed(1)})は確実なエッジとして即採用し、弱い勾配(${low.toFixed(1)}〜${high.toFixed(1)})は保留とする`,
+  });
+
+  let changed = true;
+  while (changed) {
+    changed = false;
+    for (let y = 0; y < rows; y++) {
+      for (let x = 0; x < cols; x++) {
+        if (!weak[y][x] || result[y][x]) continue;
+        let connectedToStrong = false;
+        for (let dy = -1; dy <= 1 && !connectedToStrong; dy++) {
+          for (let dx = -1; dx <= 1 && !connectedToStrong; dx++) {
+            const yy = y + dy;
+            const xx = x + dx;
+            if (yy >= 0 && yy < rows && xx >= 0 && xx < cols && result[yy][xx]) connectedToStrong = true;
+          }
+        }
+        if (connectedToStrong) {
+          result[y][x] = true;
+          changed = true;
+        }
+      }
+    }
+    if (changed) {
+      frames.push({
+        cellStates: renderHysteresis(),
+        description: "強いエッジに8近傍で連結している弱いエッジを昇格させる(ヒステリシス伝播)",
+      });
+    }
+  }
+
+  const finalGrid: GridCellState[][] = result.map((row) => row.map((isEdge) => (isEdge ? "path" : "idle")));
+  frames.push({
+    cellStates: cloneGrid(finalGrid),
+    description:
+      "計算完了。強いエッジに連結していない弱いエッジ(孤立したノイズ画素の周囲)は棄却され、連結した細いエッジ線だけが残った",
+  });
+
+  return frames;
+}
+
+// ------------------------------------------------------------
+// ソーベルフィルタ (sobel-filter)
+// ------------------------------------------------------------
+
+export const SOBEL_ROWS = 8;
+export const SOBEL_COLS = 8;
+
+/** 縦の明暗差(左が暗い/右が明るい)と横の明暗差(上が明るい/下が暗い)を両方持つ合成画像。 */
+const SOBEL_IMAGE: number[][] = [
+  [2, 2, 2, 2, 8, 8, 8, 8],
+  [2, 2, 2, 2, 8, 8, 8, 8],
+  [2, 2, 2, 2, 8, 8, 8, 8],
+  [2, 2, 2, 2, 8, 8, 8, 8],
+  [0, 0, 0, 0, 6, 6, 6, 6],
+  [0, 0, 0, 0, 6, 6, 6, 6],
+  [0, 0, 0, 0, 6, 6, 6, 6],
+  [0, 0, 0, 0, 6, 6, 6, 6],
+];
+
+function sobelMagnitudeBucket(v: number, maxMag: number): GridCellState {
+  if (maxMag <= 0) return "idle";
+  const ratio = v / maxMag;
+  if (ratio < 0.15) return "idle";
+  if (ratio < 0.45) return "frontier";
+  if (ratio < 0.75) return "difficult";
+  return "wall";
+}
+
+/**
+ * ソーベルフィルタのステップ列を生成する。各画素で水平方向の勾配Gxと垂直方向の勾配Gyを
+ * 3×3カーネルで計算し、その大きさ√(Gx²+Gy²)をそのままセルの濃淡(強度)として表示する。
+ * 行ごとに上から下へ計算を進めていく過程を可視化する。
+ */
+export function sobelFilterSteps(): GridFrame[] {
+  const rows = SOBEL_ROWS;
+  const cols = SOBEL_COLS;
+  const { mag } = computeSobelGradients(SOBEL_IMAGE, rows, cols);
+  const maxMag = Math.max(0, ...mag.flat());
+
+  const grid: GridCellState[][] = Array.from({ length: rows }, () => new Array<GridCellState>(cols).fill("idle"));
+  const frames: GridFrame[] = [
+    {
+      cellStates: cloneGrid(grid),
+      description: "入力画像(左が暗く右が明るい縦のエッジ+上下の明暗差)にソーベルフィルタを適用する",
+    },
+  ];
+
+  for (let y = 0; y < rows; y++) {
+    const highlightRow = cloneGrid(grid);
+    for (let x = 0; x < cols; x++) highlightRow[y][x] = "frontier";
+    frames.push({
+      cellStates: highlightRow,
+      description: `${y + 1}行目の各画素で水平方向の勾配Gxと垂直方向の勾配Gyを3×3カーネルで計算中`,
+    });
+
+    for (let x = 0; x < cols; x++) {
+      grid[y][x] = sobelMagnitudeBucket(mag[y][x], maxMag);
+    }
+    frames.push({
+      cellStates: cloneGrid(grid),
+      description: `${y + 1}行目完了。勾配の大きさ√(Gx²+Gy²)をセルの濃淡として表示(濃いほど強いエッジ)`,
+    });
+  }
+
+  frames.push({
+    cellStates: cloneGrid(grid),
+    description: "計算完了。縦のエッジ境界(列3/4)と横の明暗差の境界(行3/4)でエッジ強度マップが明るくなった",
+  });
+  return frames;
+}
+
+// ------------------------------------------------------------
+// 連結成分ラベリング (connected-component-labeling)
+// ------------------------------------------------------------
+
+export const CCL_ROWS = 8;
+export const CCL_COLS = 8;
+
+/** 2値画像(1=前景)。4連結で数えると独立した4つの塊がある。 */
+const CCL_IMAGE: number[][] = [
+  [1, 1, 0, 0, 0, 1, 1, 0],
+  [1, 1, 0, 0, 0, 1, 1, 0],
+  [0, 0, 0, 1, 0, 0, 0, 0],
+  [0, 0, 1, 1, 1, 0, 0, 0],
+  [0, 0, 0, 1, 0, 0, 0, 1],
+  [0, 0, 0, 0, 0, 0, 1, 1],
+  [0, 0, 0, 0, 0, 0, 1, 1],
+  [0, 0, 0, 0, 0, 0, 0, 0],
+];
+
+const CCL_LABEL_STATES: GridCellState[] = ["start", "goal", "path", "difficult"];
+
+/**
+ * 連結成分ラベリングのステップ列を生成する。シード充填法(4連結BFS)で実装し、
+ * 未ラベルの前景画素を見つけるたびに新しいラベルを割り当て、そこから隣接する前景画素へ
+ * 同じラベルをBFSで広げていく。
+ */
+export function connectedComponentLabelingSteps(): GridFrame[] {
+  const rows = CCL_ROWS;
+  const cols = CCL_COLS;
+  const grid: GridCellState[][] = CCL_IMAGE.map((row) => row.map((v) => (v === 1 ? "wall" : "idle")));
+  const labeled: boolean[][] = CCL_IMAGE.map((row) => row.map(() => false));
+  const frames: GridFrame[] = [
+    {
+      cellStates: cloneGrid(grid),
+      description:
+        "2値画像(前景=明るいセル)から連結成分ラベリングを開始する。前景セルをBFSで走査し、連結した塊ごとに別のラベル(色)を割り当てる",
+    },
+  ];
+
+  let labelCount = 0;
+  for (let sy = 0; sy < rows; sy++) {
+    for (let sx = 0; sx < cols; sx++) {
+      if (CCL_IMAGE[sy][sx] !== 1 || labeled[sy][sx]) continue;
+      const labelState = CCL_LABEL_STATES[labelCount % CCL_LABEL_STATES.length];
+      labelCount++;
+      labeled[sy][sx] = true;
+      grid[sy][sx] = "frontier";
+      const queue: [number, number][] = [[sy, sx]];
+      frames.push({
+        cellStates: cloneGrid(grid),
+        description: `未ラベルの前景セル(${sy + 1}, ${sx + 1})を発見。新しいラベル${labelCount}を割り当ててBFSを開始する`,
+      });
+
+      while (queue.length > 0) {
+        const [r, c] = queue.shift()!;
+        grid[r][c] = labelState;
+        frames.push({ cellStates: cloneGrid(grid), description: `(${r + 1}, ${c + 1})にラベル${labelCount}を確定` });
+
+        const neighbors: [number, number][] = [
+          [r - 1, c],
+          [r + 1, c],
+          [r, c - 1],
+          [r, c + 1],
+        ];
+        let addedAny = false;
+        for (const [nr, nc] of neighbors) {
+          if (nr < 0 || nr >= rows || nc < 0 || nc >= cols) continue;
+          if (CCL_IMAGE[nr][nc] !== 1 || labeled[nr][nc]) continue;
+          labeled[nr][nc] = true;
+          grid[nr][nc] = "frontier";
+          queue.push([nr, nc]);
+          addedAny = true;
+        }
+        if (addedAny) {
+          frames.push({
+            cellStates: cloneGrid(grid),
+            description: `隣接する前景セルをキューに追加(キュー内 ${queue.length}件)`,
+          });
+        }
+      }
+    }
+  }
+
+  frames.push({
+    cellStates: cloneGrid(grid),
+    description: `計算完了。${labelCount}個の連結成分をそれぞれ異なるラベル(色)に分類した`,
+  });
+  return frames;
+}
+
+// ------------------------------------------------------------
+// Watershed法(分水嶺法) (watershed-algorithm)
+// ------------------------------------------------------------
+
+export const WATERSHED_ROWS = 9;
+export const WATERSHED_COLS = 9;
+
+const WATERSHED_SEEDS: { r: number; c: number; state: GridCellState }[] = [
+  { r: 1, c: 1, state: "start" },
+  { r: 1, c: 7, state: "goal" },
+  { r: 7, c: 4, state: "difficult" },
+];
+
+/**
+ * Watershed法(分水嶺法)の簡略化ステップ列を生成する。実際の輝度地形の代わりに平坦な地形上での
+ * 複数シードからの同時多元BFSとして実装する——各セルは最も近いシードの領域として1マスずつ
+ * 同時に成長し、同じラウンドで複数のシードから同時に到達したセルは分水嶺(境界)として確定する。
+ * これは平坦な地形上でのWatershed法(各セルが最近傍シードに属するボロノイ分割になり、
+ * その境界が分水嶺線になる)と数学的に同値である。
+ */
+export function watershedAlgorithmSteps(): GridFrame[] {
+  const rows = WATERSHED_ROWS;
+  const cols = WATERSHED_COLS;
+  const grid: GridCellState[][] = Array.from({ length: rows }, () => new Array<GridCellState>(cols).fill("idle"));
+  const owner: number[][] = Array.from({ length: rows }, () => new Array(cols).fill(-1));
+  let frontiers: [number, number][][] = WATERSHED_SEEDS.map((s) => [[s.r, s.c]]);
+
+  WATERSHED_SEEDS.forEach((s, i) => {
+    owner[s.r][s.c] = i;
+    grid[s.r][s.c] = s.state;
+  });
+
+  const frames: GridFrame[] = [
+    {
+      cellStates: cloneGrid(grid),
+      description: `${WATERSHED_SEEDS.length}個の種(マーカー)を配置し、Watershed法(複数領域の同時成長)を開始する`,
+    },
+  ];
+
+  let round = 0;
+  let anyExpanded = true;
+  while (anyExpanded) {
+    anyExpanded = false;
+    round++;
+    const proposals = new Map<string, number[]>();
+    for (let i = 0; i < frontiers.length; i++) {
+      for (const [r, c] of frontiers[i]) {
+        const neighbors: [number, number][] = [
+          [r - 1, c],
+          [r + 1, c],
+          [r, c - 1],
+          [r, c + 1],
+        ];
+        for (const [nr, nc] of neighbors) {
+          if (nr < 0 || nr >= rows || nc < 0 || nc >= cols) continue;
+          if (owner[nr][nc] !== -1) continue;
+          const k = `${nr},${nc}`;
+          const list = proposals.get(k) ?? [];
+          if (!list.includes(i)) list.push(i);
+          proposals.set(k, list);
+        }
+      }
+    }
+
+    const nextFrontiers: [number, number][][] = frontiers.map(() => []);
+    for (const [k, seedIds] of proposals) {
+      const [r, c] = k.split(",").map(Number);
+      if (seedIds.length === 1) {
+        owner[r][c] = seedIds[0];
+        grid[r][c] = WATERSHED_SEEDS[seedIds[0]].state;
+        nextFrontiers[seedIds[0]].push([r, c]);
+      } else {
+        owner[r][c] = -2;
+        grid[r][c] = "wall";
+      }
+      anyExpanded = true;
+    }
+
+    frontiers = nextFrontiers;
+
+    if (anyExpanded) {
+      frames.push({
+        cellStates: cloneGrid(grid),
+        description: `ラウンド${round}: 各領域が1マスずつ同時に成長する。複数の種から同じラウンドで到達したセルは分水嶺(境界)として確定`,
+      });
+    }
+  }
+
+  frames.push({
+    cellStates: cloneGrid(grid),
+    description: "計算完了。全セルが最も近い種の領域に分割され、領域同士が接する境界が分水嶺として確定した",
+  });
+  return frames;
+}
+
+// ------------------------------------------------------------
+// 距離変換(Distance Transform) (distance-transform)
+// ------------------------------------------------------------
+
+export const DISTANCE_TRANSFORM_ROWS = 8;
+export const DISTANCE_TRANSFORM_COLS = 8;
+
+/** 2値画像(1=前景の塊、0=背景)。中心に近いほど背景から遠い。 */
+const DISTANCE_TRANSFORM_IMAGE: number[][] = [
+  [0, 0, 0, 0, 0, 0, 0, 0],
+  [0, 0, 1, 1, 1, 1, 0, 0],
+  [0, 1, 1, 1, 1, 1, 1, 0],
+  [0, 1, 1, 1, 1, 1, 1, 0],
+  [0, 1, 1, 1, 1, 1, 1, 0],
+  [0, 1, 1, 1, 1, 1, 1, 0],
+  [0, 0, 1, 1, 1, 1, 0, 0],
+  [0, 0, 0, 0, 0, 0, 0, 0],
+];
+
+const DISTANCE_TRANSFORM_BUCKETS: GridCellState[] = ["frontier", "visited", "path", "difficult"];
+
+/**
+ * 距離変換のステップ列を生成する。全ての背景セル(値0)を距離0の起点とする多元BFSを行い、
+ * 各前景セルについて最も近い背景セルまでの距離を波状に広げながら確定する。
+ * 距離が大きい(=境界から遠い)セルほど濃い色で表示する。
+ */
+export function distanceTransformSteps(): GridFrame[] {
+  const rows = DISTANCE_TRANSFORM_ROWS;
+  const cols = DISTANCE_TRANSFORM_COLS;
+  const grid: GridCellState[][] = DISTANCE_TRANSFORM_IMAGE.map((row) => row.map((v) => (v === 1 ? "wall" : "idle")));
+  const dist: number[][] = Array.from({ length: rows }, () => new Array(cols).fill(-1));
+  let frontier: [number, number][] = [];
+
+  for (let y = 0; y < rows; y++) {
+    for (let x = 0; x < cols; x++) {
+      if (DISTANCE_TRANSFORM_IMAGE[y][x] === 0) {
+        dist[y][x] = 0;
+        frontier.push([y, x]);
+      }
+    }
+  }
+
+  const frames: GridFrame[] = [
+    {
+      cellStates: cloneGrid(grid),
+      description: "2値画像(前景=明るい塊)に対し、全ての背景セルを距離0の起点としてBFSで距離変換を計算する",
+    },
+  ];
+
+  while (frontier.length > 0) {
+    const nextFrontier: [number, number][] = [];
+    for (const [r, c] of frontier) {
+      const neighbors: [number, number][] = [
+        [r - 1, c],
+        [r + 1, c],
+        [r, c - 1],
+        [r, c + 1],
+      ];
+      for (const [nr, nc] of neighbors) {
+        if (nr < 0 || nr >= rows || nc < 0 || nc >= cols) continue;
+        if (dist[nr][nc] !== -1) continue;
+        dist[nr][nc] = dist[r][c] + 1;
+        nextFrontier.push([nr, nc]);
+      }
+    }
+    if (nextFrontier.length > 0) {
+      const d = dist[nextFrontier[0][0]][nextFrontier[0][1]];
+      const bucketIndex = Math.min(d - 1, DISTANCE_TRANSFORM_BUCKETS.length - 1);
+      for (const [r, c] of nextFrontier) grid[r][c] = DISTANCE_TRANSFORM_BUCKETS[bucketIndex];
+      frames.push({
+        cellStates: cloneGrid(grid),
+        description: `距離${d}: 背景から${d}マス離れた前景セルを確定(距離が大きいほど濃い色)`,
+      });
+    }
+    frontier = nextFrontier;
+  }
+
+  frames.push({
+    cellStates: cloneGrid(grid),
+    description: "計算完了。各前景セルに最も近い背景セルまでの距離が確定した(塊の中心に近いほど距離が大きい)",
+  });
+  return frames;
+}
+
 export const PATHFINDING_VISUALIZERS: Record<string, () => GridFrame[]> = {
   bfs: bfsSteps,
   dfs: dfsSteps,
@@ -1379,4 +2428,15 @@ export const PATHFINDING_VISUALIZERS: Record<string, () => GridFrame[]> = {
   "continuum-crowd-model": continuumCrowdModelSteps,
   "best-first-search": bestFirstSearchSteps,
   "bidirectional-search": bidirectionalSearchSteps,
+  "canny-edge-detection": cannyEdgeDetectionSteps,
+  "sobel-filter": sobelFilterSteps,
+  "connected-component-labeling": connectedComponentLabelingSteps,
+  "watershed-algorithm": watershedAlgorithmSteps,
+  "distance-transform": distanceTransformSteps,
+  "elementary-cellular-automaton": elementaryCellularAutomatonSteps,
+  "brians-brain-cellular-automaton": briansBrainCellularAutomatonSteps,
+  "forest-fire-model": forestFireModelSteps,
+  "rock-paper-scissors-cellular-automaton": rockPaperScissorsCellularAutomatonSteps,
+  "sandpile-model": sandpileModelSteps,
+  "traffic-cellular-automaton": trafficCellularAutomatonSteps,
 };

@@ -375,7 +375,18 @@ for (const [id, fn] of Object.entries(PATHFINDING_VISUALIZERS)) {
     id === "potential-field-navigation" ||
     id === "potential-field-path-planning" ||
     id === "social-force-model" ||
-    id === "continuum-crowd-model"
+    id === "continuum-crowd-model" ||
+    id === "canny-edge-detection" ||
+    id === "sobel-filter" ||
+    id === "connected-component-labeling" ||
+    id === "watershed-algorithm" ||
+    id === "distance-transform" ||
+    id === "elementary-cellular-automaton" ||
+    id === "brians-brain-cellular-automaton" ||
+    id === "forest-fire-model" ||
+    id === "rock-paper-scissors-cellular-automaton" ||
+    id === "sandpile-model" ||
+    id === "traffic-cellular-automaton"
   ) {
     // 決定論的なセルオートマトンなので「完了」の報告があれば十分(既知の正解値というより固定シミュレーション)
     const lastDesc = frames[frames.length - 1].description;

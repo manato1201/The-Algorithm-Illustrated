@@ -2166,6 +2166,83 @@ export function reservoirSamplingSteps(): SearchFrame[] {
   return frames;
 }
 
+/** 画素値のヒストグラム(階調0〜7)。背景の山(低階調)と前景の山(高階調)の2つの山を持つ。 */
+export const OTSU_HISTOGRAM = [2, 5, 3, 1, 1, 3, 6, 2];
+
+/**
+ * 大津の二値化のステップ列を生成する。輝度ヒストグラムを配列に見立てて1回だけ走査しながら、
+ * 各候補閾値tについて「t以下(背景)」「tより大きい(前景)」の2クラスに分けたときの
+ * クラス間分散(2クラスの画素数で重み付けした平均輝度差の2乗)を計算する。走査中は
+ * 現在の候補閾値と、これまでで最良だった閾値の両方をハイライトし、クラス間分散が
+ * 最大になる閾値を最終的な二値化の閾値として採用する。
+ */
+export function otsuThresholdingSteps(): SearchFrame[] {
+  const hist = OTSU_HISTOGRAM;
+  const levels = hist.length;
+  const total = hist.reduce((a, b) => a + b, 0);
+  let sumTotal = 0;
+  for (let i = 0; i < levels; i++) sumTotal += i * hist[i];
+
+  const frames: SearchFrame[] = [
+    frame(hist, {}, `画素値のヒストグラム(階調0〜${levels - 1}、総画素数${total})から、大津の二値化で最適な閾値を探索する`),
+  ];
+
+  let sumBg = 0;
+  let weightBg = 0;
+  let bestVariance = -1;
+  let bestThreshold = 0;
+
+  for (let t = 0; t < levels; t++) {
+    weightBg += hist[t];
+    if (weightBg === 0) {
+      frames.push(frame(hist, { [t]: "comparing" }, `階調${t}: 背景側(0〜${t})の画素数がまだ0なのでスキップ`));
+      continue;
+    }
+    const weightFg = total - weightBg;
+    if (weightFg === 0) {
+      frames.push(frame(hist, { [t]: "comparing" }, `階調${t}: 前景側(${t}より大きい階調)の画素数が0になったため探索を打ち切り`));
+      break;
+    }
+    sumBg += t * hist[t];
+    const meanBg = sumBg / weightBg;
+    const meanFg = (sumTotal - sumBg) / weightFg;
+    const betweenVariance = weightBg * weightFg * (meanBg - meanFg) ** 2;
+
+    const highlight: Partial<Record<number, StateColorKey>> = { [t]: "comparing" };
+    if (betweenVariance > bestVariance) {
+      bestVariance = betweenVariance;
+      bestThreshold = t;
+      highlight[t] = "pivot";
+      frames.push(
+        frame(
+          hist,
+          highlight,
+          `階調${t}を閾値候補とした場合のクラス間分散=${betweenVariance.toFixed(1)}(過去最高) → 最良閾値をこの階調に更新`,
+        ),
+      );
+    } else {
+      highlight[bestThreshold] = "pivot";
+      frames.push(
+        frame(
+          hist,
+          highlight,
+          `階調${t}を閾値候補とした場合のクラス間分散=${betweenVariance.toFixed(1)}(これまでの最良${bestVariance.toFixed(1)}を超えない)`,
+        ),
+      );
+    }
+  }
+
+  frames.push(
+    frame(
+      hist,
+      { [bestThreshold]: "settled" },
+      `計算完了。クラス間分散が最大(${bestVariance.toFixed(1)})になる閾値は${bestThreshold}。この階調以下を背景、より大きい階調を前景として二値化する`,
+    ),
+  );
+
+  return frames;
+}
+
 export const SEARCH_VISUALIZERS: Record<string, () => SearchFrame[]> = {
   "linear-search": linearSearchSteps,
   "binary-search": binarySearchSteps,
@@ -2200,4 +2277,5 @@ export const SEARCH_VISUALIZERS: Record<string, () => SearchFrame[]> = {
   "two-pointers-sliding-window": twoPointersSlidingWindowSteps,
   "boyer-moore-majority-vote": boyerMooreMajorityVoteSteps,
   "reservoir-sampling": reservoirSamplingSteps,
+  "otsu-thresholding": otsuThresholdingSteps,
 };
