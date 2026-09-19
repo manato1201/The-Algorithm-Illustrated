@@ -3,7 +3,8 @@ import { SHORTEST_PATH_EDGES, SHORTEST_PATH_NODES } from "./graph-visualizers.ts
 export type DPCellState = "idle" | "comparing" | "pivot" | "settled";
 
 export type DPCell = {
-  value: number | null;
+  // string許容: 方策反復法の方策列(矢印記号)など、数値以外を表示したいセルのため。
+  value: number | string | null;
   state: DPCellState;
 };
 
@@ -7097,6 +7098,837 @@ export function qLearningSteps(): DPFrame[] {
   return frames;
 }
 
+/**
+ * 決定的な疑似乱数生成器(mulberry32)。ε-greedyの探索判定、Double Q学習の更新対象テーブル選択、
+ * Dyna-Qのプランニングサンプリングなど、強化学習の可視化で「乱数だが再現性が必要」な箇所に使う。
+ * Math.random()は実行のたびに結果が変わってしまうため使わない。
+ */
+function mulberry32(seed: number): () => number {
+  let a = seed >>> 0;
+  return () => {
+    a = (a + 0x6d2b79f5) | 0;
+    let t = Math.imul(a ^ (a >>> 15), 1 | a);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+// ===========================================================================
+// 価値反復法: 3×3グリッドワールドでの状態価値V(s)テーブル更新(強化学習カテゴリ)
+// ===========================================================================
+
+export const VALUE_ITERATION_GRID_SIZE = 3;
+export const VALUE_ITERATION_GOAL_STATE = 8; // 右下(行2,列2)
+const VALUE_ITERATION_ACTIONS = ["↑", "↓", "←", "→"] as const;
+const VALUE_ITERATION_ACTION_DELTAS: [number, number][] = [
+  [-1, 0], // 上
+  [1, 0], // 下
+  [0, -1], // 左
+  [0, 1], // 右
+];
+const VALUE_ITERATION_GAMMA = 0.9;
+const VALUE_ITERATION_GOAL_REWARD = 10;
+const VALUE_ITERATION_STEP_REWARD = -1;
+const VALUE_ITERATION_CONVERGENCE_THRESHOLD = 0.001;
+const VALUE_ITERATION_MAX_SWEEPS = 30;
+
+function valueIterationStep(state: number): number[] {
+  const row = Math.floor(state / VALUE_ITERATION_GRID_SIZE);
+  const col = state % VALUE_ITERATION_GRID_SIZE;
+  return VALUE_ITERATION_ACTION_DELTAS.map(([dr, dc]) => {
+    const newRow = row + dr;
+    const newCol = col + dc;
+    if (newRow < 0 || newRow >= VALUE_ITERATION_GRID_SIZE || newCol < 0 || newCol >= VALUE_ITERATION_GRID_SIZE) {
+      return state; // 壁にぶつかって位置は変わらない
+    }
+    return newRow * VALUE_ITERATION_GRID_SIZE + newCol;
+  });
+}
+
+/**
+ * 3×3グリッドワールドで価値反復法(ベルマン最適方程式による全状態の一斉更新)を反復適用する
+ * ステップ列を生成する。Q学習(qLearningSteps)がQ(s,a)をTD学習で少しずつ更新するのに対し、
+ * 価値反復法は環境の遷移モデルを既知として、毎スイープ全状態のV(s)を
+ * V(s) ← max_a Σ P(s'|s,a)[R + γV(s')] で一斉更新し、収束するまで繰り返す点が異なる。
+ * 学習率αは登場せず、代わりに収束判定の閾値を用いる。
+ */
+export function valueIterationSteps(): DPFrame[] {
+  const nStates = VALUE_ITERATION_GRID_SIZE * VALUE_ITERATION_GRID_SIZE;
+  let V: number[] = new Array(nStates).fill(0);
+  const touched = new Set<number>([VALUE_ITERATION_GOAL_STATE]); // ゴールの価値は常に0で確定済み
+
+  const frames: DPFrame[] = [];
+  const snapshot = (highlight: Map<number, "comparing" | "pivot">, description: string): DPFrame => {
+    const table: DPCell[][] = V.map((value, s) => [
+      { value: round3(value), state: highlight.get(s) ?? (touched.has(s) ? "settled" : "idle") },
+    ]);
+    return { table, description };
+  };
+
+  frames.push(
+    snapshot(
+      new Map(),
+      `3×3グリッドワールド(S0〜S8)で価値反復法を開始。全状態V(s)=0で初期化。ゴールS${VALUE_ITERATION_GOAL_STATE}到達で報酬+10、それ以外の移動は-1。割引率γ=${VALUE_ITERATION_GAMMA}。遷移モデルは既知として、ベルマン最適方程式で全状態を毎スイープ一斉更新する`,
+    ),
+  );
+
+  let sweep = 0;
+  let maxDelta = Number.POSITIVE_INFINITY;
+  while (maxDelta > VALUE_ITERATION_CONVERGENCE_THRESHOLD && sweep < VALUE_ITERATION_MAX_SWEEPS) {
+    sweep++;
+    const newV = [...V];
+    maxDelta = 0;
+    frames.push(
+      snapshot(new Map(), `スイープ${sweep}開始。各状態でV(s) = max_a[R + γV(s')] を、1つ前のスイープのVを参照して計算する`),
+    );
+
+    for (let s = 0; s < nStates; s++) {
+      if (s === VALUE_ITERATION_GOAL_STATE) continue; // ゴールは吸収状態、価値は常に0のまま
+      const nextStates = valueIterationStep(s);
+      let best = Number.NEGATIVE_INFINITY;
+      let bestAction = 0;
+      let bestNextState = s;
+      for (let a = 0; a < nextStates.length; a++) {
+        const ns = nextStates[a];
+        const reward = ns === VALUE_ITERATION_GOAL_STATE ? VALUE_ITERATION_GOAL_REWARD : VALUE_ITERATION_STEP_REWARD;
+        const candidate = reward + (ns === VALUE_ITERATION_GOAL_STATE ? 0 : VALUE_ITERATION_GAMMA * V[ns]);
+        if (candidate > best) {
+          best = candidate;
+          bestAction = a;
+          bestNextState = ns;
+        }
+      }
+      const newValue = round3(best);
+      const delta = Math.abs(newValue - V[s]);
+      maxDelta = Math.max(maxDelta, delta);
+      newV[s] = newValue;
+
+      const highlight = new Map<number, "comparing" | "pivot">([[s, "pivot"]]);
+      if (bestNextState !== s) highlight.set(bestNextState, "comparing");
+      frames.push(
+        snapshot(
+          highlight,
+          `V(S${s}) ← max_a[R + γ・V(s')] = ${newValue}(最良行動: ${VALUE_ITERATION_ACTIONS[bestAction]}、次状態S${bestNextState}を参照、差分Δ=${round3(delta)})`,
+        ),
+      );
+      touched.add(s);
+    }
+
+    V = newV;
+    frames.push(snapshot(new Map(), `スイープ${sweep}完了。このスイープでの最大差分Δ=${round3(maxDelta)}`));
+  }
+
+  frames.push(
+    snapshot(
+      new Map(),
+      `収束(Δ<${VALUE_ITERATION_CONVERGENCE_THRESHOLD})。${sweep}スイープで最適価値関数V*(s)が得られた。Q学習と異なり、経験を積むのではなく既知のモデルを使って一気に全状態を計算している`,
+    ),
+  );
+  return frames;
+}
+
+// ===========================================================================
+// 方策反復法: 3×3グリッドワールドでの方策評価/方策改善の交互反復(強化学習カテゴリ)
+// ===========================================================================
+
+export const POLICY_ITERATION_GRID_SIZE = 3;
+export const POLICY_ITERATION_GOAL_STATE = 8; // 右下(行2,列2)
+const POLICY_ITERATION_ACTIONS = ["↑", "↓", "←", "→"] as const;
+const POLICY_ITERATION_ACTION_DELTAS: [number, number][] = [
+  [-1, 0], // 上
+  [1, 0], // 下
+  [0, -1], // 左
+  [0, 1], // 右
+];
+const POLICY_ITERATION_GAMMA = 0.9;
+const POLICY_ITERATION_GOAL_REWARD = 10;
+const POLICY_ITERATION_STEP_REWARD = -1;
+const POLICY_ITERATION_EVAL_THRESHOLD = 0.001;
+const POLICY_ITERATION_MAX_EVAL_SWEEPS = 20;
+const POLICY_ITERATION_MAX_POLICY_ITERS = 10;
+/** 初期方策: 基本は「列<2なら→、列==2なら↓」(最短路)だが、S3とS4だけ意図的に↑という
+ * 遠回りな行動にしておく。これにより1回目の方策改善で明確な変化が起き、方策反復の
+ * 「評価→改善→評価→…」という往復が可視化できる。 */
+const POLICY_ITERATION_INITIAL_POLICY: number[] = Array.from({ length: 9 }, (_, s) => {
+  if (s === 3 || s === 4) return 0; // ↑ (わざと遠回りにする初期方策)
+  const col = s % POLICY_ITERATION_GRID_SIZE;
+  return col < 2 ? 3 : 1; // 列<2なら→、列==2なら↓
+});
+
+function policyIterationStep(state: number): number[] {
+  const row = Math.floor(state / POLICY_ITERATION_GRID_SIZE);
+  const col = state % POLICY_ITERATION_GRID_SIZE;
+  return POLICY_ITERATION_ACTION_DELTAS.map(([dr, dc]) => {
+    const newRow = row + dr;
+    const newCol = col + dc;
+    if (newRow < 0 || newRow >= POLICY_ITERATION_GRID_SIZE || newCol < 0 || newCol >= POLICY_ITERATION_GRID_SIZE) {
+      return state; // 壁にぶつかって位置は変わらない
+    }
+    return newRow * POLICY_ITERATION_GRID_SIZE + newCol;
+  });
+}
+
+/**
+ * 3×3グリッドワールドで方策反復法(方策評価→方策改善を交互に繰り返す)のステップ列を生成する。
+ * 価値反復法(valueIterationSteps)が「maxを取りながら価値だけを一気に最適化する」のに対し、
+ * 方策反復法は「①今の方策のもとでの価値V(s)を評価しきる→②greedyに方策を選び直す」を
+ * 方策が変化しなくなるまで交互に行う点が異なる。テーブルは列0=価値V(s)、列1=現在の方策(矢印)の
+ * 2列構成にし、評価と改善の両方でどのセルが動いているかを可視化する。
+ */
+export function policyIterationSteps(): DPFrame[] {
+  const nStates = POLICY_ITERATION_GRID_SIZE * POLICY_ITERATION_GRID_SIZE;
+  const policy: number[] = [...POLICY_ITERATION_INITIAL_POLICY];
+  let V: number[] = new Array(nStates).fill(0);
+  const touched = new Set<string>();
+
+  const frames: DPFrame[] = [];
+  const snapshot = (highlight: Map<string, "comparing" | "pivot">, description: string): DPFrame => {
+    const table: DPCell[][] = Array.from({ length: nStates }, (_, s) => {
+      const valueKey = `${s},value`;
+      const policyKey = `${s},policy`;
+      const valueCell: DPCell = {
+        value: round3(V[s]),
+        state: highlight.get(valueKey) ?? (touched.has(valueKey) ? "settled" : "idle"),
+      };
+      const policyCell: DPCell = {
+        value: s === POLICY_ITERATION_GOAL_STATE ? "ゴール" : POLICY_ITERATION_ACTIONS[policy[s]],
+        state: highlight.get(policyKey) ?? (touched.has(policyKey) ? "settled" : "idle"),
+      };
+      return [valueCell, policyCell];
+    });
+    return { table, description };
+  };
+
+  frames.push(
+    snapshot(
+      new Map(),
+      `3×3グリッドワールド(S0〜S8)で方策反復法を開始。初期方策は最短路寄りだが、S3・S4だけ意図的に↑(遠回り)にしてある。割引率γ=${POLICY_ITERATION_GAMMA}。「方策評価→方策改善」を方策が変化しなくなるまで繰り返す`,
+    ),
+  );
+
+  let policyStable = false;
+  let iteration = 0;
+  while (!policyStable && iteration < POLICY_ITERATION_MAX_POLICY_ITERS) {
+    iteration++;
+
+    // --- 方策評価: 現在の方策のもとでV(s)を収束するまで計算する ---
+    frames.push(
+      snapshot(new Map(), `[方策反復${iteration}] 方策評価を開始。現在の方策に固定したままV(s)をスイープごとに更新する`),
+    );
+    let evalSweep = 0;
+    let maxDelta = Number.POSITIVE_INFINITY;
+    while (maxDelta > POLICY_ITERATION_EVAL_THRESHOLD && evalSweep < POLICY_ITERATION_MAX_EVAL_SWEEPS) {
+      evalSweep++;
+      const newV = [...V];
+      maxDelta = 0;
+      const highlight = new Map<string, "comparing" | "pivot">();
+      for (let s = 0; s < nStates; s++) {
+        if (s === POLICY_ITERATION_GOAL_STATE) continue;
+        const nextStates = policyIterationStep(s);
+        const action = policy[s];
+        const ns = nextStates[action];
+        const reward = ns === POLICY_ITERATION_GOAL_STATE ? POLICY_ITERATION_GOAL_REWARD : POLICY_ITERATION_STEP_REWARD;
+        const newValue = round3(reward + (ns === POLICY_ITERATION_GOAL_STATE ? 0 : POLICY_ITERATION_GAMMA * V[ns]));
+        maxDelta = Math.max(maxDelta, Math.abs(newValue - V[s]));
+        newV[s] = newValue;
+        touched.add(`${s},value`);
+        highlight.set(`${s},value`, "pivot");
+      }
+      V = newV;
+      frames.push(
+        snapshot(
+          highlight,
+          `[評価] スイープ${evalSweep}: 方策に従って各V(s)を更新(最大差分Δ=${round3(maxDelta)})`,
+        ),
+      );
+    }
+    frames.push(
+      snapshot(
+        new Map(),
+        `[評価] 方策評価が収束(Δ<${POLICY_ITERATION_EVAL_THRESHOLD})。${evalSweep}回のスイープでこの方策のV(s)が確定した`,
+      ),
+    );
+
+    // --- 方策改善: 求まったV(s)を使ってgreedyに方策を選び直す ---
+    frames.push(snapshot(new Map(), `[方策反復${iteration}] 方策改善を開始。各状態で最もV(s')が高い行動にgreedyに選び直す`));
+    policyStable = true;
+    for (let s = 0; s < nStates; s++) {
+      if (s === POLICY_ITERATION_GOAL_STATE) continue;
+      const nextStates = policyIterationStep(s);
+      let best = Number.NEGATIVE_INFINITY;
+      let bestAction = 0;
+      for (let a = 0; a < nextStates.length; a++) {
+        const ns = nextStates[a];
+        const reward = ns === POLICY_ITERATION_GOAL_STATE ? POLICY_ITERATION_GOAL_REWARD : POLICY_ITERATION_STEP_REWARD;
+        const candidate = reward + (ns === POLICY_ITERATION_GOAL_STATE ? 0 : POLICY_ITERATION_GAMMA * V[ns]);
+        if (candidate > best) {
+          best = candidate;
+          bestAction = a;
+        }
+      }
+      touched.add(`${s},policy`);
+      if (bestAction !== policy[s]) {
+        const oldAction = policy[s];
+        policy[s] = bestAction;
+        policyStable = false;
+        frames.push(
+          snapshot(
+            new Map([[`${s},policy`, "pivot"]]),
+            `[改善] S${s}: 方策を${POLICY_ITERATION_ACTIONS[oldAction]}→${POLICY_ITERATION_ACTIONS[bestAction]}に更新(greedyに選び直した結果、方策が変化した)`,
+          ),
+        );
+      } else {
+        frames.push(
+          snapshot(
+            new Map([[`${s},policy`, "comparing"]]),
+            `[改善] S${s}: greedyに選んでも方策は${POLICY_ITERATION_ACTIONS[bestAction]}のまま変化なし`,
+          ),
+        );
+      }
+    }
+  }
+
+  frames.push(
+    snapshot(
+      new Map(),
+      `方策が安定し変化しなくなった(${iteration}回の反復)。価値反復法と同じ最適価値関数・最適方策に到達している`,
+    ),
+  );
+  return frames;
+}
+
+// ===========================================================================
+// SARSA: 3×3グリッドワールドでのオンポリシーTD学習(強化学習カテゴリ)
+// ===========================================================================
+
+export const SARSA_GRID_SIZE = 3;
+export const SARSA_GOAL_STATE = 8; // 右下(行2,列2)
+export const SARSA_ACTIONS = ["↑", "↓", "←", "→"] as const;
+const SARSA_ACTION_DELTAS: [number, number][] = [
+  [-1, 0], // 上
+  [1, 0], // 下
+  [0, -1], // 左
+  [0, 1], // 右
+];
+const SARSA_ALPHA = 0.5;
+const SARSA_GAMMA = 0.9;
+const SARSA_EPSILON = 0.15;
+const SARSA_EPISODE_COUNT = 4;
+const SARSA_MAX_STEPS_PER_EPISODE = 30; // ε-greedyで寄り道することがあるための安全上限
+const SARSA_RANDOM_SEED = 42;
+
+function sarsaStep(state: number): number[] {
+  const row = Math.floor(state / SARSA_GRID_SIZE);
+  const col = state % SARSA_GRID_SIZE;
+  return SARSA_ACTION_DELTAS.map(([dr, dc]) => {
+    const newRow = row + dr;
+    const newCol = col + dc;
+    if (newRow < 0 || newRow >= SARSA_GRID_SIZE || newCol < 0 || newCol >= SARSA_GRID_SIZE) {
+      return state; // 壁にぶつかって位置は変わらない
+    }
+    return newRow * SARSA_GRID_SIZE + newCol;
+  });
+}
+
+/**
+ * 3×3グリッドワールドでSARSA(オンポリシーTD学習)を反復適用するステップ列を生成する。
+ * Q学習(qLearningSteps)は次状態でのmax_a Q(s',a)を使う(オフポリシー)のに対し、
+ * SARSAは「実際にε-greedyで選んだ次の行動A'」のQ(s',A')をそのままTDターゲットに使う
+ * (オンポリシー)点が異なる。行動選択・タイブレークにはmulberry32による固定シードの
+ * 疑似乱数を使い、実行のたびに結果が変わらないようにしている。
+ */
+export function sarsaSteps(): DPFrame[] {
+  const nStates = SARSA_GRID_SIZE * SARSA_GRID_SIZE;
+  const nActions = SARSA_ACTIONS.length;
+  const q: number[][] = Array.from({ length: nStates }, () => new Array(nActions).fill(0));
+  const touched = new Set<string>();
+  const rng = mulberry32(SARSA_RANDOM_SEED);
+
+  const frames: DPFrame[] = [];
+  const snapshot = (highlight: Map<string, "comparing" | "pivot">, description: string): DPFrame => {
+    const table: DPCell[][] = q.map((row, s) =>
+      row.map((value, a) => {
+        const key = `${s},${a}`;
+        return { value, state: highlight.get(key) ?? (touched.has(key) ? "settled" : "idle") };
+      }),
+    );
+    return { table, description };
+  };
+
+  const chooseAction = (state: number): number => {
+    if (rng() < SARSA_EPSILON) {
+      return Math.floor(rng() * nActions); // ε の確率で探索(ランダムな行動)
+    }
+    const bestValue = Math.max(...q[state]);
+    const bestActions: number[] = [];
+    for (let a = 0; a < nActions; a++) {
+      if (q[state][a] === bestValue) bestActions.push(a);
+    }
+    if (bestActions.length === 1) return bestActions[0];
+    return bestActions[Math.floor(rng() * bestActions.length)]; // 同点はランダムにタイブレーク
+  };
+
+  frames.push(
+    snapshot(
+      new Map(),
+      `3×3グリッドワールド(S0〜S8)でSARSAを開始。全てのQ(s,a)=0で初期化。ゴールS${SARSA_GOAL_STATE}到達で報酬+10、それ以外の移動は-1。学習率α=${SARSA_ALPHA}、割引率γ=${SARSA_GAMMA}、ε=${SARSA_EPSILON}。SARSAはオンポリシー: 実際に選んだ次の行動のQ値を使って更新する(Q学習のmaxとは異なる)`,
+    ),
+  );
+
+  for (let episode = 1; episode <= SARSA_EPISODE_COUNT; episode++) {
+    let state = 0;
+    let action = chooseAction(state);
+    frames.push(
+      snapshot(
+        new Map(),
+        `エピソード${episode}開始。S0からε-greedyで最初の行動を選択: ${SARSA_ACTIONS[action]}`,
+      ),
+    );
+
+    let steps = 0;
+    while (state !== SARSA_GOAL_STATE && steps < SARSA_MAX_STEPS_PER_EPISODE) {
+      steps++;
+      const nextStates = sarsaStep(state);
+      const nextState = nextStates[action];
+      const isTerminal = nextState === SARSA_GOAL_STATE;
+      const reward = isTerminal ? 10 : -1;
+      const nextAction = isTerminal ? 0 : chooseAction(nextState);
+
+      const highlight = new Map<string, "comparing" | "pivot">();
+      highlight.set(`${state},${action}`, "pivot");
+      if (!isTerminal) highlight.set(`${nextState},${nextAction}`, "comparing");
+      frames.push(
+        snapshot(
+          highlight,
+          isTerminal
+            ? `S${state}で${SARSA_ACTIONS[action]}を実行 → S${nextState}(ゴール!)、報酬+10`
+            : `S${state}で${SARSA_ACTIONS[action]}を実行 → S${nextState}、報酬-1。次の行動A'もε-greedyで実際に選んでおく: ${SARSA_ACTIONS[nextAction]}(SARSAはこの実際に選んだ行動のQ値を使う。Q学習のようにmaxを取るのではない)`,
+        ),
+      );
+
+      const oldValue = q[state][action];
+      const nextQ = isTerminal ? 0 : q[nextState][nextAction];
+      const tdTarget = reward + (isTerminal ? 0 : SARSA_GAMMA * nextQ);
+      const tdError = tdTarget - oldValue;
+      q[state][action] = round3(oldValue + SARSA_ALPHA * tdError);
+      touched.add(`${state},${action}`);
+
+      frames.push(
+        snapshot(
+          new Map([[`${state},${action}`, "pivot"]]),
+          `Q(S${state},${SARSA_ACTIONS[action]}) ← ${oldValue} + α[${reward} + γ・Q(S${nextState},${isTerminal ? "終端" : SARSA_ACTIONS[nextAction]}) − ${oldValue}] = ${q[state][action]}`,
+        ),
+      );
+
+      state = nextState;
+      action = nextAction; // オンポリシー: 次のループでは選び直さず、既に選んだA'をそのまま使う
+    }
+  }
+
+  frames.push(
+    snapshot(
+      new Map(),
+      `${SARSA_EPISODE_COUNT}エピソード完了。エピソードを追うごとにゴールまでの歩数が減っていく(学習が進む)様子と、オンポリシーゆえに探索の影響がQ値に直接反映される様子が確認できる`,
+    ),
+  );
+  return frames;
+}
+
+// ===========================================================================
+// Double Q学習: 3×3グリッドワールドでの2テーブル交互更新(強化学習カテゴリ)
+// ===========================================================================
+
+export const DOUBLE_Q_LEARNING_GRID_SIZE = 3;
+export const DOUBLE_Q_LEARNING_GOAL_STATE = 8; // 右下(行2,列2)
+export const DOUBLE_Q_LEARNING_ACTIONS = ["↑", "↓", "←", "→"] as const;
+const DOUBLE_Q_LEARNING_ACTION_DELTAS: [number, number][] = [
+  [-1, 0], // 上
+  [1, 0], // 下
+  [0, -1], // 左
+  [0, 1], // 右
+];
+const DOUBLE_Q_LEARNING_ALPHA = 0.5;
+const DOUBLE_Q_LEARNING_GAMMA = 0.9;
+/** Q学習と同じ固定路 S0→S1→S2→S5→S8 を3エピソード反復する。 */
+const DOUBLE_Q_LEARNING_EPISODE_ACTIONS = [3, 3, 1, 1]; // 右,右,下,下
+const DOUBLE_Q_LEARNING_EPISODE_COUNT = 3;
+const DOUBLE_Q_LEARNING_COIN_SEED = 2024;
+
+function doubleQLearningStep(state: number): number[] {
+  const row = Math.floor(state / DOUBLE_Q_LEARNING_GRID_SIZE);
+  const col = state % DOUBLE_Q_LEARNING_GRID_SIZE;
+  return DOUBLE_Q_LEARNING_ACTION_DELTAS.map(([dr, dc]) => {
+    const newRow = row + dr;
+    const newCol = col + dc;
+    if (newRow < 0 || newRow >= DOUBLE_Q_LEARNING_GRID_SIZE || newCol < 0 || newCol >= DOUBLE_Q_LEARNING_GRID_SIZE) {
+      return state; // 壁にぶつかって位置は変わらない
+    }
+    return newRow * DOUBLE_Q_LEARNING_GRID_SIZE + newCol;
+  });
+}
+
+/**
+ * 3×3グリッドワールドでDouble Q学習を反復適用するステップ列を生成する。通常のQ学習が
+ * 単一のQテーブルで「行動選択」と「価値評価」の両方を行い最大化バイアス(過大評価)を
+ * 生みやすいのに対し、Double Q学習はQA・QBの2つのテーブルを持ち、更新のたびに
+ * (固定シードの疑似乱数による)コイン投げでどちらか片方だけを選び、選ばれた側で
+ * 最良行動を選び・もう片方のテーブルでその行動を評価することでバイアスを緩和する。
+ * テーブル表示は(QA+QB)/2の平均とし、個別のQA/QB値は各ステップの説明文で確認できる。
+ */
+export function doubleQLearningSteps(): DPFrame[] {
+  const nStates = DOUBLE_Q_LEARNING_GRID_SIZE * DOUBLE_Q_LEARNING_GRID_SIZE;
+  const nActions = DOUBLE_Q_LEARNING_ACTIONS.length;
+  const qa: number[][] = Array.from({ length: nStates }, () => new Array(nActions).fill(0));
+  const qb: number[][] = Array.from({ length: nStates }, () => new Array(nActions).fill(0));
+  const touched = new Set<string>();
+  const rng = mulberry32(DOUBLE_Q_LEARNING_COIN_SEED);
+
+  const frames: DPFrame[] = [];
+  const snapshot = (highlight: Map<string, "comparing" | "pivot">, description: string): DPFrame => {
+    const table: DPCell[][] = qa.map((row, s) =>
+      row.map((_, a) => {
+        const key = `${s},${a}`;
+        const value = round3((qa[s][a] + qb[s][a]) / 2);
+        return { value, state: highlight.get(key) ?? (touched.has(key) ? "settled" : "idle") };
+      }),
+    );
+    return { table, description };
+  };
+
+  frames.push(
+    snapshot(
+      new Map(),
+      `3×3グリッドワールド(S0〜S8)でDouble Q学習を開始。QA・QBの2つのテーブルを0で初期化(表示は(QA+QB)/2の平均)。ゴールS${DOUBLE_Q_LEARNING_GOAL_STATE}到達で報酬+10、それ以外の移動は-1。学習率α=${DOUBLE_Q_LEARNING_ALPHA}、割引率γ=${DOUBLE_Q_LEARNING_GAMMA}。更新のたびにコイン投げでQA/QBのどちらか一方だけを更新し、最大化バイアスを緩和する`,
+    ),
+  );
+
+  for (let episode = 1; episode <= DOUBLE_Q_LEARNING_EPISODE_COUNT; episode++) {
+    let state = 0;
+    frames.push(
+      snapshot(new Map(), `エピソード${episode}開始。S0からS${DOUBLE_Q_LEARNING_GOAL_STATE}への固定路(→→↓↓)をたどる`),
+    );
+
+    for (const action of DOUBLE_Q_LEARNING_EPISODE_ACTIONS) {
+      const nextStates = doubleQLearningStep(state);
+      const nextState = nextStates[action];
+      const isTerminal = nextState === DOUBLE_Q_LEARNING_GOAL_STATE;
+      const reward = isTerminal ? 10 : -1;
+      const updateA = rng() < 0.5; // コイン投げ(固定シード)でQA/QBのどちらを更新するか決める
+
+      const highlight = new Map<string, "comparing" | "pivot">([[`${state},${action}`, "pivot"]]);
+      frames.push(
+        snapshot(
+          highlight,
+          `${isTerminal ? `S${state}で${DOUBLE_Q_LEARNING_ACTIONS[action]}を実行 → S${nextState}(ゴール!)、報酬+10` : `S${state}で${DOUBLE_Q_LEARNING_ACTIONS[action]}を実行 → S${nextState}、報酬-1`}。コイン投げの結果: ${updateA ? "QAを更新" : "QBを更新"}する`,
+        ),
+      );
+
+      const updatedTable = updateA ? qa : qb;
+      const otherTable = updateA ? qb : qa;
+      let bestAction = 0;
+      if (!isTerminal) {
+        for (let a = 1; a < nActions; a++) {
+          if (updatedTable[nextState][a] > updatedTable[nextState][bestAction]) bestAction = a;
+        }
+      }
+      const nextEval = isTerminal ? 0 : otherTable[nextState][bestAction];
+      const oldValue = updatedTable[state][action];
+      const tdTarget = reward + (isTerminal ? 0 : DOUBLE_Q_LEARNING_GAMMA * nextEval);
+      updatedTable[state][action] = round3(oldValue + DOUBLE_Q_LEARNING_ALPHA * (tdTarget - oldValue));
+      touched.add(`${state},${action}`);
+
+      frames.push(
+        snapshot(
+          new Map([[`${state},${action}`, "pivot"]]),
+          `${updateA ? "QA" : "QB"}(S${state},${DOUBLE_Q_LEARNING_ACTIONS[action]}) ← ${oldValue} + α[${reward} + γ・${updateA ? "QB" : "QA"}(S${nextState},最良行動) − ${oldValue}] = ${updatedTable[state][action]}(表示中の平均値は${round3((qa[state][action] + qb[state][action]) / 2)})`,
+        ),
+      );
+
+      state = nextState;
+    }
+  }
+
+  frames.push(
+    snapshot(
+      new Map(),
+      `${DOUBLE_Q_LEARNING_EPISODE_COUNT}エピソード完了。コイン投げでQA/QBを交互に更新し、行動選択に使ったテーブルとは別のテーブルで評価することで、単一テーブルのQ学習より過大評価バイアスが抑えられる`,
+    ),
+  );
+  return frames;
+}
+
+// ===========================================================================
+// モンテカルロ制御法: 3×3グリッドワールドでのエピソード末更新(強化学習カテゴリ)
+// ===========================================================================
+
+export const MONTE_CARLO_CONTROL_GRID_SIZE = 3;
+export const MONTE_CARLO_CONTROL_GOAL_STATE = 8; // 右下(行2,列2)
+export const MONTE_CARLO_CONTROL_ACTIONS = ["↑", "↓", "←", "→"] as const;
+const MONTE_CARLO_CONTROL_ACTION_DELTAS: [number, number][] = [
+  [-1, 0], // 上
+  [1, 0], // 下
+  [0, -1], // 左
+  [0, 1], // 右
+];
+const MONTE_CARLO_CONTROL_ALPHA = 0.5;
+const MONTE_CARLO_CONTROL_GAMMA = 0.9;
+/** Q学習と同じ固定路 S0→S1→S2→S5→S8 を3エピソード反復する。 */
+const MONTE_CARLO_CONTROL_EPISODE_ACTIONS = [3, 3, 1, 1]; // 右,右,下,下
+const MONTE_CARLO_CONTROL_EPISODE_COUNT = 3;
+
+function monteCarloControlStep(state: number): number[] {
+  const row = Math.floor(state / MONTE_CARLO_CONTROL_GRID_SIZE);
+  const col = state % MONTE_CARLO_CONTROL_GRID_SIZE;
+  return MONTE_CARLO_CONTROL_ACTION_DELTAS.map(([dr, dc]) => {
+    const newRow = row + dr;
+    const newCol = col + dc;
+    if (newRow < 0 || newRow >= MONTE_CARLO_CONTROL_GRID_SIZE || newCol < 0 || newCol >= MONTE_CARLO_CONTROL_GRID_SIZE) {
+      return state; // 壁にぶつかって位置は変わらない
+    }
+    return newRow * MONTE_CARLO_CONTROL_GRID_SIZE + newCol;
+  });
+}
+
+type MonteCarloControlVisit = { state: number; action: number; reward: number };
+
+/**
+ * 3×3グリッドワールドでモンテカルロ制御法(初回訪問MC、エピソード末更新)を反復適用する
+ * ステップ列を生成する。Q学習・SARSAが1ステップごとにTDターゲットでQ値を更新するのに対し、
+ * モンテカルロ制御法は1エピソードをゴールまで最後まで実行して軌跡を記録するだけにし、
+ * エピソード終了後に軌跡を逆向きにたどりながらリターンG(割引累積報酬)を計算し、
+ * 訪れた各(s,a)のQ値をまとめて更新する点が異なる——「エピソード中は一切更新しない」ことを
+ * 明示的にフレームで見せる。
+ */
+export function monteCarloControlRlSteps(): DPFrame[] {
+  const nStates = MONTE_CARLO_CONTROL_GRID_SIZE * MONTE_CARLO_CONTROL_GRID_SIZE;
+  const nActions = MONTE_CARLO_CONTROL_ACTIONS.length;
+  const q: number[][] = Array.from({ length: nStates }, () => new Array(nActions).fill(0));
+  const touched = new Set<string>();
+
+  const frames: DPFrame[] = [];
+  const snapshot = (highlight: Map<string, "comparing" | "pivot">, description: string): DPFrame => {
+    const table: DPCell[][] = q.map((row, s) =>
+      row.map((value, a) => {
+        const key = `${s},${a}`;
+        return { value, state: highlight.get(key) ?? (touched.has(key) ? "settled" : "idle") };
+      }),
+    );
+    return { table, description };
+  };
+
+  frames.push(
+    snapshot(
+      new Map(),
+      `3×3グリッドワールド(S0〜S8)でモンテカルロ制御法を開始。全てのQ(s,a)=0で初期化。ゴールS${MONTE_CARLO_CONTROL_GOAL_STATE}到達で報酬+10、それ以外の移動は-1。学習率α=${MONTE_CARLO_CONTROL_ALPHA}、割引率γ=${MONTE_CARLO_CONTROL_GAMMA}。TD学習と異なり、1エピソード分の軌跡を最後まで集めてからまとめてQ値を更新する`,
+    ),
+  );
+
+  for (let episode = 1; episode <= MONTE_CARLO_CONTROL_EPISODE_COUNT; episode++) {
+    let state = 0;
+    const trajectory: MonteCarloControlVisit[] = [];
+    frames.push(
+      snapshot(
+        new Map(),
+        `エピソード${episode}開始。S0からS${MONTE_CARLO_CONTROL_GOAL_STATE}への固定路(→→↓↓)を、更新は行わずに最後までたどって記録する`,
+      ),
+    );
+
+    for (const action of MONTE_CARLO_CONTROL_EPISODE_ACTIONS) {
+      const nextStates = monteCarloControlStep(state);
+      const nextState = nextStates[action];
+      const isTerminal = nextState === MONTE_CARLO_CONTROL_GOAL_STATE;
+      const reward = isTerminal ? 10 : -1;
+      trajectory.push({ state, action, reward });
+
+      frames.push(
+        snapshot(
+          new Map([[`${state},${action}`, "comparing"]]),
+          isTerminal
+            ? `S${state}で${MONTE_CARLO_CONTROL_ACTIONS[action]}を実行 → S${nextState}(ゴール!)、報酬+10を軌跡に記録(この時点ではQ値は更新しない)`
+            : `S${state}で${MONTE_CARLO_CONTROL_ACTIONS[action]}を実行 → S${nextState}、報酬-1を軌跡に記録(この時点ではQ値は更新しない)`,
+        ),
+      );
+      state = nextState;
+    }
+
+    frames.push(
+      snapshot(
+        new Map(),
+        `エピソード${episode}終了(ゴール到達)。ここから軌跡を逆向きにたどり、各(s,a)のリターンG = r + γGを計算しながらQ値をまとめて更新する`,
+      ),
+    );
+
+    let G = 0;
+    for (let t = trajectory.length - 1; t >= 0; t--) {
+      const { state: s, action: a, reward: r } = trajectory[t];
+      G = round3(r + MONTE_CARLO_CONTROL_GAMMA * G);
+      const oldValue = q[s][a];
+      q[s][a] = round3(oldValue + MONTE_CARLO_CONTROL_ALPHA * (G - oldValue));
+      touched.add(`${s},${a}`);
+      frames.push(
+        snapshot(
+          new Map([[`${s},${a}`, "pivot"]]),
+          `[初回訪問MC更新] リターンG(S${s},${MONTE_CARLO_CONTROL_ACTIONS[a]}) = ${G} → Q ← ${oldValue} + α[G − Q] = ${q[s][a]}`,
+        ),
+      );
+    }
+  }
+
+  frames.push(
+    snapshot(
+      new Map(),
+      `${MONTE_CARLO_CONTROL_EPISODE_COUNT}エピソード完了。TD学習(Q学習・SARSA)とは違い、エピソード中は一切Q値を更新せず、ゴール到達後にまとめて更新する「エピソード末更新」の特徴が確認できる`,
+    ),
+  );
+  return frames;
+}
+
+// ===========================================================================
+// Dyna-Q: 3×3グリッドワールドでの実体験+プランニング更新(強化学習カテゴリ)
+// ===========================================================================
+
+export const DYNA_Q_GRID_SIZE = 3;
+export const DYNA_Q_GOAL_STATE = 8; // 右下(行2,列2)
+export const DYNA_Q_ACTIONS = ["↑", "↓", "←", "→"] as const;
+const DYNA_Q_ACTION_DELTAS: [number, number][] = [
+  [-1, 0], // 上
+  [1, 0], // 下
+  [0, -1], // 左
+  [0, 1], // 右
+];
+const DYNA_Q_ALPHA = 0.5;
+const DYNA_Q_GAMMA = 0.9;
+/** Q学習と同じ固定路 S0→S1→S2→S5→S8 を2エピソード反復する(1ステップごとにプランニングも行うためエピソード数は抑えめ)。 */
+const DYNA_Q_EPISODE_ACTIONS = [3, 3, 1, 1]; // 右,右,下,下
+const DYNA_Q_EPISODE_COUNT = 2;
+const DYNA_Q_PLANNING_STEPS = 3; // 実体験1回につき行う仮想プランニング更新の回数n
+const DYNA_Q_PLANNING_SEED = 99;
+
+function dynaQStep(state: number): number[] {
+  const row = Math.floor(state / DYNA_Q_GRID_SIZE);
+  const col = state % DYNA_Q_GRID_SIZE;
+  return DYNA_Q_ACTION_DELTAS.map(([dr, dc]) => {
+    const newRow = row + dr;
+    const newCol = col + dc;
+    if (newRow < 0 || newRow >= DYNA_Q_GRID_SIZE || newCol < 0 || newCol >= DYNA_Q_GRID_SIZE) {
+      return state; // 壁にぶつかって位置は変わらない
+    }
+    return newRow * DYNA_Q_GRID_SIZE + newCol;
+  });
+}
+
+type DynaQModelEntry = { reward: number; nextState: number };
+
+/**
+ * 3×3グリッドワールドでDyna-Q(実体験のQ学習+モデルベースのプランニング)を反復適用する
+ * ステップ列を生成する。通常のQ学習が実環境との1ステップのやり取りだけで学習するのに対し、
+ * Dyna-Qは実体験のたびに「その(s,a)から何が起きたか(報酬・遷移先)」をモデルとして記憶し、
+ * 直後にモデルから過去の経験を(固定シードの疑似乱数で)ランダムに複数回サンプリングして
+ * 仮想的にQ学習の更新を追加で行う——実環境とやり取りせずに学習を加速できる点が異なる。
+ */
+export function dynaQSteps(): DPFrame[] {
+  const nStates = DYNA_Q_GRID_SIZE * DYNA_Q_GRID_SIZE;
+  const nActions = DYNA_Q_ACTIONS.length;
+  const q: number[][] = Array.from({ length: nStates }, () => new Array(nActions).fill(0));
+  const touched = new Set<string>();
+  const model = new Map<string, DynaQModelEntry>();
+  const experienced: { state: number; action: number }[] = [];
+  const rng = mulberry32(DYNA_Q_PLANNING_SEED);
+
+  const frames: DPFrame[] = [];
+  const snapshot = (highlight: Map<string, "comparing" | "pivot">, description: string): DPFrame => {
+    const table: DPCell[][] = q.map((row, s) =>
+      row.map((value, a) => {
+        const key = `${s},${a}`;
+        return { value, state: highlight.get(key) ?? (touched.has(key) ? "settled" : "idle") };
+      }),
+    );
+    return { table, description };
+  };
+
+  frames.push(
+    snapshot(
+      new Map(),
+      `3×3グリッドワールド(S0〜S8)でDyna-Qを開始。全てのQ(s,a)=0で初期化。ゴールS${DYNA_Q_GOAL_STATE}到達で報酬+10、それ以外の移動は-1。学習率α=${DYNA_Q_ALPHA}、割引率γ=${DYNA_Q_GAMMA}。実体験1回ごとに、記憶したモデルからn=${DYNA_Q_PLANNING_STEPS}回の仮想プランニング更新を追加で行う`,
+    ),
+  );
+
+  for (let episode = 1; episode <= DYNA_Q_EPISODE_COUNT; episode++) {
+    let state = 0;
+    frames.push(snapshot(new Map(), `エピソード${episode}開始。S0からS${DYNA_Q_GOAL_STATE}への固定路(→→↓↓)をたどる`));
+
+    for (const action of DYNA_Q_EPISODE_ACTIONS) {
+      // --- 実体験: 通常のQ学習と同じ1ステップ更新 ---
+      const nextStates = dynaQStep(state);
+      const nextState = nextStates[action];
+      const isTerminal = nextState === DYNA_Q_GOAL_STATE;
+      const reward = isTerminal ? 10 : -1;
+      const maxNext = isTerminal ? 0 : Math.max(...q[nextState]);
+
+      frames.push(
+        snapshot(
+          new Map([[`${state},${action}`, "pivot"]]),
+          isTerminal
+            ? `[実体験] S${state}で${DYNA_Q_ACTIONS[action]}を実行 → S${nextState}(ゴール!)、報酬+10`
+            : `[実体験] S${state}で${DYNA_Q_ACTIONS[action]}を実行 → S${nextState}、報酬-1`,
+        ),
+      );
+
+      const oldValue = q[state][action];
+      const tdTarget = reward + (isTerminal ? 0 : DYNA_Q_GAMMA * maxNext);
+      q[state][action] = round3(oldValue + DYNA_Q_ALPHA * (tdTarget - oldValue));
+      touched.add(`${state},${action}`);
+      frames.push(
+        snapshot(
+          new Map([[`${state},${action}`, "pivot"]]),
+          `[実体験] Q(S${state},${DYNA_Q_ACTIONS[action]}) ← ${oldValue} + α[${reward} + γ・${round3(maxNext)} − ${oldValue}] = ${q[state][action]}`,
+        ),
+      );
+
+      // --- モデル更新: この(s,a)で何が起きたかを記憶する ---
+      const modelKey = `${state},${action}`;
+      if (!model.has(modelKey)) experienced.push({ state, action });
+      model.set(modelKey, { reward, nextState });
+      frames.push(
+        snapshot(
+          new Map(),
+          `[モデル更新] (S${state},${DYNA_Q_ACTIONS[action]}) → 報酬${reward}, 遷移先S${nextState} を記憶した。これまでに経験した(s,a)は${experienced.length}件`,
+        ),
+      );
+
+      // --- プランニング: モデルから過去の経験をn回ランダムにサンプリングして仮想更新 ---
+      for (let p = 0; p < DYNA_Q_PLANNING_STEPS; p++) {
+        const idx = Math.floor(rng() * experienced.length);
+        const sample = experienced[idx];
+        const outcome = model.get(`${sample.state},${sample.action}`);
+        if (!outcome) continue;
+        const pIsTerminal = outcome.nextState === DYNA_Q_GOAL_STATE;
+        const pMaxNext = pIsTerminal ? 0 : Math.max(...q[outcome.nextState]);
+        const pOldValue = q[sample.state][sample.action];
+        const pTarget = outcome.reward + (pIsTerminal ? 0 : DYNA_Q_GAMMA * pMaxNext);
+        q[sample.state][sample.action] = round3(pOldValue + DYNA_Q_ALPHA * (pTarget - pOldValue));
+        touched.add(`${sample.state},${sample.action}`);
+        frames.push(
+          snapshot(
+            new Map([[`${sample.state},${sample.action}`, "pivot"]]),
+            `[プランニング ${p + 1}/${DYNA_Q_PLANNING_STEPS}] モデルから(S${sample.state},${DYNA_Q_ACTIONS[sample.action]})をランダムに選び、記憶済みの遷移(報酬${outcome.reward}→S${outcome.nextState})で仮想更新: ${pOldValue} → ${q[sample.state][sample.action]}(実環境とはやり取りしていない)`,
+          ),
+        );
+      }
+
+      state = nextState;
+    }
+  }
+
+  frames.push(
+    snapshot(
+      new Map(),
+      `${DYNA_Q_EPISODE_COUNT}エピソード完了。実体験による1ステップのQ学習に加え、記憶したモデルからのプランニング更新(1実体験あたり${DYNA_Q_PLANNING_STEPS}回)によって、より少ない実体験でQ値が速く育つ様子が確認できる`,
+    ),
+  );
+  return frames;
+}
+
 export type DPTableMeta = {
   /** テーブル上の情報チップ(品物一覧や対象文字列など)。 */
   chips: string[];
@@ -7116,6 +7948,79 @@ export const DP_TABLE_META: Record<string, DPTableMeta> = {
     cornerLabel: "状態 \\ 行動",
     rowHeaders: Array.from({ length: Q_LEARNING_GRID_SIZE * Q_LEARNING_GRID_SIZE }, (_, s) => `S${s}`),
     colHeaders: [...Q_LEARNING_ACTIONS],
+  },
+  "value-iteration": {
+    chips: [
+      "3×3グリッドワールド(Q学習と同じS0=左上〜S8=右下)",
+      `ゴール: S${VALUE_ITERATION_GOAL_STATE}(到達で報酬+10、それ以外の移動は-1)`,
+      `割引率γ=${VALUE_ITERATION_GAMMA}(学習率αは使わず、既知の遷移モデルで直接計算する)`,
+      "ベルマン最適方程式で全状態を毎スイープ一斉更新し、収束するまで反復",
+    ],
+    cornerLabel: "状態 \\ 価値",
+    rowHeaders: Array.from({ length: VALUE_ITERATION_GRID_SIZE * VALUE_ITERATION_GRID_SIZE }, (_, s) => `S${s}`),
+    colHeaders: ["価値 V(s)"],
+  },
+  "policy-iteration": {
+    chips: [
+      "3×3グリッドワールド(Q学習と同じS0=左上〜S8=右下)",
+      `ゴール: S${POLICY_ITERATION_GOAL_STATE}(到達で報酬+10、それ以外の移動は-1)`,
+      `割引率γ=${POLICY_ITERATION_GAMMA}`,
+      "方策評価(現在方策でV(s)を計算)→方策改善(greedyに方策更新)を交互に反復",
+    ],
+    cornerLabel: "状態 \\ 情報",
+    rowHeaders: Array.from({ length: POLICY_ITERATION_GRID_SIZE * POLICY_ITERATION_GRID_SIZE }, (_, s) => `S${s}`),
+    colHeaders: ["価値 V(s)", "方策"],
+  },
+  sarsa: {
+    chips: [
+      "3×3グリッドワールド(Q学習と同じS0=左上〜S8=右下)",
+      `ゴール: S${SARSA_GOAL_STATE}(到達で報酬+10、それ以外の移動は-1)`,
+      `学習率α=${SARSA_ALPHA}、割引率γ=${SARSA_GAMMA}、ε=${SARSA_EPSILON}`,
+      "オンポリシー: 実際にε-greedyで選んだ次の行動のQ値を使って更新(Q学習のmaxとは異なる)",
+    ],
+    cornerLabel: "状態 \\ 行動",
+    rowHeaders: Array.from({ length: SARSA_GRID_SIZE * SARSA_GRID_SIZE }, (_, s) => `S${s}`),
+    colHeaders: [...SARSA_ACTIONS],
+  },
+  "double-q-learning": {
+    chips: [
+      "3×3グリッドワールド(Q学習と同じS0=左上〜S8=右下)",
+      `ゴール: S${DOUBLE_Q_LEARNING_GOAL_STATE}(到達で報酬+10、それ以外の移動は-1)`,
+      `学習率α=${DOUBLE_Q_LEARNING_ALPHA}、割引率γ=${DOUBLE_Q_LEARNING_GAMMA}`,
+      "QA・QBの2テーブルを保持し、更新ごとにコイン投げでどちらか一方だけを更新(過大評価バイアスを緩和)",
+      "表示値は(QA+QB)/2の平均。個別のQA/QB値は各ステップの説明文を参照",
+    ],
+    cornerLabel: "状態 \\ 行動",
+    rowHeaders: Array.from(
+      { length: DOUBLE_Q_LEARNING_GRID_SIZE * DOUBLE_Q_LEARNING_GRID_SIZE },
+      (_, s) => `S${s}`,
+    ),
+    colHeaders: [...DOUBLE_Q_LEARNING_ACTIONS],
+  },
+  "monte-carlo-control-rl": {
+    chips: [
+      "3×3グリッドワールド(Q学習と同じS0=左上〜S8=右下)",
+      `ゴール: S${MONTE_CARLO_CONTROL_GOAL_STATE}(到達で報酬+10、それ以外の移動は-1)`,
+      `学習率α=${MONTE_CARLO_CONTROL_ALPHA}、割引率γ=${MONTE_CARLO_CONTROL_GAMMA}`,
+      "TD学習と異なり、1エピソードを最後まで実行してからリターンGでQ値をまとめて更新",
+    ],
+    cornerLabel: "状態 \\ 行動",
+    rowHeaders: Array.from(
+      { length: MONTE_CARLO_CONTROL_GRID_SIZE * MONTE_CARLO_CONTROL_GRID_SIZE },
+      (_, s) => `S${s}`,
+    ),
+    colHeaders: [...MONTE_CARLO_CONTROL_ACTIONS],
+  },
+  "dyna-q": {
+    chips: [
+      "3×3グリッドワールド(Q学習と同じS0=左上〜S8=右下)",
+      `ゴール: S${DYNA_Q_GOAL_STATE}(到達で報酬+10、それ以外の移動は-1)`,
+      `学習率α=${DYNA_Q_ALPHA}、割引率γ=${DYNA_Q_GAMMA}`,
+      `実体験1回ごとにモデルからn=${DYNA_Q_PLANNING_STEPS}回の仮想プランニング更新を追加`,
+    ],
+    cornerLabel: "状態 \\ 行動",
+    rowHeaders: Array.from({ length: DYNA_Q_GRID_SIZE * DYNA_Q_GRID_SIZE }, (_, s) => `S${s}`),
+    colHeaders: [...DYNA_Q_ACTIONS],
   },
   "knapsack-dp": {
     chips: [
@@ -7761,6 +8666,12 @@ export const DP_TABLE_META: Record<string, DPTableMeta> = {
 
 export const DP_VISUALIZERS: Record<string, () => DPFrame[]> = {
   "q-learning": qLearningSteps,
+  "value-iteration": valueIterationSteps,
+  "policy-iteration": policyIterationSteps,
+  sarsa: sarsaSteps,
+  "double-q-learning": doubleQLearningSteps,
+  "monte-carlo-control-rl": monteCarloControlRlSteps,
+  "dyna-q": dynaQSteps,
   "knapsack-dp": knapsackSteps,
   lcs: lcsSteps,
   "edit-distance": editDistanceSteps,

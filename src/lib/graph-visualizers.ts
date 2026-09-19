@@ -9845,12 +9845,204 @@ export function smallToLargeMergingSteps(): GraphFrame[] {
   return frames;
 }
 
+// ============================================================
+// 蟻コロニー最適化(ACO) (ant-colony-optimization)
+// ============================================================
+
+/** 固定シードの線形合同法による疑似乱数生成器(0〜1未満)。再現性のため乱数は決定的にする。 */
+function seededRandom(seed: number): () => number {
+  let s = seed >>> 0;
+  return () => {
+    s = (s * 1664525 + 1013904223) >>> 0;
+    return s / 4294967296;
+  };
+}
+
+/** S(開始)→G(目標)へ、2つの経由地A・Bを介する5頂点の小さな有向グラフ。最短経路はS→A→C→G(総距離6)。 */
+export const ACO_NODES: GraphNode[] = [
+  { id: "S", label: "S", x: 0.05, y: 0.5 },
+  { id: "A", label: "A", x: 0.35, y: 0.15 },
+  { id: "B", label: "B", x: 0.35, y: 0.85 },
+  { id: "C", label: "C", x: 0.65, y: 0.5 },
+  { id: "G", label: "G", x: 0.95, y: 0.5 },
+];
+
+type AcoEdgeDef = { id: string; from: string; to: string; weight: number };
+const ACO_EDGE_DEFS: AcoEdgeDef[] = [
+  { id: "SA", from: "S", to: "A", weight: 2 },
+  { id: "SB", from: "S", to: "B", weight: 5 },
+  { id: "AC", from: "A", to: "C", weight: 2 },
+  { id: "AG", from: "A", to: "G", weight: 6 },
+  { id: "BC", from: "B", to: "C", weight: 1 },
+  { id: "BG", from: "B", to: "G", weight: 5 },
+  { id: "CG", from: "C", to: "G", weight: 2 },
+];
+export const ACO_EDGES: GraphEdge[] = ACO_EDGE_DEFS.map((e) => ({ id: e.id, from: e.from, to: e.to, weight: e.weight }));
+
+const ACO_ADJACENCY: Record<string, string[]> = {
+  S: ["A", "B"],
+  A: ["C", "G"],
+  B: ["C", "G"],
+  C: ["G"],
+  G: [],
+};
+
+const ACO_ALPHA = 1;
+const ACO_BETA = 2;
+const ACO_EVAPORATION = 0.35;
+const ACO_Q = 10;
+const ACO_ANTS_PER_ITERATION = 4;
+const ACO_ITERATIONS = 6;
+
+function acoEdgeId(from: string, to: string): string {
+  return ACO_EDGE_DEFS.find((e) => e.from === from && e.to === to)!.id;
+}
+function acoEdgeWeight(from: string, to: string): number {
+  return ACO_EDGE_DEFS.find((e) => e.from === from && e.to === to)!.weight;
+}
+
+/** ルーレット選択: 重み(確率に比例する非負の値)の配列から1つをrng()で選び、そのインデックスを返す。 */
+function acoRouletteSelect(weights: number[], rng: () => number): number {
+  const total = weights.reduce((sum, w) => sum + w, 0);
+  let r = rng() * total;
+  for (let i = 0; i < weights.length; i++) {
+    r -= weights[i];
+    if (r <= 0) return i;
+  }
+  return weights.length - 1;
+}
+
+/**
+ * 蟻コロニー最適化(Ant Colony Optimization, ACO)のステップ列を生成する。
+ * S(開始)からG(目標)へ向かう小さな有向グラフ(2つの中間経由地A・Bを持つ)上で、
+ * content/algorithms/ant-colony-optimization.mdのアルゴリズムをそのまま実装する:
+ * 各反復で複数の蟻がSから出発し、各分岐で「フェロモン量τ^α × ヒューリスティック(距離の逆数)^β」に
+ * 比例する確率(ルーレット選択)で次のノードを選びながらGまで到達する。全ての蟻が経路を終えたら、
+ * まず全辺のフェロモンを一定割合(ACO_EVAPORATION)だけ蒸発させ、その後に各蟻が辿った経路上の
+ * 辺へ「Q/経路長」のフェロモンを追加する(短い経路を通った蟻ほど多く加算する)。これを繰り返すことで、
+ * 最短経路(S→A→C→G、総距離6)に徐々にフェロモンが集中していく。乱数は固定シードの疑似乱数で
+ * 決定的に生成するため、実行するたびに同じ結果になる。辺の色はフェロモン量の多寡(idle=弱い、
+ * relaxed=中程度、tree=強く強化された最有力候補)を表し、辺のラベルには距離dと現在のフェロモン量τを
+ * 常に表示する。
+ */
+export function antColonyOptimizationSteps(): GraphFrame[] {
+  const nodes = ACO_NODES;
+  const rng = seededRandom(31415);
+  const pheromone = new Map<string, number>();
+  ACO_EDGE_DEFS.forEach((e) => pheromone.set(e.id, 1));
+
+  const nodeStates = initNodeStates(nodes, "idle");
+  const edgeStates = initEdgeStates(ACO_EDGES, "idle");
+
+  const pheromoneStateFor = (value: number): GraphEdgeState => {
+    if (value >= 4) return "tree";
+    if (value >= 2) return "relaxed";
+    return "idle";
+  };
+  const edgeLabelsFor = (): Record<string, string> => {
+    const labels: Record<string, string> = {};
+    ACO_EDGE_DEFS.forEach((e) => {
+      labels[e.id] = `d=${e.weight}, τ=${pheromone.get(e.id)!.toFixed(2)}`;
+    });
+    return labels;
+  };
+  const refreshEdgeStates = () => {
+    ACO_EDGE_DEFS.forEach((e) => {
+      edgeStates[e.id] = pheromoneStateFor(pheromone.get(e.id)!);
+    });
+  };
+
+  const frames: GraphFrame[] = [
+    {
+      nodeStates: { ...nodeStates },
+      edgeStates: { ...edgeStates },
+      distances: {},
+      edgeLabels: edgeLabelsFor(),
+      description: "S→GへのACOによる経路探索を開始。初期フェロモンは全辺τ=1で均等(最短経路はS→A→C→G、総距離6)",
+    },
+  ];
+
+  for (let iter = 1; iter <= ACO_ITERATIONS; iter++) {
+    const antPaths: { path: string[]; length: number }[] = [];
+
+    for (let ant = 0; ant < ACO_ANTS_PER_ITERATION; ant++) {
+      const path: string[] = ["S"];
+      let current = "S";
+      let length = 0;
+      while (current !== "G") {
+        const options = ACO_ADJACENCY[current];
+        const weights = options.map((next) => {
+          const tau = pheromone.get(acoEdgeId(current, next))!;
+          const eta = 1 / acoEdgeWeight(current, next);
+          return Math.pow(tau, ACO_ALPHA) * Math.pow(eta, ACO_BETA);
+        });
+        const choiceIdx = options.length === 1 ? 0 : acoRouletteSelect(weights, rng);
+        const next = options[choiceIdx];
+        length += acoEdgeWeight(current, next);
+        path.push(next);
+
+        nodeStates[next] = "visited";
+        edgeStates[acoEdgeId(current, next)] = "checking";
+        frames.push({
+          nodeStates: { ...nodeStates },
+          edgeStates: { ...edgeStates },
+          distances: {},
+          edgeLabels: edgeLabelsFor(),
+          description: `反復${iter} 蟻${ant + 1}: ${current}→${next}へ移動(累計距離${length})`,
+        });
+        refreshEdgeStates();
+        current = next;
+      }
+      antPaths.push({ path, length });
+      frames.push({
+        nodeStates: { ...nodeStates },
+        edgeStates: { ...edgeStates },
+        distances: {},
+        edgeLabels: edgeLabelsFor(),
+        description: `反復${iter} 蟻${ant + 1}: Gに到達。経路${path.join("→")}(総距離${length})`,
+      });
+    }
+
+    ACO_EDGE_DEFS.forEach((e) => {
+      pheromone.set(e.id, pheromone.get(e.id)! * (1 - ACO_EVAPORATION));
+    });
+    for (const { path, length } of antPaths) {
+      const deposit = ACO_Q / length;
+      for (let i = 0; i < path.length - 1; i++) {
+        const id = acoEdgeId(path[i], path[i + 1]);
+        pheromone.set(id, pheromone.get(id)! + deposit);
+      }
+    }
+    refreshEdgeStates();
+    frames.push({
+      nodeStates: { ...nodeStates },
+      edgeStates: { ...edgeStates },
+      distances: {},
+      edgeLabels: edgeLabelsFor(),
+      description: `反復${iter}完了: 全辺のフェロモンを${(ACO_EVAPORATION * 100).toFixed(0)}%蒸発させた後、${ACO_ANTS_PER_ITERATION}匹の蟻それぞれの経路へQ/経路長のフェロモンを加算`,
+    });
+  }
+
+  const pheromoneEntries: [string, number][] = [...pheromone.entries()].sort((a, b) => b[1] - a[1]);
+  const bestEdge = pheromoneEntries[0];
+  frames.push({
+    nodeStates: { ...nodeStates },
+    edgeStates: { ...edgeStates },
+    distances: {},
+    edgeLabels: edgeLabelsFor(),
+    description: `計算完了(${ACO_ITERATIONS}反復)。最短経路S→A→C→G上の辺にフェロモンが集中し、最もフェロモンが濃い辺は${bestEdge[0]}(τ=${bestEdge[1].toFixed(2)})になった`,
+  });
+
+  return frames;
+}
+
 Object.assign(GRAPH_DATASETS, {
   "bsp-tree-rendering": { nodes: BSP_TREE_NODES, edges: BSP_TREE_EDGES, directed: true },
   "portal-culling": { nodes: PORTAL_CULLING_NODES, edges: PORTAL_CULLING_EDGES, directed: true },
   "binary-lifting-doubling": { nodes: BINARY_LIFTING_NODES, edges: BINARY_LIFTING_EDGES, directed: true },
   "centroid-decomposition": { nodes: CENTROID_NODES, edges: CENTROID_EDGES, directed: false },
   "small-to-large-merging": { nodes: STL_NODES, edges: STL_EDGES, directed: true },
+  "ant-colony-optimization": { nodes: ACO_NODES, edges: ACO_EDGES, directed: true },
 } satisfies Record<string, GraphDataset>);
 
 export const GRAPH_VISUALIZERS: Record<string, () => GraphFrame[]> = {
@@ -9940,4 +10132,5 @@ export const GRAPH_VISUALIZERS: Record<string, () => GraphFrame[]> = {
   "binary-lifting-doubling": binaryLiftingDoublingSteps,
   "centroid-decomposition": centroidDecompositionSteps,
   "small-to-large-merging": smallToLargeMergingSteps,
+  "ant-colony-optimization": antColonyOptimizationSteps,
 };
