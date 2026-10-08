@@ -3,11 +3,12 @@
 import { useEffect, useMemo, useRef } from "react";
 import styles from "./PathfindingVisualizer.module.css";
 import { PlaybackControls } from "./PlaybackControls";
+import { buildStepKinds, gridEntities } from "./step-timeline";
 import { ZoomableStage } from "./ZoomableStage";
 import { useStepPlayer } from "./useStepPlayer";
 import { useWorkerFrames } from "./useWorkerFrames";
 import { ParticleBurstLayer, type ParticleBurst } from "./ParticleBurstLayer";
-import { coreColors, stateColors } from "@/lib/design-tokens";
+import { coreColors, shouldGlow, stateColors } from "@/lib/design-tokens";
 import { type GridCellState, type GridFrame } from "@/lib/pathfinding-visualizers";
 import type { WorkerRequest } from "@/workers/algorithm-worker";
 
@@ -49,6 +50,7 @@ export function PathfindingVisualizer({ algorithmId }: PathfindingVisualizerProp
   const { frames, isComputing } = useWorkerFrames<GridFrame>(request);
   const { stepIndex, isFinished, showPause, speed, setSpeed, handlePlayPause, handleStep, handleScrub, reset } =
     useStepPlayer(frames.length);
+  const stepKinds = useMemo(() => buildStepKinds(frames, gridEntities), [frames]);
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
   useEffect(() => {
@@ -79,11 +81,10 @@ export function PathfindingVisualizer({ algorithmId }: PathfindingVisualizerProp
         const x = c * (cellWidth + gap);
         const y = r * (cellHeight + gap);
         const color = CELL_COLORS[state];
-        const isDynamic =
-          state === "frontier" || state === "visited" || state === "path" || state === "difficult";
+        const glow = shouldGlow(color);
 
-        ctx.shadowColor = isDynamic ? color : "transparent";
-        ctx.shadowBlur = isDynamic ? 10 : 0;
+        ctx.shadowColor = glow ? color : "transparent";
+        ctx.shadowBlur = glow ? 10 : 0;
         ctx.fillStyle = color;
         ctx.fillRect(x, y, cellWidth, cellHeight);
       });
@@ -133,6 +134,7 @@ export function PathfindingVisualizer({ algorithmId }: PathfindingVisualizerProp
         showPause={showPause}
         isFinished={isFinished}
         speed={speed}
+        stepKinds={stepKinds}
         onPlayPause={handlePlayPause}
         onStep={handleStep}
         onScrub={handleScrub}

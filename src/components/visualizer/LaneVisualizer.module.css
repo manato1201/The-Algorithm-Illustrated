@@ -1,0 +1,175 @@
+.visualizer {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  list-style: none;
+}
+
+.chip {
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  color: var(--color-text-muted);
+  border: 1px solid var(--color-line);
+  border-radius: 4px;
+  padding: var(--space-1) var(--space-2);
+}
+
+/* 3レーンを同じ高さの帯として縦に並べる。ステージ内はテーマに関わらずダーク。 */
+.lanes {
+  display: grid;
+  gap: var(--space-3);
+  padding: var(--space-3);
+  border: 1px solid var(--color-line);
+  border-radius: 4px;
+  background: var(--color-bg-void);
+}
+
+.lane {
+  display: grid;
+  grid-template-columns: minmax(0, 9rem) minmax(0, 1fr);
+  grid-template-areas:
+    "head head"
+    "matrix metrics"
+    "note note";
+  gap: var(--space-2) var(--space-4);
+  padding: var(--space-3);
+  border: 1px solid var(--color-line);
+  border-radius: 8px;
+  background: var(--color-bg-surface);
+}
+
+/* 完了したレーンは、色に加えて太い枠線でも示す */
+.lane[data-finished="true"] {
+  border-color: var(--state-settled);
+  box-shadow: var(--glow-state-settled);
+}
+
+.laneHead {
+  grid-area: head;
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-3);
+}
+
+.laneTitle {
+  font-family: var(--font-display);
+  font-size: 0.9375rem;
+  font-weight: 700;
+}
+
+.doneBadge {
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+  letter-spacing: 0.08em;
+  color: var(--state-settled);
+  border: 1px solid var(--state-settled);
+  border-radius: 999px;
+  padding: 0 var(--space-2);
+}
+
+.matrix {
+  grid-area: matrix;
+  display: grid;
+  gap: 3px;
+}
+
+.cell {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1px;
+  padding: var(--space-1) 0;
+  border: 1px solid var(--color-line);
+  border-radius: 3px;
+  background: var(--color-bg-surface-2);
+  color: var(--color-text-muted);
+  font-family: var(--font-mono);
+}
+
+.cell[data-state="comparing"] {
+  border-color: var(--state-comparing);
+  color: var(--color-text);
+}
+
+.cell[data-state="settled"] {
+  border-color: var(--state-settled);
+  border-width: 2px;
+  color: var(--color-text);
+}
+
+.cellValue {
+  font-size: 0.8125rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.cellDots {
+  font-size: 0.5rem;
+  letter-spacing: 0.1em;
+  line-height: 1;
+}
+
+.metrics {
+  grid-area: metrics;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-2) var(--space-4);
+  align-content: start;
+}
+
+.metric {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.metric dt {
+  font-family: var(--font-mono);
+  font-size: 0.625rem;
+  letter-spacing: 0.06em;
+  color: var(--color-text-muted);
+}
+
+.metric dd {
+  font-family: var(--font-mono);
+  font-size: 0.9375rem;
+  font-variant-numeric: tabular-nums;
+  color: var(--color-text);
+}
+
+.note {
+  grid-area: note;
+  font-family: var(--font-body);
+  font-size: 0.75rem;
+  color: var(--color-text-muted);
+}
+
+.description {
+  font-family: var(--font-mono);
+  font-size: 0.875rem;
+  color: var(--color-accent-amber);
+  min-height: 1.5em;
+}
+
+.caveat {
+  font-family: var(--font-body);
+  font-size: 0.75rem;
+  line-height: 1.6;
+  color: var(--color-text-muted);
+}
+
+@media (max-width: 480px) {
+  .lane {
+    grid-template-columns: 1fr;
+    grid-template-areas:
+      "head"
+      "matrix"
+      "metrics"
+      "note";
+  }
+}

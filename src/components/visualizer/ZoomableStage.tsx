@@ -54,7 +54,8 @@ export function ZoomableStage({ children }: ZoomableStageProps) {
           </button>
         )}
       </div>
-      <div className={styles.viewport}>
+      {/* 可視化の描画領域は、テーマに関わらず常にダークの値を使う(globals.cssの data-surface="dark" 参照)。 */}
+      <div className={styles.viewport} data-surface="dark">
         <div className={styles.content} style={{ transform: `scale(${zoom})` }}>
           {children}
         </div>

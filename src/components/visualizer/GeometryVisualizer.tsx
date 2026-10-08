@@ -3,11 +3,12 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import styles from "./GeometryVisualizer.module.css";
 import { PlaybackControls } from "./PlaybackControls";
+import { buildStepKinds, geometryEntities } from "./step-timeline";
 import { ZoomableStage } from "./ZoomableStage";
 import { useStepPlayer } from "./useStepPlayer";
 import { useWorkerFrames } from "./useWorkerFrames";
 import { ParticleBurstLayer, type ParticleBurst } from "./ParticleBurstLayer";
-import { coreColors, stateColors } from "@/lib/design-tokens";
+import { coreColors, shouldGlow, stateColors } from "@/lib/design-tokens";
 import {
   GEOMETRY_DATASETS,
   type GeometryFrame,
@@ -74,6 +75,7 @@ export function GeometryVisualizer({ algorithmId }: GeometryVisualizerProps) {
   const { frames, isComputing } = useWorkerFrames<GeometryFrame>(request);
   const { stepIndex, isFinished, showPause, speed, setSpeed, handlePlayPause, handleStep, handleScrub, reset } =
     useStepPlayer(frames.length);
+  const stepKinds = useMemo(() => buildStepKinds(frames, geometryEntities), [frames]);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   // burstsのxRatio/yRatio計算にcanvasの実サイズが必要だが、useMemo内でref.currentを直接読むのは
   // レンダー中のref参照になり許可されない(react-hooks/refs)。描画useEffectで測定した値をstateとして
@@ -123,8 +125,9 @@ export function GeometryVisualizer({ algorithmId }: GeometryVisualizerProps) {
       const color = SEGMENT_COLORS[seg.state];
       ctx.strokeStyle = color;
       ctx.lineWidth = seg.state === "final" ? 2.5 : 2;
-      ctx.shadowColor = color;
-      ctx.shadowBlur = 8;
+      const glow = shouldGlow(color);
+      ctx.shadowColor = glow ? color : "transparent";
+      ctx.shadowBlur = glow ? 8 : 0;
       ctx.beginPath();
       ctx.moveTo(from.x, from.y);
       ctx.lineTo(to.x, to.y);
@@ -138,8 +141,9 @@ export function GeometryVisualizer({ algorithmId }: GeometryVisualizerProps) {
       const { x, y } = project(point.id);
       const radius = state === "idle" ? 5 : 7;
 
-      ctx.shadowColor = state === "idle" ? "transparent" : color;
-      ctx.shadowBlur = state === "idle" ? 0 : 10;
+      const glow = shouldGlow(color);
+      ctx.shadowColor = glow ? color : "transparent";
+      ctx.shadowBlur = glow ? 10 : 0;
       ctx.fillStyle = color;
       ctx.beginPath();
       ctx.arc(x, y, radius, 0, Math.PI * 2);
@@ -203,6 +207,7 @@ export function GeometryVisualizer({ algorithmId }: GeometryVisualizerProps) {
         showPause={showPause}
         isFinished={isFinished}
         speed={speed}
+        stepKinds={stepKinds}
         onPlayPause={handlePlayPause}
         onStep={handleStep}
         onScrub={handleScrub}

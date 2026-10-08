@@ -1,15 +1,197 @@
 .wrap {
   display: flex;
   flex-direction: column;
-  gap: var(--space-2);
+  gap: var(--space-3);
 }
 
-.scrubber {
+/* ---- 下部タイムライン(IMPROVEMENT_DESIGN_2026-10 U1) ----
+   1ステップ=1目盛り。色は状態色、さらに目盛りの高さも状態ごとに変えて、色だけに頼らず区別する
+   (入れ替え=最も高い / 比較中 / 基準 / 確定 / 待機=最も低い)。 */
+.timeline {
+  position: relative;
+  height: 2.5rem;
+  border-bottom: 1px solid var(--color-line);
+}
+
+.timeline:has(.timelineInput:focus-visible) {
+  outline: 2px solid var(--color-accent-amber);
+  outline-offset: 2px;
+}
+
+.strip {
+  display: flex;
+  align-items: flex-end;
+  gap: 1px;
+  height: 100%;
+}
+
+.tick,
+.legendBar {
+  --tick-height: 25%;
+  --kind-color: var(--state-idle);
+}
+
+.tick[data-kind="settled"],
+.legendBar[data-kind="settled"] {
+  --tick-height: 45%;
+  --kind-color: var(--state-settled);
+}
+
+.tick[data-kind="pivot"],
+.legendBar[data-kind="pivot"] {
+  --tick-height: 60%;
+  --kind-color: var(--state-pivot);
+}
+
+.tick[data-kind="comparing"],
+.legendBar[data-kind="comparing"] {
+  --tick-height: 80%;
+  --kind-color: var(--state-comparing);
+}
+
+.tick[data-kind="swapping"],
+.legendBar[data-kind="swapping"] {
+  --tick-height: 100%;
+  --kind-color: var(--state-swapping);
+}
+
+.tick {
+  flex: 1 1 0;
+  min-width: 1px;
+  height: var(--tick-height);
+  background: var(--kind-color);
+  opacity: 0.4;
+  border-radius: 1px 1px 0 0;
+  transition: opacity 0.15s ease;
+}
+
+.tick[data-played="true"] {
+  opacity: 1;
+}
+
+.playhead {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  margin-left: -1px;
+  background: var(--color-text);
+  pointer-events: none;
+}
+
+/* 透明なrange inputをタイムライン全体に重ね、クリック・ドラッグ・キーボード操作をネイティブに任せる。 */
+.timelineInput {
+  position: absolute;
+  inset: 0;
   width: 100%;
-  accent-color: var(--color-accent-amber);
+  height: 100%;
+  margin: 0;
+  opacity: 0;
   cursor: pointer;
 }
 
+/* 再生が最後まで届いたとき、タイムライン全体を左→右へ一度だけなぞる(完了のトランジション)。 */
+.timeline::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    var(--color-text),
+    transparent
+  );
+  opacity: 0;
+  transform: translateX(-100%);
+}
+
+.wrap[data-finished="true"] .timeline::after {
+  animation: finish-sweep 0.9s ease-out 1;
+}
+
+@keyframes finish-sweep {
+  0% {
+    opacity: 0.35;
+    transform: translateX(-100%);
+  }
+  100% {
+    opacity: 0;
+    transform: translateX(100%);
+  }
+}
+
+/* ---- 凡例・累計カウンタ ---- */
+.readout {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: var(--space-2) var(--space-4);
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  color: var(--color-text-muted);
+}
+
+.legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2) var(--space-4);
+  list-style: none;
+}
+
+.legendItem {
+  display: inline-flex;
+  align-items: baseline;
+  gap: var(--space-2);
+}
+
+.legendBar {
+  display: inline-block;
+  width: 6px;
+  height: 14px;
+  align-self: center;
+  border-radius: 1px;
+  /* タイムラインの目盛りと同じ「色+高さ」で描く(高さはグラデーションの境目で表現)。 */
+  background: linear-gradient(
+    to top,
+    var(--kind-color) var(--tick-height),
+    transparent var(--tick-height)
+  );
+}
+
+.stepCount {
+  font-variant-numeric: tabular-nums;
+}
+
+/* めくれるカウンタ。数字は半角・等幅・右揃え(決めごと表)。 */
+.flipSlot {
+  display: inline-block;
+  min-width: 3ch;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  color: var(--color-text);
+  perspective: 200px;
+}
+
+.flipDigit {
+  display: inline-block;
+  transform-origin: 50% 100%;
+  animation: flip-in 0.26s ease-out;
+}
+
+@keyframes flip-in {
+  from {
+    transform: rotateX(-80deg);
+    opacity: 0.2;
+  }
+  to {
+    transform: rotateX(0);
+    opacity: 1;
+  }
+}
+
+/* ---- ボタン ---- */
 .controls {
   display: flex;
   align-items: center;
@@ -19,6 +201,11 @@
 
 .button,
 .buttonPrimary {
+  position: relative;
+  overflow: hidden;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
   font-family: var(--font-mono);
   font-size: 0.8125rem;
   padding: var(--space-2) var(--space-4);
@@ -27,9 +214,7 @@
   background: transparent;
   color: var(--color-text);
   cursor: pointer;
-  transition:
-    border-color 0.15s ease,
-    box-shadow 0.15s ease;
+  transition: border-color 0.15s ease;
 }
 
 .button:hover:not(:disabled),
@@ -42,15 +227,47 @@
   cursor: not-allowed;
 }
 
+/* 主ボタンは発光させない(発光は確定・比較中の状態だけ)。枠線と文字色のamberで主従を示す。 */
 .buttonPrimary {
   border-color: var(--color-accent-amber);
   color: var(--color-accent-amber);
-  box-shadow: var(--glow-amber);
+}
+
+/* タップした位置を問わず、ボタン中央から広がる波紋。 */
+.ripple {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 120%;
+  aspect-ratio: 1;
+  margin: -60% 0 0 -60%;
+  border-radius: 50%;
+  background: var(--color-accent-amber);
+  opacity: 0;
+  pointer-events: none;
+  animation: ripple-out 0.5s ease-out 1;
+}
+
+@keyframes ripple-out {
+  from {
+    transform: scale(0.1);
+    opacity: 0.35;
+  }
+  to {
+    transform: scale(1);
+    opacity: 0;
+  }
 }
 
 .speedGroup {
   display: flex;
+  align-items: center;
   gap: var(--space-1);
+}
+
+.speedIcon {
+  color: var(--color-text-muted);
+  margin-right: var(--space-1);
 }
 
 .speedButton {
@@ -77,9 +294,21 @@
   border-color: var(--color-accent-amber);
 }
 
-.stepCount {
-  margin-left: auto;
-  font-family: var(--font-mono);
-  font-size: 0.75rem;
-  color: var(--color-text-muted);
+/* 動きを減らす設定では、数字は切り替えだけ・波紋と完了の掃引は出さない。 */
+@media (prefers-reduced-motion: reduce) {
+  .flipDigit {
+    animation: none;
+  }
+
+  .ripple {
+    display: none;
+  }
+
+  .wrap[data-finished="true"] .timeline::after {
+    animation: none;
+  }
+
+  .tick {
+    transition: none;
+  }
 }

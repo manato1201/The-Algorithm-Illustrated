@@ -49,7 +49,7 @@
 .nav {
   display: flex;
   align-items: center;
-  gap: var(--space-4);
+  gap: var(--space-2);
   flex-wrap: wrap;
 }
 
@@ -58,12 +58,47 @@
   font-size: 0.8125rem;
   letter-spacing: 0.04em;
   color: var(--color-text-muted);
-  transition: color 0.15s ease;
+  /* 選択中のピルで幅が変わらないよう、非選択でも透明な枠を持たせる */
+  padding: var(--space-1) var(--space-3);
+  border: 1px solid transparent;
+  border-radius: 999px;
+  transition:
+    color 0.15s ease,
+    border-color 0.15s ease;
 }
 
 .navLink:hover,
 .navLink:focus-visible {
   color: var(--color-accent-amber);
+}
+
+/* 選択中のページだけをピルで示す(決めごと: 選択中は枠+色の両方で示す) */
+.navLinkActive {
+  color: var(--color-accent-amber);
+  border-color: var(--color-accent-amber);
+}
+
+.themeToggle {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+  letter-spacing: 0.08em;
+  padding: var(--space-1) var(--space-3);
+  border: 1px solid var(--color-line);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--color-text-muted);
+  cursor: pointer;
+  transition:
+    color 0.15s ease,
+    border-color 0.15s ease;
+}
+
+.themeToggle:hover {
+  color: var(--color-accent-amber);
+  border-color: var(--color-accent-amber);
 }
 
 .headerRight {

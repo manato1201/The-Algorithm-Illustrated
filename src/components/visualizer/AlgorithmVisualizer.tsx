@@ -7,6 +7,7 @@ import { TreeVisualizer } from "./TreeVisualizer";
 import { StringMatchVisualizer } from "./StringMatchVisualizer";
 import { TrieVisualizer } from "./TrieVisualizer";
 import { GeometryVisualizer } from "./GeometryVisualizer";
+import { LaneVisualizer } from "./LaneVisualizer";
 import { SORT_VISUALIZERS } from "@/lib/sort-visualizers";
 import { PATHFINDING_VISUALIZERS } from "@/lib/pathfinding-visualizers";
 import { DP_VISUALIZERS } from "@/lib/dp-visualizers";
@@ -16,6 +17,7 @@ import { TREE_VISUALIZERS } from "@/lib/tree-visualizers";
 import { STRING_VISUALIZERS } from "@/lib/string-visualizers";
 import { TRIE_VISUALIZERS } from "@/lib/trie-visualizer";
 import { GEOMETRY_VISUALIZERS } from "@/lib/geometry-visualizers";
+import { LANE_VISUALIZERS } from "@/lib/lane-visualizers";
 
 /**
  * このidに対応する可視化コンポーネントが存在するかどうか。詳細ページ・比較画面の両方から使う。
@@ -55,5 +57,7 @@ export function AlgorithmVisualizer({ algorithmId }: AlgorithmVisualizerProps) {
     return <TrieVisualizer algorithmId={algorithmId} />;
   if (algorithmId in GEOMETRY_VISUALIZERS)
     return <GeometryVisualizer algorithmId={algorithmId} />;
+  if (algorithmId in LANE_VISUALIZERS)
+    return <LaneVisualizer algorithmId={algorithmId} />;
   return null;
 }
