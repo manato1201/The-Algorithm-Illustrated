@@ -8,7 +8,8 @@
     "start": "next start",
     "lint": "eslint",
     "verify": "node --experimental-strip-types scripts/verify-visualizations.mjs",
-    "verify:categories": "node --experimental-strip-types scripts/verify-categories.mjs"
+    "verify:categories": "node --experimental-strip-types scripts/verify-categories.mjs",
+    "stats:categories": "node --experimental-strip-types scripts/category-stats.mjs"
   },
   "dependencies": {
     "gray-matter": "^4.0.3",

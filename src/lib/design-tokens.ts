@@ -32,6 +32,15 @@ export const lineColors = {
 export type StateColorKey = keyof typeof stateColors;
 
 /**
+ * グロー(発光)を許す色か。決めごと表(docs/design/ui-design.md 2.7節): 発光は「確定(settled)」と
+ * 「比較中(comparing)」の状態色だけに限定する。発光が多いと、どれが注目すべき状態か分からなくなるため。
+ * 各可視化は固有の状態名を持つので、状態名ではなく最終的な色で判定する。
+ */
+export function shouldGlow(color: string): boolean {
+  return color === stateColors.settled || color === stateColors.comparing;
+}
+
+/**
  * 背景色(hex)の上に置く文字色を、WCAG相対輝度から機械的に選ぶ。
  * 「idleだけ暗いから特別扱いする」という決め打ちだと、状態色が増えたときに
  * 同じ視認性バグ(黒文字が暗い背景に同化)を再発させかねないため、

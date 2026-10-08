@@ -64,17 +64,20 @@
     var(--state-comparing) 22%,
     var(--color-bg-surface)
   );
-  box-shadow: inset 0 0 0 1px var(--state-comparing);
+  box-shadow:
+    inset 0 0 0 1px var(--state-comparing),
+    var(--glow-state-comparing);
   color: var(--color-text);
 }
 
+/* 発光は確定・比較中だけ(決めごと表 P7)。基準は太い内側の枠線で区別する(色だけに頼らない)。 */
 .cell[data-state="pivot"] {
   background: color-mix(
     in srgb,
     var(--state-pivot) 28%,
     var(--color-bg-surface)
   );
-  box-shadow: 0 0 10px var(--state-pivot);
+  box-shadow: inset 0 0 0 2px var(--state-pivot);
   color: var(--color-text);
 }
 
@@ -84,6 +87,7 @@
     var(--state-settled) 16%,
     var(--color-bg-surface)
   );
+  box-shadow: var(--glow-state-settled);
   color: var(--color-text);
 }
 

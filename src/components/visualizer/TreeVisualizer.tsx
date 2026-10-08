@@ -3,11 +3,12 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import styles from "./TreeVisualizer.module.css";
 import { PlaybackControls } from "./PlaybackControls";
+import { buildStepKinds, treeEntities } from "./step-timeline";
 import { ZoomableStage } from "./ZoomableStage";
 import { useStepPlayer } from "./useStepPlayer";
 import { useWorkerFrames } from "./useWorkerFrames";
 import { ParticleBurstLayer, type ParticleBurst } from "./ParticleBurstLayer";
-import { coreColors, readableTextColor, stateColors } from "@/lib/design-tokens";
+import { coreColors, readableTextColor, shouldGlow, stateColors } from "@/lib/design-tokens";
 import type { TreeFrame, TreeNodeState } from "@/lib/tree-visualizers";
 import type { WorkerRequest } from "@/workers/algorithm-worker";
 
@@ -71,6 +72,7 @@ export function TreeVisualizer({ algorithmId }: TreeVisualizerProps) {
   const { frames, isComputing } = useWorkerFrames<TreeFrame>(request);
   const { stepIndex, isFinished, showPause, speed, setSpeed, handlePlayPause, handleStep, handleScrub, reset } =
     useStepPlayer(frames.length);
+  const stepKinds = useMemo(() => buildStepKinds(frames, treeEntities), [frames]);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   // burstsのxRatio/yRatio計算にcanvasの実サイズが必要だが、useMemo内でref.currentを直接読むのは
   // レンダー中のref参照になり許可されない(react-hooks/refs)。描画useEffectで測定した値をstateとして
@@ -148,8 +150,9 @@ export function TreeVisualizer({ algorithmId }: TreeVisualizerProps) {
       const { x, y } = point(node.id);
       const radius = isIntervalNode ? 22 : 16;
 
-      ctx.shadowColor = showGlow ? NODE_COLORS[state] : "transparent";
-      ctx.shadowBlur = showGlow ? 12 : 0;
+      const glow = showGlow && shouldGlow(NODE_COLORS[state]);
+      ctx.shadowColor = glow ? NODE_COLORS[state] : "transparent";
+      ctx.shadowBlur = glow ? 12 : 0;
       ctx.fillStyle = fillColor;
       ctx.beginPath();
       ctx.arc(x, y, radius, 0, Math.PI * 2);
@@ -227,6 +230,7 @@ export function TreeVisualizer({ algorithmId }: TreeVisualizerProps) {
         showPause={showPause}
         isFinished={isFinished}
         speed={speed}
+        stepKinds={stepKinds}
         onPlayPause={handlePlayPause}
         onStep={handleStep}
         onScrub={handleScrub}

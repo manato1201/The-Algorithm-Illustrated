@@ -193,17 +193,33 @@ export function AlgorithmCatalog({
         <h1 className={styles.heroTitle}>
           アルゴリズムを、
           <br />
-          動かして理解する。
+          <span className={styles.heroAccent}>動かして</span>理解する。
         </h1>
         <p className={styles.heroLead}>
           速さを競うランキングではない。なぜ生まれ、どう動き、どこで報われるのか
           ——状態遷移を一歩ずつ巻き戻しながら学ぶための図鑑です。
         </p>
-        <p className={styles.countLine}>
-          <span className={styles.countNumber}>{algorithms.length}</span>
-          <span className={styles.countLabel}>件のアルゴリズムを収録</span>
-        </p>
+        {/* 主要数値は収録データそのものから算出する(手書きの固定値にしない) */}
+        <dl className={styles.stats}>
+          <div className={styles.stat}>
+            <dt className={styles.statLabel}>収録アルゴリズム</dt>
+            <dd className={styles.statValue}>{algorithms.length}</dd>
+          </div>
+          <div className={styles.stat}>
+            <dt className={styles.statLabel}>カテゴリ</dt>
+            <dd className={styles.statValue}>{categoryCounts.size}</dd>
+          </div>
+          <div className={styles.stat}>
+            <dt className={styles.statLabel}>可視化対応</dt>
+            <dd className={styles.statValue}>{visualizedCount}</dd>
+          </div>
+        </dl>
+        <a href="#catalog-start" className={styles.scrollCue}>
+          始める
+          <span aria-hidden="true"> ↓</span>
+        </a>
         <form
+          id="catalog-start"
           className={styles.searchBar}
           role="search"
           onSubmit={(event) => event.preventDefault()}

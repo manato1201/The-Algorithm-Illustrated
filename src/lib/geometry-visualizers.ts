@@ -2490,6 +2490,259 @@ export function particleSwarmOptimizationSteps(): GeometryFrame[] {
   return frames;
 }
 
+// ===========================================================================
+// エルミート曲線 (hermite-curve)
+// ===========================================================================
+// 始点P0・終点P1と、それぞれでの「向き(接線)」m0・m1の4つだけから、なめらかな3次曲線を決める。
+// h(t) = h00(t)P0 + h10(t)m0 + h01(t)P1 + h11(t)m1  (0≤t≤1)
+const HERMITE_P0: Vec2 = { x: 1, y: 1 };
+const HERMITE_P1: Vec2 = { x: 9, y: 2 };
+const HERMITE_M0: Vec2 = { x: 0, y: 8 };
+const HERMITE_M1: Vec2 = { x: 0, y: -8 };
+const HERMITE_SAMPLES = 7;
+/** 接線ベクトルは長いので、画面上ではこの倍率に縮めた先端を表示する。 */
+const HERMITE_TANGENT_DISPLAY_SCALE = 0.25;
+
+function hermiteBasis(t: number): { h00: number; h10: number; h01: number; h11: number } {
+  const t2 = t * t;
+  const t3 = t2 * t;
+  return {
+    h00: 2 * t3 - 3 * t2 + 1,
+    h10: t3 - 2 * t2 + t,
+    h01: -2 * t3 + 3 * t2,
+    h11: t3 - t2,
+  };
+}
+
+function hermiteBlend(t: number, p0: Vec2, m0: Vec2, p1: Vec2, m1: Vec2): Vec2 {
+  const { h00, h10, h01, h11 } = hermiteBasis(t);
+  return {
+    x: h00 * p0.x + h10 * m0.x + h01 * p1.x + h11 * m1.x,
+    y: h00 * p0.y + h10 * m0.y + h01 * p1.y + h11 * m1.y,
+  };
+}
+
+export const HERMITE_POINTS: GeometryPoint[] = [
+  { id: "P0", x: HERMITE_P0.x, y: HERMITE_P0.y },
+  { id: "P1", x: HERMITE_P1.x, y: HERMITE_P1.y },
+  {
+    id: "M0",
+    x: HERMITE_P0.x + HERMITE_M0.x * HERMITE_TANGENT_DISPLAY_SCALE,
+    y: HERMITE_P0.y + HERMITE_M0.y * HERMITE_TANGENT_DISPLAY_SCALE,
+  },
+  {
+    id: "M1",
+    x: HERMITE_P1.x + HERMITE_M1.x * HERMITE_TANGENT_DISPLAY_SCALE,
+    y: HERMITE_P1.y + HERMITE_M1.y * HERMITE_TANGENT_DISPLAY_SCALE,
+  },
+  ...Array.from({ length: HERMITE_SAMPLES }, (_, i) => {
+    const point = hermiteBlend((i + 1) / (HERMITE_SAMPLES + 1), HERMITE_P0, HERMITE_M0, HERMITE_P1, HERMITE_M1);
+    return { id: `h${i + 1}`, x: point.x, y: point.y };
+  }),
+];
+
+/**
+ * エルミート曲線のステップ列。端点と接線(向き)を与え、tを0→1と進めながら曲線上の点を1つずつ求める。
+ * 同じ端点でも、接線の向きと大きさを変えると曲線の膨らみ方が変わる、という性質が見える。
+ */
+export function hermiteCurveSteps(): GeometryFrame[] {
+  const frames: GeometryFrame[] = [];
+  const states = idleStates(HERMITE_POINTS);
+  const segs: GeometrySegment[] = [];
+
+  frames.push(
+    frame(
+      states,
+      segs,
+      "始点P0と終点P1を決める。エルミート曲線は、両端の位置と、そこでの向き(接線)の4つだけで曲線を決める",
+    ),
+  );
+
+  states.P0 = "current";
+  states.P1 = "current";
+  states.M0 = "candidate";
+  states.M1 = "candidate";
+  segs.push({ from: "P0", to: "M0", state: "active" }, { from: "P1", to: "M1", state: "active" });
+  frames.push(
+    frame(
+      states,
+      segs,
+      `接線m0=(${HERMITE_M0.x}, ${HERMITE_M0.y})、m1=(${HERMITE_M1.x}, ${HERMITE_M1.y})を与える。矢印の先(M0・M1)は接線を${HERMITE_TANGENT_DISPLAY_SCALE}倍に縮めて表示。始点は上向きに出て、終点には下向きに着く`,
+    ),
+  );
+
+  let previous = "P0";
+  for (let i = 1; i <= HERMITE_SAMPLES; i++) {
+    const t = i / (HERMITE_SAMPLES + 1);
+    const id = `h${i}`;
+    states[id] = "hull";
+    segs.push({ from: previous, to: id, state: "final" });
+    previous = id;
+    const { h00, h10, h01, h11 } = hermiteBasis(t);
+    frames.push(
+      frame(
+        states,
+        segs,
+        `t=${t.toFixed(3)}: h00=${h00.toFixed(3)}, h10=${h10.toFixed(3)}, h01=${h01.toFixed(3)}, h11=${h11.toFixed(3)} の重みで P0・m0・P1・m1 を混ぜ、曲線上の点${id}を求める`,
+      ),
+    );
+  }
+
+  segs.push({ from: previous, to: "P1", state: "final" });
+  frames.push(
+    frame(
+      states,
+      segs,
+      "最後の点を終点P1につなぐと、始点では上向き・終点では下向きの接線を守った、なめらかな曲線が完成。接線を長くすると膨らみが大きくなる",
+    ),
+  );
+
+  return frames;
+}
+
+// ===========================================================================
+// 追尾の3方式の比較 (pursuit-guidance-comparison)
+// ===========================================================================
+// 同じ速さの追跡者が、等速で動く標的を追う。3方式を同じ画面に並べて、軌跡の違いを見る。
+//  - 単純な追尾: 毎ステップ、標的の「今いる位置」へ真っすぐ向かう
+//  - エルミート曲線: 会合点(K歩後の標的位置)を先に決め、向きを守るなめらかな曲線で行く
+//  - 螺旋: 標的の方向から少しずらした向きに進み、そのずれを小さくしながら近づく(角度オフセットの一例)
+// 3方式の速さは、エルミート曲線の長さをK歩で割った値に揃える(速さの違いで優劣がつかないようにする)。
+const PURSUIT_START: Vec2 = { x: 1, y: 1 };
+const PURSUIT_TARGET_START: Vec2 = { x: 9, y: 2 };
+const PURSUIT_TARGET_VELOCITY: Vec2 = { x: 0, y: 1.1 };
+const PURSUIT_STEPS = 5;
+const PURSUIT_START_HEADING: Vec2 = { x: 0, y: 8 };
+const PURSUIT_SPIRAL_OFFSET_RAD = 0.9;
+
+function pursuitTargetAt(k: number): Vec2 {
+  return {
+    x: PURSUIT_TARGET_START.x + PURSUIT_TARGET_VELOCITY.x * k,
+    y: PURSUIT_TARGET_START.y + PURSUIT_TARGET_VELOCITY.y * k,
+  };
+}
+
+function pursuitMoveToward(from: Vec2, aim: Vec2, speed: number, rotateRad: number): Vec2 {
+  const dx = aim.x - from.x;
+  const dy = aim.y - from.y;
+  const distance = Math.hypot(dx, dy);
+  if (distance <= speed && rotateRad === 0) return { x: aim.x, y: aim.y };
+  const angle = Math.atan2(dy, dx) + rotateRad;
+  return { x: from.x + Math.cos(angle) * speed, y: from.y + Math.sin(angle) * speed };
+}
+
+type PursuitTrace = {
+  target: Vec2[];
+  pure: Vec2[];
+  hermite: Vec2[];
+  spiral: Vec2[];
+  speed: number;
+};
+
+function buildPursuitTrace(): PursuitTrace {
+  const target = Array.from({ length: PURSUIT_STEPS + 1 }, (_, k) => pursuitTargetAt(k));
+  const meet = target[PURSUIT_STEPS];
+  const targetTangent: Vec2 = {
+    x: PURSUIT_TARGET_VELOCITY.x * PURSUIT_STEPS * 5,
+    y: PURSUIT_TARGET_VELOCITY.y * PURSUIT_STEPS * 5,
+  };
+
+  // エルミート曲線を細かく刻んで長さを測り、K歩で割って全方式共通の速さを決める
+  const fine = Array.from({ length: 401 }, (_, i) =>
+    hermiteBlend(i / 400, PURSUIT_START, PURSUIT_START_HEADING, meet, targetTangent),
+  );
+  const cumulative: number[] = [0];
+  for (let i = 1; i < fine.length; i++) cumulative.push(cumulative[i - 1] + vecDist(fine[i - 1], fine[i]));
+  const totalLength = cumulative[cumulative.length - 1];
+  const speed = totalLength / PURSUIT_STEPS;
+
+  // エルミート曲線上を、一定の速さ(弧長)で進む位置
+  const hermite: Vec2[] = [PURSUIT_START];
+  for (let k = 1; k <= PURSUIT_STEPS; k++) {
+    const goal = Math.min(k * speed, totalLength);
+    const index = cumulative.findIndex((length) => length >= goal);
+    hermite.push(fine[index === -1 ? fine.length - 1 : index]);
+  }
+
+  const pure: Vec2[] = [PURSUIT_START];
+  const spiral: Vec2[] = [PURSUIT_START];
+  for (let k = 0; k < PURSUIT_STEPS; k++) {
+    pure.push(pursuitMoveToward(pure[k], target[k + 1], speed, 0));
+    const offset = PURSUIT_SPIRAL_OFFSET_RAD * (1 - k / PURSUIT_STEPS);
+    spiral.push(pursuitMoveToward(spiral[k], target[k + 1], speed, offset));
+  }
+  return { target, pure, hermite, spiral, speed };
+}
+
+const PURSUIT_TRACE = buildPursuitTrace();
+
+export const PURSUIT_POINTS: GeometryPoint[] = [
+  { id: "O", x: PURSUIT_START.x, y: PURSUIT_START.y },
+  ...PURSUIT_TRACE.target.map((p, k) => ({ id: `T${k}`, x: p.x, y: p.y })),
+  ...PURSUIT_TRACE.pure.slice(1).map((p, i) => ({ id: `P${i + 1}`, x: p.x, y: p.y })),
+  ...PURSUIT_TRACE.hermite.slice(1).map((p, i) => ({ id: `H${i + 1}`, x: p.x, y: p.y })),
+  ...PURSUIT_TRACE.spiral.slice(1).map((p, i) => ({ id: `S${i + 1}`, x: p.x, y: p.y })),
+];
+
+/**
+ * 追尾の3方式を同じ画面で比べるステップ列。
+ * 点の色と先頭の文字(P=単純な追尾 / H=エルミート曲線 / S=螺旋 / T=標的)の両方で区別する。
+ */
+export function pursuitGuidanceComparisonSteps(): GeometryFrame[] {
+  const trace = PURSUIT_TRACE;
+  const frames: GeometryFrame[] = [];
+  const states = idleStates(PURSUIT_POINTS);
+  const segs: GeometrySegment[] = [];
+
+  states.O = "current";
+  states.T0 = "candidate";
+  frames.push(
+    frame(
+      states,
+      segs,
+      `追跡者O(下)が、等速で上へ動く標的T(右)を追う。3方式とも同じ速さ${trace.speed.toFixed(2)}/歩で、${PURSUIT_STEPS}歩ぶんの軌跡を比べる`,
+    ),
+  );
+
+  for (let k = 1; k <= PURSUIT_STEPS; k++) {
+    states[`T${k}`] = "candidate";
+    states[`P${k}`] = "rejected";
+    states[`H${k}`] = "hull";
+    states[`S${k}`] = "current";
+    segs.push(
+      { from: k === 1 ? "O" : `P${k - 1}`, to: `P${k}`, state: "rejected" },
+      { from: k === 1 ? "O" : `H${k - 1}`, to: `H${k}`, state: "final" },
+      { from: k === 1 ? "O" : `S${k - 1}`, to: `S${k}`, state: "active" },
+    );
+    const target = trace.target[k];
+    const dPure = vecDist(trace.pure[k], target);
+    const dHermite = vecDist(trace.hermite[k], target);
+    const dSpiral = vecDist(trace.spiral[k], target);
+    frames.push(
+      frame(
+        states,
+        segs,
+        `${k}歩目: 標的はT${k}へ。標的までの距離は、単純な追尾(P)${dPure.toFixed(2)}・エルミート曲線(H)${dHermite.toFixed(2)}・螺旋(S)${dSpiral.toFixed(2)}`,
+      ),
+    );
+  }
+
+  const finalTarget = trace.target[PURSUIT_STEPS];
+  const describeFinal = (position: Vec2): string => {
+    const distance = vecDist(position, finalTarget);
+    return distance < 0.01 ? "標的に到達" : `標的まで距離${distance.toFixed(2)}`;
+  };
+  frames.push(
+    frame(
+      states,
+      segs,
+      `比較: ${PURSUIT_STEPS}歩後は、単純な追尾(P)=${describeFinal(trace.pure[PURSUIT_STEPS])}、エルミート曲線(H)=${describeFinal(trace.hermite[PURSUIT_STEPS])}、螺旋(S)=${describeFinal(trace.spiral[PURSUIT_STEPS])}。単純な追尾は予測が要らず最も単純。エルミート曲線は会合点を先に決める(標的の動きの予測が要る)代わりに、向きを守ったなめらかな軌跡で着く。螺旋はずれの角度の調整しだいで届き方が変わる`,
+    ),
+  );
+
+  return frames;
+}
+
 export const GEOMETRY_DATASETS: Record<string, GeometryDataset> = {
   "graham-scan": { points: HULL_POINTS },
   "jarvis-march": { points: HULL_POINTS },
@@ -2512,6 +2765,8 @@ export const GEOMETRY_DATASETS: Record<string, GeometryDataset> = {
   "polygon-triangulation": { points: POLY_TRIANGULATION_POINTS },
   "line-sweep-intersection": { points: LINE_SWEEP_POINTS },
   "point-in-polygon": { points: POINT_IN_POLYGON_POINTS },
+  "hermite-curve": { points: HERMITE_POINTS },
+  "pursuit-guidance-comparison": { points: PURSUIT_POINTS },
 };
 
 export const GEOMETRY_VISUALIZERS: Record<string, () => GeometryFrame[]> = {
@@ -2536,4 +2791,6 @@ export const GEOMETRY_VISUALIZERS: Record<string, () => GeometryFrame[]> = {
   "polygon-triangulation": polygonTriangulationSteps,
   "line-sweep-intersection": lineSweepIntersectionSteps,
   "point-in-polygon": pointInPolygonSteps,
+  "hermite-curve": hermiteCurveSteps,
+  "pursuit-guidance-comparison": pursuitGuidanceComparisonSteps,
 };

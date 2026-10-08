@@ -5,8 +5,14 @@ import {
   Noto_Sans_JP,
   JetBrains_Mono,
 } from "next/font/google";
+import Script from "next/script";
 import "./globals.css";
 import { AppShell } from "@/components/hud/AppShell";
+import { THEME_STORAGE_KEY } from "@/components/hud/ThemeToggle";
+
+// 保存済みのテーマを描画前に<html data-theme>へ反映する(ダーク→ライトのちらつき防止)。
+// データはlocalStorageの自分の設定値のみで、外部入力は含まない。
+const THEME_INIT_SCRIPT = `try{var t=localStorage.getItem(${JSON.stringify(THEME_STORAGE_KEY)});if(t==="light"||t==="dark")document.documentElement.dataset.theme=t;}catch(e){}`;
 
 // 幾何学ゴシック(和文見出し用) — variableフォント非対応のため明示的にweightを指定
 const zenKakuGothicNew = Zen_Kaku_Gothic_New({
@@ -48,8 +54,13 @@ export default function RootLayout({
     <html
       lang="ja"
       className={`${zenKakuGothicNew.variable} ${spaceGrotesk.variable} ${notoSansJP.variable} ${jetBrainsMono.variable}`}
+      // テーマ初期化スクリプトがdata-themeを付けるため、サーバー描画との差分を許容する
+      suppressHydrationWarning
     >
       <body>
+        <Script id="theme-init" strategy="beforeInteractive">
+          {THEME_INIT_SCRIPT}
+        </Script>
         <AppShell>{children}</AppShell>
       </body>
     </html>

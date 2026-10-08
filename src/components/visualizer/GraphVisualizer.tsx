@@ -3,11 +3,12 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import styles from "./GraphVisualizer.module.css";
 import { PlaybackControls } from "./PlaybackControls";
+import { buildStepKinds, graphEntities } from "./step-timeline";
 import { ZoomableStage } from "./ZoomableStage";
 import { useStepPlayer } from "./useStepPlayer";
 import { useWorkerFrames } from "./useWorkerFrames";
 import { ParticleBurstLayer, type ParticleBurst } from "./ParticleBurstLayer";
-import { coreColors, readableTextColor, stateColors } from "@/lib/design-tokens";
+import { coreColors, readableTextColor, shouldGlow, stateColors } from "@/lib/design-tokens";
 import {
   GRAPH_DATASETS,
   type GraphEdgeState,
@@ -80,6 +81,7 @@ export function GraphVisualizer({ algorithmId }: GraphVisualizerProps) {
   const { frames, isComputing } = useWorkerFrames<GraphFrame>(request);
   const { stepIndex, isFinished, showPause, speed, setSpeed, handlePlayPause, handleStep, handleScrub, reset } =
     useStepPlayer(frames.length);
+  const stepKinds = useMemo(() => buildStepKinds(frames, graphEntities), [frames]);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   // burstsのxRatio/yRatio計算にcanvasの実サイズが必要だが、useMemo内でref.currentを直接読むのは
   // レンダー中のref参照になり許可されない(react-hooks/refs)。描画useEffectで測定した値をstateとして
@@ -131,8 +133,8 @@ export function GraphVisualizer({ algorithmId }: GraphVisualizerProps) {
 
       ctx.strokeStyle = color;
       ctx.lineWidth = state === "idle" ? 1.5 : 3;
-      ctx.shadowColor = state === "idle" ? "transparent" : color;
-      ctx.shadowBlur = state === "idle" ? 0 : 10;
+      ctx.shadowColor = shouldGlow(color) ? color : "transparent";
+      ctx.shadowBlur = shouldGlow(color) ? 10 : 0;
       ctx.beginPath();
       ctx.moveTo(from.x, from.y);
       ctx.lineTo(to.x, to.y);
@@ -177,8 +179,8 @@ export function GraphVisualizer({ algorithmId }: GraphVisualizerProps) {
       const color = NODE_COLORS[state];
       const { x, y } = point(node.id);
 
-      ctx.shadowColor = state === "idle" ? "transparent" : color;
-      ctx.shadowBlur = state === "idle" ? 0 : 14;
+      ctx.shadowColor = shouldGlow(color) ? color : "transparent";
+      ctx.shadowBlur = shouldGlow(color) ? 14 : 0;
       ctx.fillStyle = color;
       ctx.beginPath();
       ctx.arc(x, y, 16, 0, Math.PI * 2);
@@ -253,6 +255,7 @@ export function GraphVisualizer({ algorithmId }: GraphVisualizerProps) {
         showPause={showPause}
         isFinished={isFinished}
         speed={speed}
+        stepKinds={stepKinds}
         onPlayPause={handlePlayPause}
         onStep={handleStep}
         onScrub={handleScrub}

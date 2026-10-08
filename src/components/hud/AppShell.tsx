@@ -1,7 +1,8 @@
-import Link from "next/link";
 import { CornerBrackets } from "./CornerBrackets";
 import { StatusChip } from "./StatusChip";
 import { LiveClock } from "./LiveClock";
+import { NavLinks } from "./NavLinks";
+import { ThemeToggle } from "./ThemeToggle";
 import styles from "./AppShell.module.css";
 
 type AppShellProps = {
@@ -11,6 +12,7 @@ type AppShellProps = {
 const NAV_ITEMS: { href: string; label: string }[] = [
   { href: "/basics", label: "アルゴリズムとは?" },
   { href: "/", label: "カタログ" },
+  { href: "/atlas", label: "年表" },
   { href: "/compare", label: "比較" },
   { href: "/updates", label: "更新情報" },
   { href: "/about", label: "About" },
@@ -18,7 +20,7 @@ const NAV_ITEMS: { href: string; label: string }[] = [
 
 /**
  * 全画面共通のHUDフレーム(docs/design/ui-design.md 2.6節・3節)。
- * ヘッダー(ブランド+ナビゲーション+ステータスチップ+ライブ時計)とコーナーブラケットを提供する。
+ * ヘッダー(ブランド+ナビゲーション+ステータスチップ+ライブ時計+テーマ切替)とコーナーブラケットを提供する。
  */
 export function AppShell({ children }: AppShellProps) {
   return (
@@ -32,16 +34,11 @@ export function AppShell({ children }: AppShellProps) {
             状態分離型 インタラクティブ・アルゴリズム図鑑
           </span>
         </div>
-        <nav className={styles.nav} aria-label="メインナビゲーション">
-          {NAV_ITEMS.map((item) => (
-            <Link key={item.href} href={item.href} className={styles.navLink}>
-              {item.label}
-            </Link>
-          ))}
-        </nav>
+        <NavLinks items={NAV_ITEMS} />
         <div className={styles.headerRight}>
           <StatusChip status="online" />
           <LiveClock />
+          <ThemeToggle />
         </div>
       </header>
       <main className={styles.main}>{children}</main>

@@ -1,0 +1,106 @@
+.wrap {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  max-width: 28rem;
+}
+
+/* 迷路は可視化と同じく「展示ケース」としてテーマに関わらずダークの値を使う。 */
+.maze {
+  display: grid;
+  gap: 3px;
+  padding: var(--space-3);
+  border: 1px solid var(--color-line);
+  border-radius: 8px;
+  background: var(--color-bg-void);
+}
+
+.cell {
+  aspect-ratio: 1;
+  border-radius: 3px;
+  background: var(--color-bg-surface-2);
+  transition: background-color 0.12s ease;
+}
+
+.cell[data-state="wall"] {
+  background: var(--state-idle);
+}
+
+/* 調べたマス=比較中の黄色、最短経路=確定の緑。状態色の意味は可視化と共通。 */
+.cell[data-state="visited"] {
+  background: color-mix(
+    in srgb,
+    var(--state-comparing) 55%,
+    var(--color-bg-void)
+  );
+}
+
+.cell[data-state="path"] {
+  background: var(--state-settled);
+  box-shadow: var(--glow-state-settled);
+}
+
+/* 出口は色だけでなく、枠線の形でも区別する */
+.cell[data-goal="true"] {
+  box-shadow: inset 0 0 0 2px var(--state-settled);
+}
+
+/* 迷子の点(先頭)。丸い形で、マスの四角と区別する。 */
+.cell[data-dot="true"],
+.cell[data-start="true"] {
+  position: relative;
+}
+
+.cell[data-dot="true"]::after,
+.cell[data-start="true"]::after {
+  content: "";
+  position: absolute;
+  inset: 22%;
+  border-radius: 50%;
+  background: var(--color-text);
+}
+
+.cell[data-start="true"]::after {
+  opacity: 0.5;
+}
+
+.cell[data-dot="true"]::after {
+  opacity: 1;
+}
+
+.caption {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: var(--space-2) var(--space-4);
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  color: var(--color-text-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.replay {
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  padding: var(--space-1) var(--space-3);
+  border: 1px solid var(--color-line);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--color-text-muted);
+  cursor: pointer;
+  transition:
+    color 0.15s ease,
+    border-color 0.15s ease;
+}
+
+.replay:hover {
+  color: var(--color-accent-amber);
+  border-color: var(--color-accent-amber);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .cell {
+    transition: none;
+  }
+}

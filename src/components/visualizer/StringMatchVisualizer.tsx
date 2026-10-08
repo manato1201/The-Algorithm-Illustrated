@@ -3,6 +3,7 @@
 import { useMemo } from "react";
 import styles from "./StringMatchVisualizer.module.css";
 import { PlaybackControls } from "./PlaybackControls";
+import { buildStepKinds, stringEntities } from "./step-timeline";
 import { ZoomableStage } from "./ZoomableStage";
 import { useStepPlayer } from "./useStepPlayer";
 import { useWorkerFrames } from "./useWorkerFrames";
@@ -33,6 +34,7 @@ export function StringMatchVisualizer({ algorithmId }: StringMatchVisualizerProp
   const { frames, isComputing } = useWorkerFrames<StringMatchFrame>(request);
   const { stepIndex, isFinished, showPause, speed, setSpeed, handlePlayPause, handleStep, handleScrub, reset } =
     useStepPlayer(frames.length);
+  const stepKinds = useMemo(() => buildStepKinds(frames, stringEntities), [frames]);
 
   const currentFrame = frames[stepIndex];
 
@@ -98,6 +100,7 @@ export function StringMatchVisualizer({ algorithmId }: StringMatchVisualizerProp
         showPause={showPause}
         isFinished={isFinished}
         speed={speed}
+        stepKinds={stepKinds}
         onPlayPause={handlePlayPause}
         onStep={handleStep}
         onScrub={handleScrub}

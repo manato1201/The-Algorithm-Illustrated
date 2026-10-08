@@ -3,11 +3,12 @@
 import { useEffect, useMemo, useRef } from "react";
 import styles from "./SearchVisualizer.module.css";
 import { PlaybackControls } from "./PlaybackControls";
+import { buildStepKinds, highlightEntities } from "./step-timeline";
 import { ZoomableStage } from "./ZoomableStage";
 import { useStepPlayer } from "./useStepPlayer";
 import { useWorkerFrames } from "./useWorkerFrames";
 import { ParticleBurstLayer, type ParticleBurst } from "./ParticleBurstLayer";
-import { stateColors, type StateColorKey } from "@/lib/design-tokens";
+import { shouldGlow, stateColors, type StateColorKey } from "@/lib/design-tokens";
 import { SEARCH_TARGET, type SearchFrame } from "@/lib/search-visualizers";
 import type { WorkerRequest } from "@/workers/algorithm-worker";
 
@@ -50,6 +51,7 @@ export function SearchVisualizer({ algorithmId }: SearchVisualizerProps) {
   const { frames, isComputing } = useWorkerFrames<SearchFrame>(request);
   const { stepIndex, isFinished, showPause, speed, setSpeed, handlePlayPause, handleStep, handleScrub, reset } =
     useStepPlayer(frames.length);
+  const stepKinds = useMemo(() => buildStepKinds(frames, highlightEntities), [frames]);
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
   useEffect(() => {
@@ -91,8 +93,8 @@ export function SearchVisualizer({ algorithmId }: SearchVisualizerProps) {
       const state = currentFrame.highlight[index] ?? "idle";
       const color = stateColors[state];
 
-      ctx.shadowColor = state === "idle" ? "transparent" : color;
-      ctx.shadowBlur = state === "idle" ? 0 : 14;
+      ctx.shadowColor = shouldGlow(color) ? color : "transparent";
+      ctx.shadowBlur = shouldGlow(color) ? 14 : 0;
       ctx.fillStyle = color;
       ctx.fillRect(x, rectTop, barWidth, rectHeight);
     });
@@ -138,6 +140,7 @@ export function SearchVisualizer({ algorithmId }: SearchVisualizerProps) {
         showPause={showPause}
         isFinished={isFinished}
         speed={speed}
+        stepKinds={stepKinds}
         onPlayPause={handlePlayPause}
         onStep={handleStep}
         onScrub={handleScrub}
