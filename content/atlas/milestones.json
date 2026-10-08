@@ -1,0 +1,231 @@
+{
+  "_note": "アルゴリズム年表Atlasのデータ。idは content/algorithms/<id>.md と一致させる。yearは出典の発表年(紀元前は負の数、「頃」を付けるものは approximate=true)。分野・名称は記事のfrontmatterから引くため、ここには書かない。sourceは代表的な原典(論文・書籍)で、必須。purposeは『なぜ生まれたか』を1文で書く(図鑑の方針)。",
+  "entries": [
+    {
+      "id": "euclidean-algorithm",
+      "year": -300,
+      "approximate": true,
+      "people": "ユークリッド",
+      "purpose": "二つの長さに共通する最大の物差し(最大公約数)を、引き算の繰り返しで見つけるため。",
+      "source": "ユークリッド『原論』第7巻(紀元前300年頃)"
+    },
+    {
+      "id": "sieve-of-eratosthenes",
+      "year": -240,
+      "approximate": true,
+      "people": "エラトステネス",
+      "purpose": "素数を一つずつ調べず、倍数を消していくことでまとめて見つけるため。",
+      "source": "ニコマコス『算術入門』(紀元後100年頃)に記されたエラトステネスの篩"
+    },
+    {
+      "id": "merge-sort",
+      "year": 1945,
+      "people": "ジョン・フォン・ノイマン",
+      "purpose": "計算機の上で、整列済みの二つの列を併合して、大きなデータを整列するため。",
+      "source": "D. E. Knuth, The Art of Computer Programming, Vol. 3, §5.2.4(1945年のフォン・ノイマンによる考案の記述)"
+    },
+    {
+      "id": "ford-fulkerson",
+      "year": 1956,
+      "people": "L. R. フォード、D. R. ファルカーソン",
+      "purpose": "ネットワークに流せる最大の量を求めるため。",
+      "source": "L. R. Ford Jr., D. R. Fulkerson, Maximal flow through a network, Canadian Journal of Mathematics 8, 1956"
+    },
+    {
+      "id": "kruskal",
+      "year": 1956,
+      "people": "ジョセフ・クラスカル",
+      "purpose": "すべての頂点を、最も小さい総コストでつなぐ木を求めるため。",
+      "source": "J. B. Kruskal, On the shortest spanning subtree of a graph and the traveling salesman problem, Proceedings of the AMS 7(1), 1956"
+    },
+    {
+      "id": "prim",
+      "year": 1957,
+      "people": "ロバート・プリム",
+      "purpose": "通信網などを、最も小さい総コストで一つにつなぐため。",
+      "source": "R. C. Prim, Shortest connection networks and some generalizations, Bell System Technical Journal 36(6), 1957"
+    },
+    {
+      "id": "bellman-ford",
+      "year": 1958,
+      "people": "リチャード・ベルマン",
+      "purpose": "負の重みを持つ辺があっても、最短経路を求めるため。",
+      "source": "R. Bellman, On a routing problem, Quarterly of Applied Mathematics 16(1), 1958"
+    },
+    {
+      "id": "dijkstra",
+      "year": 1959,
+      "people": "エドガー・ダイクストラ",
+      "purpose": "重みが負でないグラフで、出発点から各地点への最短経路を求めるため。",
+      "source": "E. W. Dijkstra, A note on two problems in connexion with graphs, Numerische Mathematik 1, 1959"
+    },
+    {
+      "id": "shell-sort",
+      "year": 1959,
+      "people": "ドナルド・シェル",
+      "purpose": "挿入ソートが遠くの要素の移動を苦手とするのを、間隔を空けた挿入で改善するため。",
+      "source": "D. L. Shell, A high-speed sorting procedure, Communications of the ACM 2(7), 1959"
+    },
+    {
+      "id": "quick-sort",
+      "year": 1961,
+      "people": "C. A. R. ホーア",
+      "purpose": "問題を二つに分けて、平均的に高速に整列するため。",
+      "source": "C. A. R. Hoare, Algorithm 64: Quicksort, Communications of the ACM 4(7), 1961"
+    },
+    {
+      "id": "floyd-warshall",
+      "year": 1962,
+      "people": "ロバート・フロイド",
+      "purpose": "すべての頂点の組について、最短距離を一度に求めるため。",
+      "source": "R. W. Floyd, Algorithm 97: Shortest path, Communications of the ACM 5(6), 1962"
+    },
+    {
+      "id": "avl-tree",
+      "year": 1962,
+      "people": "アデルソン=ヴェルスキー、ランディス",
+      "purpose": "二分探索木が一方に偏って遅くなるのを、回転で常に釣り合わせて防ぐため。",
+      "source": "G. M. Adelson-Velsky, E. M. Landis, An algorithm for the organization of information, Doklady Akademii Nauk SSSR 146, 1962"
+    },
+    {
+      "id": "heap-sort",
+      "year": 1964,
+      "people": "J. W. J. ウィリアムズ",
+      "purpose": "ヒープという構造を使い、追加の配列を使わずに整列するため。",
+      "source": "J. W. J. Williams, Algorithm 232: Heapsort, Communications of the ACM 7(6), 1964"
+    },
+    {
+      "id": "fft",
+      "year": 1965,
+      "people": "J. W. クーリー、J. W. テューキー",
+      "purpose": "フーリエ変換を、素朴な計算(要素数の2乗)より大幅に速く計算するため。",
+      "source": "J. W. Cooley, J. W. Tukey, An algorithm for the machine calculation of complex Fourier series, Mathematics of Computation 19(90), 1965"
+    },
+    {
+      "id": "a-star",
+      "year": 1968,
+      "people": "P. E. ハート、N. J. ニルソン、B. ラファエル",
+      "purpose": "ロボットの経路探索で、目的地への見込み(ヒューリスティック)を使って探索範囲を絞るため。",
+      "source": "P. E. Hart, N. J. Nilsson, B. Raphael, A formal basis for the heuristic determination of minimum cost paths, IEEE Transactions on Systems Science and Cybernetics 4(2), 1968"
+    },
+    {
+      "id": "needleman-wunsch",
+      "year": 1970,
+      "people": "S. B. ニードルマン、C. D. ブンシュ",
+      "purpose": "二つのタンパク質の配列が、全体としてどのくらい似ているかを比べるため。",
+      "source": "S. B. Needleman, C. D. Wunsch, A general method applicable to the search for similarities in the amino acid sequence of two proteins, Journal of Molecular Biology 48(3), 1970"
+    },
+    {
+      "id": "bloom-filter",
+      "year": 1970,
+      "people": "バートン・ブルーム",
+      "purpose": "わずかな誤りを許す代わりに、集合への所属判定を小さなメモリで行うため。",
+      "source": "B. H. Bloom, Space/time trade-offs in hash coding with allowable errors, Communications of the ACM 13(7), 1970"
+    },
+    {
+      "id": "conways-game-of-life",
+      "year": 1970,
+      "people": "ジョン・コンウェイ",
+      "purpose": "単純な規則の繰り返しから、複雑な模様が現れるかを探るため。",
+      "source": "M. Gardner, Mathematical Games: The fantastic combinations of John Conway's new solitaire game \"life\", Scientific American 223(4), 1970"
+    },
+    {
+      "id": "b-tree",
+      "year": 1972,
+      "people": "R. バイヤー、E. マクレイト",
+      "purpose": "ディスク上の大きな索引を、少ない読み出し回数で探すため。",
+      "source": "R. Bayer, E. McCreight, Organization and maintenance of large ordered indices, Acta Informatica 1(3), 1972"
+    },
+    {
+      "id": "graham-scan",
+      "year": 1972,
+      "people": "ロナルド・グレアム",
+      "purpose": "平面上の点の集まりを包む最小の凸多角形(凸包)を、高速に求めるため。",
+      "source": "R. L. Graham, An efficient algorithm for determining the convex hull of a finite planar set, Information Processing Letters 1(4), 1972"
+    },
+    {
+      "id": "genetic-algorithm",
+      "year": 1975,
+      "people": "ジョン・ホランド",
+      "purpose": "生物の進化(選択・交叉・突然変異)に学び、解を世代交代で改良していくため。",
+      "source": "J. H. Holland, Adaptation in Natural and Artificial Systems, University of Michigan Press, 1975"
+    },
+    {
+      "id": "diffie-hellman",
+      "year": 1976,
+      "people": "W. ディフィー、M. ヘルマン",
+      "purpose": "事前に秘密を共有していない二者が、盗聴される通信路で共通の鍵を作るため。",
+      "source": "W. Diffie, M. E. Hellman, New directions in cryptography, IEEE Transactions on Information Theory 22(6), 1976"
+    },
+    {
+      "id": "kmp",
+      "year": 1977,
+      "people": "D. クヌース、J. モリス、V. プラット",
+      "purpose": "文字列検索で、一度比べた文字を比べ直さずに先へ進むため。",
+      "source": "D. E. Knuth, J. H. Morris Jr., V. R. Pratt, Fast pattern matching in strings, SIAM Journal on Computing 6(2), 1977"
+    },
+    {
+      "id": "rsa",
+      "year": 1978,
+      "people": "R. リベスト、A. シャミア、L. エーデルマン",
+      "purpose": "公開した鍵で暗号化し、秘密の鍵でだけ復号できる、公開鍵暗号を実現するため。",
+      "source": "R. L. Rivest, A. Shamir, L. Adleman, A method for obtaining digital signatures and public-key cryptosystems, Communications of the ACM 21(2), 1978"
+    },
+    {
+      "id": "simulated-annealing",
+      "year": 1983,
+      "people": "S. カークパトリック、C. ゲラット、M. ヴェッキ",
+      "purpose": "金属の焼きなましに学び、局所的な解に閉じ込められずに良い解を探すため。",
+      "source": "S. Kirkpatrick, C. D. Gelatt Jr., M. P. Vecchi, Optimization by simulated annealing, Science 220(4598), 1983"
+    },
+    {
+      "id": "perlin-noise",
+      "year": 1985,
+      "people": "ケン・パーリン",
+      "purpose": "CGの質感を、なめらかで自然な乱れで作るため。",
+      "source": "K. Perlin, An image synthesizer, ACM SIGGRAPH Computer Graphics 19(3), 1985"
+    },
+    {
+      "id": "boids",
+      "year": 1987,
+      "people": "クレイグ・レイノルズ",
+      "purpose": "鳥の群れの動きを、各個体が守る単純な三つの規則だけで再現するため。",
+      "source": "C. W. Reynolds, Flocks, herds and schools: A distributed behavioral model, ACM SIGGRAPH Computer Graphics 21(4), 1987"
+    },
+    {
+      "id": "q-learning",
+      "year": 1989,
+      "people": "クリストファー・ワトキンス",
+      "purpose": "環境のモデルを知らなくても、試行の積み重ねから行動の価値を学ぶため。",
+      "source": "C. J. C. H. Watkins, Learning from Delayed Rewards, PhD thesis, University of Cambridge, 1989"
+    },
+    {
+      "id": "paxos",
+      "year": 1998,
+      "people": "レスリー・ランポート",
+      "purpose": "一部のノードが故障しても、複数のノードが一つの値に合意するため。",
+      "source": "L. Lamport, The part-time parliament, ACM Transactions on Computer Systems 16(2), 1998"
+    },
+    {
+      "id": "pagerank",
+      "year": 1998,
+      "people": "ラリー・ペイジ、セルゲイ・ブリン",
+      "purpose": "リンクの構造から、ウェブページの重要度を数値にして検索結果を並べるため。",
+      "source": "S. Brin, L. Page, The anatomy of a large-scale hypertextual Web search engine, Computer Networks and ISDN Systems 30, 1998"
+    },
+    {
+      "id": "monte-carlo-tree-search",
+      "year": 2006,
+      "people": "レミ・クーロン ほか",
+      "purpose": "囲碁のように評価関数を作りにくい対局で、乱数による試行から有望な手を探すため。",
+      "source": "R. Coulom, Efficient selectivity and backup operators in Monte-Carlo tree search, Computers and Games (CG 2006), 2006"
+    },
+    {
+      "id": "raft",
+      "year": 2014,
+      "people": "ディエゴ・オンガロ、ジョン・ウスターハウト",
+      "purpose": "Paxosより理解しやすい形で、複数のノードの合意を実現するため。",
+      "source": "D. Ongaro, J. Ousterhout, In search of an understandable consensus algorithm, USENIX Annual Technical Conference, 2014"
+    }
+  ]
+}

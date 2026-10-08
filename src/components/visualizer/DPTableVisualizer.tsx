@@ -3,6 +3,7 @@
 import { useMemo } from "react";
 import styles from "./DPTableVisualizer.module.css";
 import { PlaybackControls } from "./PlaybackControls";
+import { buildStepKinds, dpEntities } from "./step-timeline";
 import { ZoomableStage } from "./ZoomableStage";
 import { useStepPlayer } from "./useStepPlayer";
 import { useWorkerFrames } from "./useWorkerFrames";
@@ -32,6 +33,7 @@ export function DPTableVisualizer({ algorithmId }: DPTableVisualizerProps) {
   const { frames, isComputing } = useWorkerFrames<DPFrame>(request);
   const { stepIndex, isFinished, showPause, speed, setSpeed, handlePlayPause, handleStep, handleScrub, reset } =
     useStepPlayer(frames.length);
+  const stepKinds = useMemo(() => buildStepKinds(frames, dpEntities), [frames]);
 
   const meta = DP_TABLE_META[algorithmId];
   const currentFrame = frames[stepIndex];
@@ -111,6 +113,7 @@ export function DPTableVisualizer({ algorithmId }: DPTableVisualizerProps) {
         showPause={showPause}
         isFinished={isFinished}
         speed={speed}
+        stepKinds={stepKinds}
         onPlayPause={handlePlayPause}
         onStep={handleStep}
         onScrub={handleScrub}

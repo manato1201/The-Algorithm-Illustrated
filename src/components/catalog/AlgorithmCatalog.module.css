@@ -35,18 +35,13 @@
   }
 }
 
+/* 見出しの発光は意味のある状態ではないため使わず、不透明度だけで現れる(決めごと表 P7)。 */
 @keyframes flicker-in {
   from {
     opacity: 0;
-    filter: drop-shadow(0 0 0 transparent);
-  }
-  60% {
-    opacity: 1;
-    filter: drop-shadow(0 0 18px rgba(255, 167, 51, 0.45));
   }
   to {
     opacity: 1;
-    filter: drop-shadow(0 0 0 transparent);
   }
 }
 
@@ -59,27 +54,58 @@
   margin-bottom: var(--space-6);
 }
 
-/* 件数表示(参照HUDの「763本」相当の等幅数値表示) */
-.countLine {
+/* 主要数値(ストーリー型の入口 U2)。数字は半角・等幅・右揃えの大きい表示、ラベルは小さい追跡付き文字。
+   等幅の数字だけなので和文と違い強めの負トラッキングでも字が潰れない。 */
+.stats {
   display: flex;
-  align-items: baseline;
-  gap: var(--space-2);
-  font-family: var(--font-mono);
+  flex-wrap: wrap;
+  gap: var(--space-6) var(--space-12);
   margin-bottom: var(--space-6);
 }
 
-/* 数字そのものをディスプレイ要素として扱う(AlgorithmDESIGN.md参考の「大きい数字+小さいラベル」統計表現)。
-   等幅の数字だけなので和文と違い強めの負トラッキングでも字が潰れない。 */
-.countNumber {
+.stat {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.statLabel {
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+  letter-spacing: 0.1em;
+  color: var(--color-text-muted);
+}
+
+.statValue {
+  font-family: var(--font-display-en);
   font-size: 3rem;
-  font-weight: 900;
+  font-weight: 700;
+  line-height: 1;
   letter-spacing: -0.03em;
+  font-variant-numeric: tabular-nums;
   color: var(--color-accent-amber);
 }
 
-.countLabel {
+/* 見出しの一語だけにアクセント(決めごと: 強調は1か所) */
+.heroAccent {
+  color: var(--color-accent-amber);
+}
+
+/* スクロール誘導。矢印は「遷移=右/開閉=下」の決めごとのうち、ページ内を下へ進む意味で下向き。 */
+.scrollCue {
+  display: inline-block;
+  align-self: flex-start;
+  margin-bottom: var(--space-6);
+  font-family: var(--font-mono);
   font-size: 0.8125rem;
-  color: var(--color-text-muted);
+  letter-spacing: 0.08em;
+  color: var(--color-text);
+  border-bottom: 1px solid var(--color-accent-amber);
+  padding-bottom: var(--space-1);
+}
+
+.scrollCue:hover {
+  color: var(--color-accent-amber);
 }
 
 .searchBar {
@@ -200,6 +226,7 @@
 }
 
 .chipCount {
+  font-variant-numeric: tabular-nums;
   font-size: 0.6875rem;
   color: inherit;
   opacity: 0.7;

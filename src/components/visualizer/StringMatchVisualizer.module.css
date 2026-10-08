@@ -62,7 +62,7 @@
     var(--state-pivot) 28%,
     var(--color-bg-surface)
   );
-  box-shadow: 0 0 8px var(--state-pivot);
+  box-shadow: var(--glow-state-comparing);
   color: var(--color-text);
 }
 
@@ -72,7 +72,7 @@
     var(--state-swapping) 28%,
     var(--color-bg-surface)
   );
-  box-shadow: 0 0 8px var(--state-swapping);
+  box-shadow: inset 0 0 0 2px var(--state-swapping);
   color: var(--color-text);
 }
 
@@ -82,6 +82,7 @@
     var(--state-settled) 20%,
     var(--color-bg-surface)
   );
+  box-shadow: var(--glow-state-settled);
   color: var(--color-text);
 }
 

@@ -1,0 +1,244 @@
+.atlas {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-6);
+}
+
+/* ---- 表示切替タブ ---- */
+.tabs {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-2) var(--space-3);
+}
+
+.tab {
+  font-family: var(--font-mono);
+  font-size: 0.8125rem;
+  letter-spacing: 0.04em;
+  padding: var(--space-1) var(--space-4);
+  border: 1px solid transparent;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--color-text-muted);
+  cursor: pointer;
+  transition:
+    color 0.15s ease,
+    border-color 0.15s ease;
+}
+
+.tab:hover {
+  color: var(--color-accent-amber);
+}
+
+.tabActive {
+  color: var(--color-accent-amber);
+  border-color: var(--color-accent-amber);
+}
+
+.tabHint {
+  font-family: var(--font-body);
+  font-size: 0.8125rem;
+  color: var(--color-text-muted);
+}
+
+/* ---- 時間軸 ---- */
+.timeline {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  border-left: 1px solid var(--color-line);
+  padding-left: var(--space-6);
+}
+
+.timelineItem {
+  position: relative;
+}
+
+/* 線上の節目。丸ではなく四角にして、可視化の点との混同を避ける。 */
+.timelineItem::before {
+  content: "";
+  position: absolute;
+  left: calc(-1 * var(--space-6) - 4px);
+  top: var(--space-4);
+  width: 7px;
+  height: 7px;
+  background: var(--color-accent-amber);
+}
+
+.card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  border: 1px solid var(--color-line);
+  border-radius: 8px;
+  padding: var(--space-4);
+  background: var(--color-bg-surface);
+}
+
+.detailCompact {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  border: 1px solid var(--color-accent-amber);
+  border-radius: 8px;
+  padding: var(--space-4);
+  background: var(--color-bg-surface);
+}
+
+.cardHead {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: var(--space-1) var(--space-3);
+}
+
+.year {
+  font-family: var(--font-mono);
+  font-size: 0.8125rem;
+  font-variant-numeric: tabular-nums;
+  color: var(--color-accent-amber);
+}
+
+.cardTitle {
+  font-family: var(--font-display);
+  font-size: 1.125rem;
+  font-weight: 700;
+}
+
+.cardLink:hover {
+  color: var(--color-accent-amber);
+}
+
+.category {
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+  letter-spacing: 0.04em;
+  color: var(--color-text-muted);
+}
+
+.people {
+  font-family: var(--font-body);
+  font-size: 0.8125rem;
+  color: var(--color-text-muted);
+}
+
+.purpose,
+.source {
+  font-family: var(--font-body);
+  font-size: 0.875rem;
+  line-height: 1.7;
+}
+
+.purposeLabel,
+.sourceLabel {
+  display: inline-block;
+  margin-right: var(--space-2);
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+  letter-spacing: 0.08em;
+  color: var(--color-accent-amber);
+}
+
+.source {
+  font-size: 0.75rem;
+  color: var(--color-text-muted);
+}
+
+/* ---- 分野の輪 ---- */
+.ringLayout {
+  display: grid;
+  grid-template-columns: minmax(0, 3fr) minmax(0, 2fr);
+  gap: var(--space-6);
+  align-items: start;
+}
+
+@media (max-width: 900px) {
+  .ringLayout {
+    grid-template-columns: 1fr;
+  }
+}
+
+.ring {
+  width: 100%;
+  height: auto;
+  max-height: 80vh;
+}
+
+.guide {
+  fill: none;
+  stroke: var(--color-line);
+  stroke-dasharray: 3 4;
+}
+
+.guideLabel {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  fill: var(--color-text-muted);
+}
+
+.spoke {
+  stroke: var(--color-line);
+}
+
+.sectorLabel {
+  font-family: var(--font-body);
+  font-size: 11px;
+  fill: var(--color-text-muted);
+}
+
+.dotGroup {
+  cursor: pointer;
+}
+
+.dotGroup:focus-visible {
+  outline: none;
+}
+
+.dotGroup:focus-visible .dot {
+  stroke: var(--color-text);
+  stroke-width: 2;
+}
+
+.dotHit {
+  fill: transparent;
+}
+
+.dot {
+  fill: var(--color-accent-amber);
+  transition: r 0.12s ease;
+}
+
+.dotGroup:hover .dot {
+  fill: var(--color-text);
+}
+
+/* 選択中は塗りと外周の輪の両方で示す(色だけに頼らない) */
+.dotSelected {
+  fill: var(--color-accent-amber);
+  stroke: var(--color-text);
+  stroke-width: 2;
+}
+
+.detailPane {
+  position: sticky;
+  top: var(--space-6);
+}
+
+.detailHint {
+  font-family: var(--font-body);
+  font-size: 0.875rem;
+  line-height: 1.7;
+  color: var(--color-text-muted);
+  border: 1px dashed var(--color-line);
+  border-radius: 8px;
+  padding: var(--space-6);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tab,
+  .dot {
+    transition: none;
+  }
+}

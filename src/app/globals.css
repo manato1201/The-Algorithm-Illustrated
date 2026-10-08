@@ -1,5 +1,11 @@
-/* デザイントークン — docs/design/ui-design.md 2節と同期させる */
-:root {
+/* デザイントークン — docs/design/ui-design.md 2節と同期させる
+   ダークがデフォルト。ライトは :root[data-theme="light"] で上書きする(末尾のライトテーマ節)。
+   可視化ステージ(ZoomableStage)は data-surface="dark" を持ち、テーマに関係なく常にダークの値を使う
+   (Canvas描画側の状態色はTS定数でダーク前提のため、ステージを「展示ケース」として常時ダークに保つ)。 */
+:root,
+[data-surface="dark"] {
+  color-scheme: dark;
+
   /* コアカラー */
   --color-bg-void: #06070a;
   --color-bg-surface: #12141b;
@@ -16,17 +22,24 @@
   --state-pivot: #7dd3ff;
   --state-settled: var(--color-accent-green);
 
-  /* 罫線・発光 */
+  /* 罫線・発光
+     発光は「確定(settled)」「比較中(comparing)」の状態色だけに限定する(決めごと表 P7)。
+     UIクローム(カード・ボタン・ブランドドット等)は発光させないため、--glow-amber / --glow-greenは無効値。
+     状態の発光は --glow-state-* を可視化側(CSS/Canvas)で使う。 */
   --color-line: rgba(255, 167, 51, 0.14);
-  --glow-amber: 0 0 12px rgba(255, 167, 51, 0.35);
-  --glow-green: 0 0 12px rgba(77, 255, 176, 0.35);
+  --glow-amber: 0 0 0 0 transparent;
+  --glow-green: 0 0 0 0 transparent;
+  --glow-state-comparing: 0 0 10px rgba(255, 210, 63, 0.55);
+  --glow-state-settled: 0 0 10px rgba(77, 255, 176, 0.5);
 
   /* タイポグラフィ
      --font-display-raw 等は next/font/google が <html> に注入する生のCSS変数(フォールバック込み)。
      ここでプロジェクト固有のフォールバックを足した最終トークンにラップする。 */
-  --font-display: var(--font-display-raw), "Hiragino Kaku Gothic ProN", sans-serif;
+  --font-display:
+    var(--font-display-raw), "Hiragino Kaku Gothic ProN", sans-serif;
   --font-display-en: var(--font-display-en-raw), sans-serif;
-  --font-body: var(--font-body-raw), "Hiragino Kaku Gothic ProN", "Yu Gothic", sans-serif;
+  --font-body:
+    var(--font-body-raw), "Hiragino Kaku Gothic ProN", "Yu Gothic", sans-serif;
   --font-mono: var(--font-mono-raw), "Source Han Code JP", monospace;
 
   /* 間隔スケール */
@@ -40,9 +53,39 @@
   --space-16: 4rem;
 }
 
+/* ライトテーマ(U5)。状態色は白地で区別が保てるよう、彩度を落とし明度を下げた値にする
+   (特に黄色の「比較中」は白地で読めなくなりやすい)。 */
+:root[data-theme="light"] {
+  color-scheme: light;
+
+  --color-bg-void: #f4f2ec;
+  --color-bg-surface: #ffffff;
+  --color-bg-surface-2: #ebe8e0;
+  --color-text: #15171d;
+  --color-text-muted: #586073;
+  --color-accent-green: #0a7f55;
+  --color-accent-amber: #a35800;
+
+  --state-idle: #b9bec9;
+  --state-comparing: #c28500;
+  --state-swapping: #d3254a;
+  --state-pivot: #1478b8;
+  --state-settled: var(--color-accent-green);
+
+  --color-line: rgba(163, 88, 0, 0.24);
+  --glow-state-comparing: 0 0 8px rgba(194, 133, 0, 0.45);
+  --glow-state-settled: 0 0 8px rgba(10, 127, 85, 0.4);
+}
+
 html {
   height: 100%;
-  color-scheme: dark;
+}
+
+/* 「始める ↓」などのページ内アンカーのスクロール。動きを減らす設定では即時に移動する。 */
+@media (prefers-reduced-motion: no-preference) {
+  html {
+    scroll-behavior: smooth;
+  }
 }
 
 html,

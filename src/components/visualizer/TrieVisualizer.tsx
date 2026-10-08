@@ -3,11 +3,12 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import styles from "./TrieVisualizer.module.css";
 import { PlaybackControls } from "./PlaybackControls";
+import { buildStepKinds, trieEntities } from "./step-timeline";
 import { ZoomableStage } from "./ZoomableStage";
 import { useStepPlayer } from "./useStepPlayer";
 import { useWorkerFrames } from "./useWorkerFrames";
 import { ParticleBurstLayer, type ParticleBurst } from "./ParticleBurstLayer";
-import { readableTextColor, stateColors } from "@/lib/design-tokens";
+import { readableTextColor, shouldGlow, stateColors } from "@/lib/design-tokens";
 import type { TrieFrame, TrieNodeState } from "@/lib/trie-visualizer";
 import type { WorkerRequest } from "@/workers/algorithm-worker";
 
@@ -78,6 +79,7 @@ export function TrieVisualizer({ algorithmId }: TrieVisualizerProps) {
   const { frames, isComputing } = useWorkerFrames<TrieFrame>(request);
   const { stepIndex, isFinished, showPause, speed, setSpeed, handlePlayPause, handleStep, handleScrub, reset } =
     useStepPlayer(frames.length);
+  const stepKinds = useMemo(() => buildStepKinds(frames, trieEntities), [frames]);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   // burstsのxRatio/yRatio計算にcanvasの実サイズが必要だが、useMemo内でref.currentを直接読むのは
   // レンダー中のref参照になり許可されない(react-hooks/refs)。描画useEffectで測定した値をstateとして
@@ -166,8 +168,8 @@ export function TrieVisualizer({ algorithmId }: TrieVisualizerProps) {
       const { x, y } = point(node.id);
       const radius = node.isEndOfWord ? 15 : 13;
 
-      ctx.shadowColor = state === "idle" ? "transparent" : color;
-      ctx.shadowBlur = state === "idle" ? 0 : 12;
+      ctx.shadowColor = shouldGlow(color) ? color : "transparent";
+      ctx.shadowBlur = shouldGlow(color) ? 12 : 0;
       ctx.fillStyle = color;
       ctx.beginPath();
       ctx.arc(x, y, radius, 0, Math.PI * 2);
@@ -235,6 +237,7 @@ export function TrieVisualizer({ algorithmId }: TrieVisualizerProps) {
         showPause={showPause}
         isFinished={isFinished}
         speed={speed}
+        stepKinds={stepKinds}
         onPlayPause={handlePlayPause}
         onStep={handleStep}
         onScrub={handleScrub}

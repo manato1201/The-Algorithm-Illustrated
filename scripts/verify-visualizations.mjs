@@ -131,6 +131,8 @@ import {
 import { TREE_VISUALIZERS } from "../src/lib/tree-visualizers.ts";
 import { STRING_VISUALIZERS, TEXT, PATTERN } from "../src/lib/string-visualizers.ts";
 import { TRIE_VISUALIZERS } from "../src/lib/trie-visualizer.ts";
+import { GEOMETRY_VISUALIZERS, GEOMETRY_DATASETS } from "../src/lib/geometry-visualizers.ts";
+import { LANE_VISUALIZERS, LANE_META } from "../src/lib/lane-visualizers.ts";
 
 let passCount = 0;
 let failCount = 0;
@@ -1432,6 +1434,79 @@ for (const [id, fn] of Object.entries(STRING_VISUALIZERS)) {
 
 for (const [id, fn] of Object.entries(TRIE_VISUALIZERS)) {
   checkWellFormed(id, fn());
+}
+
+// ===========================================================================
+// GEOMETRY: 全件に構造チェック(フレームが壊れておらず、参照する点idが全てデータセットに存在する)。
+// 存在しない点idを参照するとGeometryVisualizer.tsxが描画時にクラッシュするため、機械的に防ぐ。
+// ===========================================================================
+section("GEOMETRY: 構造チェック(参照する点idの存在)");
+for (const [id, fn] of Object.entries(GEOMETRY_VISUALIZERS)) {
+  const frames = fn();
+  checkWellFormed(id, frames);
+  const dataset = GEOMETRY_DATASETS[id];
+  check(`${id}: データセットが登録されている`, dataset !== undefined);
+  if (!dataset) continue;
+  const pointIds = new Set(dataset.points.map((p) => p.id));
+  const unknown = new Set();
+  for (const frame of frames) {
+    for (const pid of Object.keys(frame.pointStates)) if (!pointIds.has(pid)) unknown.add(pid);
+    for (const seg of frame.segments) {
+      if (!pointIds.has(seg.from)) unknown.add(seg.from);
+      if (!pointIds.has(seg.to)) unknown.add(seg.to);
+    }
+  }
+  check(`${id}: フレームが参照する点idが全てデータセットに存在する`, unknown.size === 0, [...unknown].join(","));
+}
+
+// ===========================================================================
+// LANES: 同じ計算を複数方式で並べる可視化(行列の掛け算)。
+// 独立に計算した A×B と各レーンの最終結果を突き合わせ、全レーンが同じステップ番号で進むこと、
+// 巻き戻しに必要な「フレームが全レーンの状態をまとめて持つ」性質が保たれていることを確認する。
+// ===========================================================================
+section("LANES: 3方式の行列積(逐次/並列/回路固定)");
+{
+  const id = "matrix-multiplication-three-ways";
+  const frames = LANE_VISUALIZERS[id]();
+  const meta = LANE_META[id];
+  checkWellFormed(id, frames);
+
+  const n = meta.size;
+  const reference = Array.from({ length: n }, (_, i) =>
+    Array.from({ length: n }, (_, j) => meta.matrixA[i].reduce((sum, a, k) => sum + a * meta.matrixB[k][j], 0)),
+  );
+
+  check(`${id}: ステップ番号が0から1ずつ増える`, frames.every((f, i) => f.step === i));
+  check(
+    `${id}: 全フレームで3レーンが同じ並び(sequential/parallel/fixed)`,
+    frames.every((f) => f.lanes.map((l) => l.id).join() === "sequential,parallel,fixed"),
+  );
+
+  const last = frames[frames.length - 1];
+  for (const lane of last.lanes) {
+    const values = lane.cells.map((cell) => cell.partial);
+    const expected = reference.flat();
+    check(`${id}/${lane.id}: 最終結果が独立に計算した A×B と一致`, values.every((v, i) => v === expected[i]), JSON.stringify(values));
+    check(`${id}/${lane.id}: 完了した乗加算が総数(${n ** 3})に一致`, lane.completedMacs === n ** 3 && lane.finished);
+  }
+
+  const firstFinished = (laneId) => frames.find((f) => f.lanes.find((l) => l.id === laneId).finished)?.step;
+  check(`${id}: 逐次の完了ステップ=${n ** 3}`, firstFinished("sequential") === n ** 3);
+  check(`${id}: 並列の完了ステップ=${n}`, firstFinished("parallel") === n);
+  check(`${id}: 回路固定の完了ステップ=${n + 1}(固定の準備1+Aを${n}行)`, firstFinished("fixed") === n + 1);
+
+  const reads = Object.fromEntries(last.lanes.map((l) => [l.id, l.memoryReads]));
+  check(`${id}: 回路固定のデータ読み出しが最も少ない`, reads.fixed < reads.parallel && reads.fixed < reads.sequential, JSON.stringify(reads));
+  check(`${id}: 読み出し量の最大値がメタ情報の正規化値と一致`, Math.max(...Object.values(reads)) === meta.maxReads);
+
+  let monotonic = true;
+  for (let i = 1; i < frames.length; i++) {
+    frames[i].lanes.forEach((lane, li) => {
+      const prev = frames[i - 1].lanes[li];
+      if (lane.completedMacs < prev.completedMacs || lane.memoryReads < prev.memoryReads) monotonic = false;
+    });
+  }
+  check(`${id}: 完了数・読み出し量が各ステップで減らない(巻き戻しと整合)`, monotonic);
 }
 
 // ---------------------------------------------------------------------------
