@@ -121,7 +121,7 @@ src/
     updates/            更新情報画面のフィード表示
     visualizer/         可視化コンポーネント一式(ソート/探索/経路探索/グラフ/DP/木/トライ/文字列/計算幾何/レーン比較)
                         +再生コントロール(useStepPlayer/PlaybackControls: 状態色のタイムライン・速度・累計カウンタ)
-                        +step-timeline.ts(フレーム→ステップごとの状態種別)+Web Worker連携(useWorkerFrames)
+                        +step-timeline.ts(フレーム→ステップごとの状態種別)+ScrubBridge(解説のスクロール→再生位置)+Web Worker連携(useWorkerFrames)
                         +パーティクル演出(ParticleBurstLayer)+ディスパッチャ(AlgorithmVisualizer)
   lib/
     design-tokens.ts    デザイントークンのTS版(Canvas用)。shouldGlow(発光は確定/比較中のみ)・readableTextColor(文字色)
@@ -129,6 +129,7 @@ src/
     content/            記事・年表の読み込み(gray-matter + marked)
     has-visualizer.ts   idに可視化があるかの判定(各 *_VISUALIZERS レジストリを照合)
     *-visualizers.ts    可視化kindごとのステップ列生成(sort/search/pathfinding/graph/dp/tree/string/geometry/lane)
+    entry-points.ts     トップの入口(まずはここから/用途から)に載せるid一覧(存在しないidはビルドで失敗)
     use-favorites.ts, recently-viewed.ts, use-media-query.ts  localStorage・メディアクエリ連携フック
   workers/
     algorithm-worker.ts 可視化のステップ列生成を実行するWeb Worker(単一インスタンスを使い回す設計)
@@ -148,9 +149,9 @@ docs/
 
 - ✅ 収録758件・29カテゴリ(category→subcategoryの2階層)。各記事に概要・仕組み・特性/トレードオフ・実装例(Python/TypeScript中心)
 - ✅ 可視化321件(42%)。9種のステップ再生kind(ソート/探索/経路探索/グラフ/DP/木/トライ/文字列/計算幾何)+同じ計算を3方式で並べるレーン比較。ステップ生成はWeb Worker
-- ✅ 再生コントロール: 状態色のタイムライン(クリック・ドラッグで任意ステップへ)、速度切替、キーボード操作、累計カウンタ。巻き戻すと数値も同じ時点に戻る
-- ✅ カタログ: 検索・カテゴリ/サブカテゴリ/可視化対応/お気に入りの絞り込み、リキッドタブ、モバイルのスタック表示、最近見た履歴
-- ✅ 詳細ページ: コードのコピー、お気に入り、関連アルゴリズム
+- ✅ 再生コントロール: 状態色のタイムライン(クリック・ドラッグで任意ステップへ)、速度0.25×〜4×、キーボード(Space / ← → / `,` `.`)、累計カウンタ、残像(ソート・探索)、条件ステッパー(ソートの要素数・レーン比較の行列サイズ)。巻き戻すと数値も同じ時点に戻る
+- ✅ カタログ: 入口の段分け(まずはここから/用途から)、検索・カテゴリ/サブカテゴリ/可視化対応/お気に入りの絞り込み(`/?category=...` のディープリンク対応)、リキッドタブ、モバイルのスタック表示、最近見た履歴
+- ✅ 詳細ページ: パンくず、読了バー、開閉できる節(特性・実装例)、解説のスクロールで再生を進めるトグル、コードのコピー、お気に入り、関連アルゴリズム
 - ✅ アルゴリズム年表Atlas(`/atlas`): 時間軸/分野の輪の2ビュー。全項目に出典と生まれた目的
 - ✅ ダーク/ライトのテーマ切替(可視化ステージは常にダーク)。発光は確定・比較中の状態色だけに限定
 - ✅ 404ページ、比較画面、更新情報(RSS)、About、入門(/basics)

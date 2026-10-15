@@ -19,7 +19,7 @@ export type WorkerRequest =
   | { kind: "string"; algorithmId: string }
   | { kind: "trie"; algorithmId: string }
   | { kind: "geometry"; algorithmId: string }
-  | { kind: "lanes"; algorithmId: string };
+  | { kind: "lanes"; algorithmId: string; size?: number };
 
 export type WorkerResponse = {
   /** どのrequestに対する結果かをpostMessageの往復越しに相関させるためエコーバックする。 */
@@ -71,7 +71,7 @@ ctx.onmessage = (event) => {
     frames = generate ? generate() : [];
   } else if (request.kind === "lanes") {
     const generate = LANE_VISUALIZERS[request.algorithmId];
-    frames = generate ? generate() : [];
+    frames = generate ? generate(request.size) : [];
   }
 
   ctx.postMessage({ request, frames });

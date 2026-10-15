@@ -20,9 +20,16 @@ type ChipIndicatorRect = { left: number; top: number; width: number; height: num
 
 type SortOrder = "category" | "name";
 
+/** トップの入口の段分け(まずはここから / 用途から)。解決済みのメタ情報で受け取る。 */
+export type CatalogEntryPoints = {
+  start: AlgorithmMeta[];
+  useCases: { label: string; items: AlgorithmMeta[] }[];
+};
+
 type AlgorithmCatalogProps = {
   algorithms: AlgorithmMeta[];
   featuredId: string;
+  entryPoints?: CatalogEntryPoints;
 };
 
 /**
@@ -34,6 +41,7 @@ type AlgorithmCatalogProps = {
 export function AlgorithmCatalog({
   algorithms,
   featuredId,
+  entryPoints,
 }: AlgorithmCatalogProps) {
   const [query, setQuery] = useState("");
   const [activeCategory, setActiveCategory] = useState<string | null>(null);
@@ -49,6 +57,24 @@ export function AlgorithmCatalog({
   const [stackMode, setStackMode] = useState(false);
   const categoryChipRowRef = useRef<HTMLDivElement>(null);
   const [chipIndicator, setChipIndicator] = useState<ChipIndicatorRect | null>(null);
+  // ディープリンク(詳細ページのパンくずなどから ?category=... で来た場合)。
+  // useSearchParamsは静的描画のSSRを崩す(Suspenseが要る)ので、マウント後に一度だけwindow.locationを読む。
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      const params = new URLSearchParams(window.location.search);
+      const category = params.get("category");
+      if (category && (CATEGORY_ORDER as readonly string[]).includes(category)) {
+        setActiveCategory(category);
+        setActiveSubcategory(null);
+      }
+      const q = params.get("q");
+      if (q) setQuery(q);
+      if (category || q) {
+        document.getElementById("catalog-start")?.scrollIntoView({ block: "start" });
+      }
+    }, 0);
+    return () => clearTimeout(timer);
+  }, []);
   const trimmedQuery = query.trim().toLowerCase();
   const isSearching = trimmedQuery.length > 0;
   const isFiltering =
@@ -350,6 +376,48 @@ export function AlgorithmCatalog({
                 {algorithm.name}
               </Link>
             ))}
+          </div>
+        </section>
+      ) : null}
+
+      {!isFiltering && entryPoints ? (
+        <section className={styles.entry} aria-label="入口">
+          <div className={styles.entryBlock}>
+            <h2 className={styles.sectionLabel}>■ START まずはここから</h2>
+            <p className={styles.entryLead}>
+              はじめてなら、まず基本の探索・整列・グラフ探索から。
+              <Link href="/basics" className={styles.entryInlineLink}>
+                アルゴリズムとは?
+              </Link>
+            </p>
+            <div className={styles.chipRow}>
+              {entryPoints.start.map((algorithm) => (
+                <Link key={algorithm.id} href={`/algorithms/${algorithm.id}`} className={styles.chip}>
+                  {algorithm.name}
+                </Link>
+              ))}
+            </div>
+          </div>
+          <div className={styles.entryBlock}>
+            <h2 className={styles.sectionLabel}>■ BY USE 用途から</h2>
+            <ul className={styles.useCaseList}>
+              {entryPoints.useCases.map((group) => (
+                <li key={group.label} className={styles.useCase}>
+                  <span className={styles.useCaseLabel}>{group.label}</span>
+                  <span className={styles.useCaseItems}>
+                    {group.items.map((algorithm) => (
+                      <Link
+                        key={algorithm.id}
+                        href={`/algorithms/${algorithm.id}`}
+                        className={styles.useCaseLink}
+                      >
+                        {algorithm.name}
+                      </Link>
+                    ))}
+                  </span>
+                </li>
+              ))}
+            </ul>
           </div>
         </section>
       ) : null}

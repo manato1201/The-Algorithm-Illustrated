@@ -40,6 +40,35 @@ const contentRenderer = {
 };
 marked.use({ renderer: contentRenderer });
 
+/**
+ * 見出し(## ...)単位でアコーディオン(<details>)に包む節と、初期状態。
+ * 長いコード(実装例)は普段は閉じ、読み物の中心(特性・トレードオフ)は開いたままにする。
+ * 概要・仕組みは常に見せたいので包まない。
+ */
+const ACCORDION_SECTIONS: Record<string, { open: boolean }> = {
+  "特性・トレードオフ": { open: true },
+  実装例: { open: false },
+};
+
+/** markedが出力したHTMLを<h2>ごとに分け、対象の節だけ <details> で包む。 */
+function wrapAccordions(html: string): string {
+  return html
+    .split(/(?=<h2[ >])/)
+    .map((chunk) => {
+      const match = chunk.match(/^<h2[^>]*>([\s\S]*?)<\/h2>/);
+      if (!match) return chunk;
+      const title = match[1].replace(/<[^>]+>/g, "").trim();
+      // 「実装例(Lomuto分割方式)」のように補足が付く見出しも対象にするため、前方一致で探す
+      const key = Object.keys(ACCORDION_SECTIONS).find((name) => title.startsWith(name));
+      const config = key ? ACCORDION_SECTIONS[key] : undefined;
+      if (!config) return chunk;
+      const heading = match[0];
+      const rest = chunk.slice(heading.length);
+      return `<details class="accordion"${config.open ? " open" : ""}><summary class="accordionSummary">${heading}</summary><div class="accordionBody">${rest}</div></details>`;
+    })
+    .join("");
+}
+
 export type AlgorithmFrontmatter = {
   name: string;
   category: string;
@@ -118,6 +147,6 @@ export function getAlgorithmDetail(id: string): AlgorithmDetail | null {
     id,
     ...parsed.frontmatter,
     hasVisualizer: hasVisualizer(id),
-    bodyHtml: marked.parse(parsed.content, { async: false }) as string,
+    bodyHtml: wrapAccordions(marked.parse(parsed.content, { async: false }) as string),
   };
 }

@@ -5,7 +5,7 @@ import { useCallback, useEffect, useState } from "react";
 const BASE_INTERVAL_MS = 400;
 
 /** 再生速度の倍率。1x基準でBASE_INTERVAL_MSを割ることでフレーム間隔を変える。 */
-export const PLAYBACK_SPEEDS = [0.5, 1, 2, 4] as const;
+export const PLAYBACK_SPEEDS = [0.25, 0.5, 1, 2, 4] as const;
 export type PlaybackSpeed = (typeof PLAYBACK_SPEEDS)[number];
 const DEFAULT_SPEED: PlaybackSpeed = 1;
 

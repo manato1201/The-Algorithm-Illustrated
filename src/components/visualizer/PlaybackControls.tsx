@@ -12,6 +12,8 @@ import {
 } from "./PlaybackIcons";
 import { countKindsUpTo, type StepKind } from "./step-timeline";
 import { PLAYBACK_SPEEDS, type PlaybackSpeed } from "./useStepPlayer";
+import { useRegisterScrub } from "./ScrubBridge";
+import { useMediaQuery } from "@/lib/use-media-query";
 
 type PlaybackControlsProps = {
   stepIndex: number;
@@ -27,6 +29,10 @@ type PlaybackControlsProps = {
   onSpeedChange: (speed: PlaybackSpeed) => void;
   onReset: () => void;
   resetLabel?: string;
+  /** 残像(直前のステップの状態を薄く残す)。対応する可視化だけが渡す。動きを減らす設定では出さない。 */
+  onionSkin?: { enabled: boolean; onChange: (enabled: boolean) => void };
+  /** 条件の調整(要素数・行列サイズなど)。ステッパー(−/+)として表示する。 */
+  stepper?: { label: string; value: number; min: number; max: number; onChange: (value: number) => void };
 };
 
 /** タイムラインに並べる状態と表示名(決めごと表の状態語彙)。idleは数えない。 */
@@ -65,8 +71,13 @@ export function PlaybackControls({
   onSpeedChange,
   onReset,
   resetLabel = "リセット",
+  onionSkin,
+  stepper,
 }: PlaybackControlsProps) {
   const [rippleCount, setRippleCount] = useState(0);
+  const reduceMotion = useMediaQuery("(prefers-reduced-motion: reduce)");
+  // 詳細ページでは、解説のスクロール位置から再生位置を動かせるよう、操作口を登録する(Providerが無ければ何もしない)
+  useRegisterScrub(frameCount, onScrub);
 
   // 目盛り(ビン)ごとの代表状態。ビンに複数ステップが入る場合は最も注目すべき状態を採る。
   const ticks = useMemo(() => {
@@ -105,10 +116,10 @@ export function PlaybackControls({
     // (ここでも onStep を呼ぶと1回のキー操作で2ステップ進んでしまう)。
     if (event.target instanceof HTMLInputElement) return;
 
-    if (event.key === "ArrowLeft") {
+    if (event.key === "ArrowLeft" || event.key === ",") {
       event.preventDefault();
       onStep(-1);
-    } else if (event.key === "ArrowRight") {
+    } else if (event.key === "ArrowRight" || event.key === ".") {
       event.preventDefault();
       onStep(1);
     } else if (event.key === " " || event.code === "Space") {
@@ -124,7 +135,7 @@ export function PlaybackControls({
       tabIndex={0}
       onKeyDown={handleKeyDown}
       data-finished={isFinished && frameCount > 1}
-      aria-label="再生コントロール(クリック後、矢印キーで前後移動、スペースキーで再生/一時停止)"
+      aria-label="再生コントロール(クリック後、矢印キーまたは , . で前後移動、スペースキーで再生/一時停止)"
     >
       <div className={styles.timeline}>
         <div className={styles.strip} aria-hidden="true">
@@ -202,6 +213,42 @@ export function PlaybackControls({
           <ResetIcon />
           {resetLabel}
         </button>
+        {stepper ? (
+          <div className={styles.stepper} role="group" aria-label={stepper.label}>
+            <span className={styles.stepperLabel}>{stepper.label}</span>
+            <button
+              type="button"
+              className={styles.stepperButton}
+              onClick={() => stepper.onChange(stepper.value - 1)}
+              disabled={stepper.value <= stepper.min}
+              aria-label={`${stepper.label}を減らす`}
+            >
+              −
+            </button>
+            <span className={styles.stepperValue}>{stepper.value}</span>
+            <button
+              type="button"
+              className={styles.stepperButton}
+              onClick={() => stepper.onChange(stepper.value + 1)}
+              disabled={stepper.value >= stepper.max}
+              aria-label={`${stepper.label}を増やす`}
+            >
+              +
+            </button>
+          </div>
+        ) : null}
+        {onionSkin && !reduceMotion ? (
+          <button
+            type="button"
+            className={styles.speedButton}
+            aria-pressed={onionSkin.enabled}
+            data-active={onionSkin.enabled}
+            onClick={() => onionSkin.onChange(!onionSkin.enabled)}
+            title="直前のステップの状態を薄く残して表示する"
+          >
+            残像
+          </button>
+        ) : null}
         <div className={styles.speedGroup} role="group" aria-label="再生速度">
           <SpeedIcon className={styles.speedIcon} />
           {PLAYBACK_SPEEDS.map((s) => (

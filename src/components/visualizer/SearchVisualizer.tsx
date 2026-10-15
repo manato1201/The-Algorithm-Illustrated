@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import styles from "./SearchVisualizer.module.css";
 import { PlaybackControls } from "./PlaybackControls";
 import { buildStepKinds, highlightEntities } from "./step-timeline";
@@ -10,6 +10,7 @@ import { useWorkerFrames } from "./useWorkerFrames";
 import { ParticleBurstLayer, type ParticleBurst } from "./ParticleBurstLayer";
 import { shouldGlow, stateColors, type StateColorKey } from "@/lib/design-tokens";
 import { SEARCH_TARGET, type SearchFrame } from "@/lib/search-visualizers";
+import { useMediaQuery } from "@/lib/use-media-query";
 import type { WorkerRequest } from "@/workers/algorithm-worker";
 
 const LEGEND_ITEMS: { key: StateColorKey; label: string }[] = [
@@ -53,6 +54,8 @@ export function SearchVisualizer({ algorithmId }: SearchVisualizerProps) {
     useStepPlayer(frames.length);
   const stepKinds = useMemo(() => buildStepKinds(frames, highlightEntities), [frames]);
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const [onionSkin, setOnionSkin] = useState(false);
+  const reduceMotion = useMediaQuery("(prefers-reduced-motion: reduce)");
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -85,6 +88,22 @@ export function SearchVisualizer({ algorithmId }: SearchVisualizerProps) {
       height - floorPadding - ((value - minValue) / range) * usableHeight;
     const zeroY = yFor(0);
 
+    // 残像: 直前のステップの棒を、輪郭だけ薄く残す(動きを減らす設定では出さない)
+    const previousFrame = frames[stepIndex - 1];
+    if (onionSkin && !reduceMotion && previousFrame && previousFrame.array.length === n) {
+      ctx.save();
+      ctx.globalAlpha = 0.4;
+      ctx.lineWidth = 1;
+      previousFrame.array.forEach((value, index) => {
+        const ghostY = yFor(value);
+        const ghostTop = Math.min(ghostY, zeroY);
+        const ghostHeight = Math.abs(zeroY - ghostY);
+        ctx.strokeStyle = stateColors[previousFrame.highlight[index] ?? "idle"];
+        ctx.strokeRect(index * (barWidth + gap) + 0.5, ghostTop + 0.5, barWidth - 1, Math.max(ghostHeight - 1, 0));
+      });
+      ctx.restore();
+    }
+
     values.forEach((value, index) => {
       const valueY = yFor(value);
       const x = index * (barWidth + gap);
@@ -98,7 +117,7 @@ export function SearchVisualizer({ algorithmId }: SearchVisualizerProps) {
       ctx.fillStyle = color;
       ctx.fillRect(x, rectTop, barWidth, rectHeight);
     });
-  }, [frames, stepIndex]);
+  }, [frames, stepIndex, onionSkin, reduceMotion]);
 
   const bursts = useMemo<ParticleBurst[]>(() => {
     const currentFrame = frames[stepIndex];
@@ -147,6 +166,7 @@ export function SearchVisualizer({ algorithmId }: SearchVisualizerProps) {
         onSpeedChange={setSpeed}
         onReset={reset}
         resetLabel="最初から"
+        onionSkin={{ enabled: onionSkin, onChange: setOnionSkin }}
       />
       <ul className={styles.legend}>
         {LEGEND_ITEMS.map((item) => (
