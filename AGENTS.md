@@ -11,6 +11,8 @@ This version has breaking changes — APIs, conventions, and file structure may 
 - `src/lib/algorithm-categories.ts` の `CATEGORY_TAXONOMY` に追記する。これが唯一の情報源で、カタログのチップ・表示順・READMEの集計はここから導出される。コンポーネント側にカテゴリ名の配列を重複して持たない。
 - 記事(`content/algorithms/<id>.md`)の frontmatter は `name` / `category` / `subcategory` / `complexity` / `summary` の5項目のみ。`category`/`subcategory` は `CATEGORY_TAXONOMY` の文字列と一字一句一致させる。`summary` の先頭を `[` にしない(YAMLが配列と解釈してビルドが壊れる)。`hasVisualizer` はfrontmatterに書かない。
 - 本文は `## 概要` / `## 仕組み` / `## 特性・トレードオフ` / `## 実装例` の4見出し。「なぜ生まれたか」を概要に書く(図鑑の方針)。
+  - 見出しに補足を付けてよい(`## 実装例(Lomuto分割方式)` など。前方一致で扱う)。詳細ページでは「特性・トレードオフ」は開、「実装例」は閉のアコーディオンになる。
+  - 任意の追加節として `## 使うときの注意` / `## よくある誤解` を、実装例の前に置ける(定型項目。全記事に共通する内容は詳細ページ側が自動で出すので書かない)。
 - 追加したら `npm run verify:categories` を通し、`npm run stats:categories` の出力でREADMEのカテゴリ表を更新する。
 
 ## 可視化を足すとき

@@ -61,6 +61,7 @@ export function MarkdownBody({ html, className }: MarkdownBodyProps) {
     <div
       ref={containerRef}
       className={className}
+      data-markdown-body
       // content/algorithms/*.md はリポジトリで管理する信頼済みコンテンツのみ(外部入力なし)
       dangerouslySetInnerHTML={{ __html: html }}
     />

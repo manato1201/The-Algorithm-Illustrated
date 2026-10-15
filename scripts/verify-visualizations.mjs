@@ -191,6 +191,45 @@ for (const [id, fn] of Object.entries(SORT_VISUALIZERS)) {
   }
 }
 
+// ---------------------------------------------------------------------------
+// SORT: 要素数ステッパー(4〜30)の全長さで、全ソートが Array.prototype.sort と一致すること。
+// 画面側のステッパーが生成する入力(重複なし・シャッフル済み)と同じ形で、長さだけを振って確かめる。
+// ---------------------------------------------------------------------------
+section("SORT: 要素数4〜30(要素数ステッパーの範囲)");
+{
+  let state = 123456789;
+  const next = () => {
+    state ^= state << 13;
+    state ^= state >>> 17;
+    state ^= state << 5;
+    return (state >>> 0) / 4294967296;
+  };
+  let allOk = true;
+  const failed = [];
+  for (let count = 4; count <= 30; count++) {
+    const input = Array.from({ length: count }, (_, i) => Math.round(((i + 1) * 100) / count));
+    for (let i = input.length - 1; i > 0; i--) {
+      const j = Math.floor(next() * (i + 1));
+      [input[i], input[j]] = [input[j], input[i]];
+    }
+    const expected = [...input].sort((a, b) => a - b);
+    for (const [id, fn] of Object.entries(SORT_VISUALIZERS)) {
+      const frames = fn([...input]);
+      const last = frames[frames.length - 1];
+      const ok = JSON.stringify(last.array) === JSON.stringify(expected);
+      if (!ok) {
+        allOk = false;
+        failed.push(`${id}(n=${count})`);
+      }
+    }
+  }
+  check(
+    `全${Object.keys(SORT_VISUALIZERS).length}種が要素数4〜30のすべてでArray.prototype.sortと一致`,
+    allOk,
+    failed.slice(0, 8).join(", "),
+  );
+}
+
 // ===========================================================================
 // SEARCH (21件)
 // ===========================================================================
@@ -1464,40 +1503,43 @@ for (const [id, fn] of Object.entries(GEOMETRY_VISUALIZERS)) {
 // 独立に計算した A×B と各レーンの最終結果を突き合わせ、全レーンが同じステップ番号で進むこと、
 // 巻き戻しに必要な「フレームが全レーンの状態をまとめて持つ」性質が保たれていることを確認する。
 // ===========================================================================
-section("LANES: 3方式の行列積(逐次/並列/回路固定)");
-{
+section("LANES: 3方式の行列積(逐次/並列/回路固定)・行列サイズ2〜5");
+for (const n of [2, 3, 4, 5]) {
   const id = "matrix-multiplication-three-ways";
-  const frames = LANE_VISUALIZERS[id]();
-  const meta = LANE_META[id];
-  checkWellFormed(id, frames);
+  const frames = LANE_VISUALIZERS[id](n);
+  const meta = LANE_META[id](n);
+  const label = `${id}(n=${n})`;
+  checkWellFormed(label, frames);
 
-  const n = meta.size;
   const reference = Array.from({ length: n }, (_, i) =>
     Array.from({ length: n }, (_, j) => meta.matrixA[i].reduce((sum, a, k) => sum + a * meta.matrixB[k][j], 0)),
   );
 
-  check(`${id}: ステップ番号が0から1ずつ増える`, frames.every((f, i) => f.step === i));
+  check(`${label}: 行列サイズがメタ情報と一致`, meta.size === n && meta.matrixA.length === n && meta.matrixB.length === n);
+  check(`${label}: フレーム数が n³+1`, frames.length === n ** 3 + 1, String(frames.length));
+  check(`${label}: ステップ番号が0から1ずつ増える`, frames.every((f, i) => f.step === i));
   check(
-    `${id}: 全フレームで3レーンが同じ並び(sequential/parallel/fixed)`,
+    `${label}: 全フレームで3レーンが同じ並び(sequential/parallel/fixed)`,
     frames.every((f) => f.lanes.map((l) => l.id).join() === "sequential,parallel,fixed"),
   );
+  check(`${label}: 全レーンのセル数が n²`, frames.every((f) => f.lanes.every((l) => l.cells.length === n * n)));
 
   const last = frames[frames.length - 1];
   for (const lane of last.lanes) {
     const values = lane.cells.map((cell) => cell.partial);
     const expected = reference.flat();
-    check(`${id}/${lane.id}: 最終結果が独立に計算した A×B と一致`, values.every((v, i) => v === expected[i]), JSON.stringify(values));
-    check(`${id}/${lane.id}: 完了した乗加算が総数(${n ** 3})に一致`, lane.completedMacs === n ** 3 && lane.finished);
+    check(`${label}/${lane.id}: 最終結果が独立に計算した A×B と一致`, values.every((v, i) => v === expected[i]), JSON.stringify(values));
+    check(`${label}/${lane.id}: 完了した乗加算が総数(${n ** 3})に一致`, lane.completedMacs === n ** 3 && lane.finished);
   }
 
   const firstFinished = (laneId) => frames.find((f) => f.lanes.find((l) => l.id === laneId).finished)?.step;
-  check(`${id}: 逐次の完了ステップ=${n ** 3}`, firstFinished("sequential") === n ** 3);
-  check(`${id}: 並列の完了ステップ=${n}`, firstFinished("parallel") === n);
-  check(`${id}: 回路固定の完了ステップ=${n + 1}(固定の準備1+Aを${n}行)`, firstFinished("fixed") === n + 1);
+  check(`${label}: 逐次の完了ステップ=${n ** 3}`, firstFinished("sequential") === n ** 3);
+  check(`${label}: 並列の完了ステップ=${n}`, firstFinished("parallel") === n);
+  check(`${label}: 回路固定の完了ステップ=${n + 1}(固定の準備1+Aを${n}行)`, firstFinished("fixed") === n + 1);
 
   const reads = Object.fromEntries(last.lanes.map((l) => [l.id, l.memoryReads]));
-  check(`${id}: 回路固定のデータ読み出しが最も少ない`, reads.fixed < reads.parallel && reads.fixed < reads.sequential, JSON.stringify(reads));
-  check(`${id}: 読み出し量の最大値がメタ情報の正規化値と一致`, Math.max(...Object.values(reads)) === meta.maxReads);
+  check(`${label}: 読み出し量が 逐次=並列=2n³、回路固定=2n²`, reads.sequential === 2 * n ** 3 && reads.parallel === 2 * n ** 3 && reads.fixed === 2 * n * n, JSON.stringify(reads));
+  check(`${label}: 読み出し量の最大値がメタ情報の正規化値と一致`, Math.max(...Object.values(reads)) === meta.maxReads);
 
   let monotonic = true;
   for (let i = 1; i < frames.length; i++) {
@@ -1506,7 +1548,7 @@ section("LANES: 3方式の行列積(逐次/並列/回路固定)");
       if (lane.completedMacs < prev.completedMacs || lane.memoryReads < prev.memoryReads) monotonic = false;
     });
   }
-  check(`${id}: 完了数・読み出し量が各ステップで減らない(巻き戻しと整合)`, monotonic);
+  check(`${label}: 完了数・読み出し量が各ステップで減らない(巻き戻しと整合)`, monotonic);
 }
 
 // ---------------------------------------------------------------------------

@@ -14,6 +14,9 @@ type WorkerResult<T> = {
  */
 function sameRequest(a: WorkerRequest, b: WorkerRequest): boolean {
   if (a.kind !== b.kind || a.algorithmId !== b.algorithmId) return false;
+  if (a.kind === "lanes" && b.kind === "lanes") {
+    return a.size === b.size;
+  }
   if (a.kind === "sort" && b.kind === "sort") {
     return (
       a.input.length === b.input.length &&

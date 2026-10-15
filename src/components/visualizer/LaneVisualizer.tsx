@@ -1,13 +1,21 @@
 "use client";
 
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import styles from "./LaneVisualizer.module.css";
 import { PlaybackControls } from "./PlaybackControls";
 import { ZoomableStage } from "./ZoomableStage";
 import { laneStepKinds } from "./step-timeline";
 import { useStepPlayer } from "./useStepPlayer";
 import { useWorkerFrames } from "./useWorkerFrames";
-import { LANE_META, type LaneFrame, type LaneState } from "@/lib/lane-visualizers";
+import {
+  LANE_DEFAULT_SIZE,
+  LANE_MAX_SIZE,
+  LANE_META,
+  LANE_MIN_SIZE,
+  type LaneFrame,
+  type LaneId,
+  type LaneState,
+} from "@/lib/lane-visualizers";
 import type { WorkerRequest } from "@/workers/algorithm-worker";
 
 /** 電力の目安を示す丸の数。 */
@@ -16,6 +24,14 @@ const POWER_CIRCLES = 5;
 function matrixText(matrix: number[][]): string {
   return `[${matrix.map((row) => `[${row.join(",")}]`).join(",")}]`;
 }
+
+/** セグメントコントロール(設計書 パーツ12): どの方式を表示するか。 */
+const FOCUS_OPTIONS: { key: "all" | LaneId; label: string }[] = [
+  { key: "all", label: "すべて" },
+  { key: "sequential", label: "逐次" },
+  { key: "parallel", label: "並列" },
+  { key: "fixed", label: "回路固定" },
+];
 
 type LaneVisualizerProps = {
   algorithmId: string;
@@ -27,15 +43,31 @@ type LaneVisualizerProps = {
  * 電力の目安は「メモリ読み出し量」にもとづく定性的なもので、実測値ではない。
  */
 export function LaneVisualizer({ algorithmId }: LaneVisualizerProps) {
-  const meta = LANE_META[algorithmId];
-  const request = useMemo<WorkerRequest>(() => ({ kind: "lanes", algorithmId }), [algorithmId]);
+  const [size, setSize] = useState(LANE_DEFAULT_SIZE);
+  const [focus, setFocus] = useState<"all" | LaneId>("all");
+  const metaFor = LANE_META[algorithmId];
+  const request = useMemo<WorkerRequest>(
+    () => ({ kind: "lanes", algorithmId, size }),
+    [algorithmId, size],
+  );
   const { frames, isComputing } = useWorkerFrames<LaneFrame>(request);
   const { stepIndex, isFinished, showPause, speed, setSpeed, handlePlayPause, handleStep, handleScrub, reset } =
     useStepPlayer(frames.length);
   const stepKinds = useMemo(() => laneStepKinds(frames), [frames]);
 
-  if (!meta) return null;
+  if (!metaFor) return null;
   const currentFrame = frames[stepIndex];
+  // 新しいサイズの計算中は、まだ前のサイズのフレームが表示されるため、表示側はフレームから行列サイズを読む
+  const frameSize = currentFrame
+    ? Math.max(1, Math.round(Math.sqrt(currentFrame.lanes[0].cells.length)))
+    : size;
+  const meta = metaFor(frameSize);
+  const visibleLanes = currentFrame?.lanes.filter((lane) => focus === "all" || lane.id === focus);
+
+  const handleSize = (next: number) => {
+    reset();
+    setSize(Math.min(LANE_MAX_SIZE, Math.max(LANE_MIN_SIZE, next)));
+  };
 
   return (
     <div className={styles.visualizer}>
@@ -50,9 +82,25 @@ export function LaneVisualizer({ algorithmId }: LaneVisualizerProps) {
         </li>
       </ul>
 
+      <div className={styles.segmented} role="radiogroup" aria-label="表示する方式">
+        {FOCUS_OPTIONS.map((option) => (
+          <button
+            key={option.key}
+            type="button"
+            role="radio"
+            aria-checked={focus === option.key}
+            className={styles.segment}
+            data-active={focus === option.key}
+            onClick={() => setFocus(option.key)}
+          >
+            {option.label}
+          </button>
+        ))}
+      </div>
+
       <ZoomableStage>
         <div className={styles.lanes}>
-          {currentFrame?.lanes.map((lane) => (
+          {visibleLanes?.map((lane) => (
             <LaneCard key={lane.id} lane={lane} size={meta.size} maxReads={meta.maxReads} />
           ))}
         </div>
@@ -74,6 +122,13 @@ export function LaneVisualizer({ algorithmId }: LaneVisualizerProps) {
         onSpeedChange={setSpeed}
         onReset={reset}
         resetLabel="最初から"
+        stepper={{
+          label: "行列サイズ n",
+          value: size,
+          min: LANE_MIN_SIZE,
+          max: LANE_MAX_SIZE,
+          onChange: handleSize,
+        }}
       />
       <p className={styles.caveat}>
         ※ 電力の目安はメモリ読み出し量にもとづく定性的なもので、実測値ではありません。専用回路(NPUなど)の実装は製品ごとに異なるため、ここでは考え方を示す簡略モデルです。

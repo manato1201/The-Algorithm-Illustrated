@@ -240,3 +240,159 @@
   padding: 0;
   white-space: pre;
 }
+
+/* ---- パンくず(設計書 パーツ18): カタログ > カテゴリ > アルゴリズム ---- */
+.breadcrumb {
+  margin-bottom: var(--space-6);
+}
+
+.breadcrumbList {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--space-2);
+  list-style: none;
+  font-family: var(--font-mono);
+  font-size: 0.8125rem;
+}
+
+.breadcrumbLink {
+  color: var(--color-text-muted);
+  border-bottom: 1px solid var(--color-line);
+  transition:
+    color 0.15s ease,
+    border-color 0.15s ease;
+}
+
+.breadcrumbLink:hover {
+  color: var(--color-accent-amber);
+  border-color: var(--color-accent-amber);
+}
+
+.breadcrumbSeparator {
+  color: var(--color-text-muted);
+}
+
+.breadcrumbCurrent {
+  color: var(--color-text);
+}
+
+/* ---- 読了バー(設計書 動き09): スクロール位置にそのまま追従し、遷移は付けない ---- */
+.readingTrack {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 3px;
+  z-index: 50;
+  pointer-events: none;
+}
+
+.readingBar {
+  height: 100%;
+  background: var(--color-accent-amber);
+  transform: scaleX(0);
+  transform-origin: left center;
+}
+
+/* ---- アコーディオン(設計書 パーツ04): 長い節は <details> で開閉する ---- */
+.markdownBody :global(.accordion) {
+  border-top: 1px solid var(--color-line);
+  margin-top: var(--space-6);
+}
+
+.markdownBody :global(.accordionSummary) {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding-top: var(--space-4);
+  cursor: pointer;
+  list-style: none;
+}
+
+.markdownBody :global(.accordionSummary)::-webkit-details-marker {
+  display: none;
+}
+
+.markdownBody :global(.accordionSummary h2) {
+  margin: 0;
+}
+
+/* 開閉の矢印は下向き(決めごと: 開閉=下向き)。閉じているとき↓、開いているとき↑に反転する。 */
+.markdownBody :global(.accordionSummary)::after {
+  content: "↓";
+  font-family: var(--font-mono);
+  color: var(--color-text-muted);
+}
+
+.markdownBody :global(.accordion[open] > .accordionSummary)::after {
+  content: "↑";
+}
+
+.markdownBody :global(.accordionSummary):hover::after {
+  color: var(--color-accent-amber);
+}
+
+.markdownBody :global(.accordionBody) {
+  padding-top: var(--space-3);
+}
+
+.markdownBody :global(.accordionBody) > :first-child {
+  margin-top: 0;
+}
+
+/* ---- 記事の定型項目(見るポイント / 動きを減らす場合) ---- */
+.standardNotes {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  margin-top: var(--space-8);
+  padding: var(--space-4);
+  border: 1px dashed var(--color-line);
+  border-radius: 8px;
+  font-family: var(--font-body);
+  font-size: 0.8125rem;
+  line-height: 1.7;
+  color: var(--color-text-muted);
+}
+
+.standardNotesTitle {
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+  letter-spacing: 0.08em;
+  color: var(--color-accent-amber);
+  margin-bottom: var(--space-1);
+}
+
+/* ---- 解説のスクロールで再生を進めるトグル ---- */
+.scrubToggle {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin-bottom: var(--space-4);
+  padding: var(--space-1) var(--space-3);
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  border: 1px solid var(--color-line);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--color-text-muted);
+  cursor: pointer;
+  transition:
+    color 0.15s ease,
+    border-color 0.15s ease;
+}
+
+.scrubToggle:hover,
+.scrubToggle[aria-pressed="true"] {
+  color: var(--color-accent-amber);
+  border-color: var(--color-accent-amber);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .breadcrumbLink,
+  .scrubToggle {
+    transition: none;
+  }
+}
