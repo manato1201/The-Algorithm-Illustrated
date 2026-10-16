@@ -69,3 +69,73 @@
   transform-origin: top left;
   width: 100%;
 }
+
+/* ---- ステージ隅のHUD(いまのステップの種別と位置) ----
+   色に加えて、形の記号(●▲◆■)とラベルでも種別を示す。操作の邪魔にならないよう、クリックは透過する。 */
+.viewportWrap {
+  position: relative;
+}
+
+.hud {
+  position: absolute;
+  left: var(--space-2);
+  top: var(--space-2);
+  right: var(--space-2);
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: var(--space-2);
+  padding: 2px var(--space-2);
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+  letter-spacing: 0.08em;
+  color: var(--color-text-muted);
+  pointer-events: none;
+  /* 左右の縦線(コーナーブラケット風) */
+  border-left: 1px solid var(--color-line);
+  border-right: 1px solid var(--color-line);
+}
+
+.hudKind {
+  display: inline-flex;
+  align-items: baseline;
+  gap: var(--space-2);
+}
+
+.hudGlyph {
+  --hud-color: var(--state-idle);
+  color: var(--hud-color);
+}
+
+.hud[data-kind="comparing"] .hudGlyph {
+  --hud-color: var(--state-comparing);
+}
+
+.hud[data-kind="swapping"] .hudGlyph {
+  --hud-color: var(--state-swapping);
+}
+
+.hud[data-kind="pivot"] .hudGlyph {
+  --hud-color: var(--state-pivot);
+}
+
+.hud[data-kind="settled"] .hudGlyph {
+  --hud-color: var(--state-settled);
+}
+
+.hud[data-kind="comparing"] .hudKind,
+.hud[data-kind="swapping"] .hudKind,
+.hud[data-kind="pivot"] .hudKind,
+.hud[data-kind="settled"] .hudKind {
+  color: var(--color-text);
+}
+
+.hudJa {
+  font-family: var(--font-body);
+  letter-spacing: 0.04em;
+  color: var(--color-text-muted);
+}
+
+.hudStep {
+  font-variant-numeric: tabular-nums;
+}

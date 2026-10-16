@@ -6,8 +6,10 @@ import { PlaybackControls } from "./PlaybackControls";
 import { buildStepKinds, graphEntities } from "./step-timeline";
 import { ZoomableStage } from "./ZoomableStage";
 import { useStepPlayer } from "./useStepPlayer";
+import { useFrameTween } from "./useFrameTween";
 import { useWorkerFrames } from "./useWorkerFrames";
 import { ParticleBurstLayer, type ParticleBurst } from "./ParticleBurstLayer";
+import { lerp, mixColor } from "@/lib/color-mix";
 import { coreColors, readableTextColor, shouldGlow, stateColors } from "@/lib/design-tokens";
 import {
   GRAPH_DATASETS,
@@ -82,6 +84,7 @@ export function GraphVisualizer({ algorithmId }: GraphVisualizerProps) {
   const { stepIndex, isFinished, showPause, speed, setSpeed, handlePlayPause, handleStep, handleScrub, reset } =
     useStepPlayer(frames.length);
   const stepKinds = useMemo(() => buildStepKinds(frames, graphEntities), [frames]);
+  const tween = useFrameTween(stepIndex, speed);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   // burstsのxRatio/yRatio計算にcanvasの実サイズが必要だが、useMemo内でref.currentを直接読むのは
   // レンダー中のref参照になり許可されない(react-hooks/refs)。描画useEffectで測定した値をstateとして
@@ -125,16 +128,20 @@ export function GraphVisualizer({ algorithmId }: GraphVisualizerProps) {
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";
 
+    const fromFrame = frames[tween.from];
+
     for (const edge of dataset.edges) {
       const state = currentFrame.edgeStates[edge.id] ?? "idle";
-      const color = EDGE_COLORS[state];
+      const targetColor = EDGE_COLORS[state];
+      const fromState = fromFrame?.edgeStates[edge.id] ?? "idle";
+      const color = mixColor(EDGE_COLORS[fromState], targetColor, tween.t);
       const from = point(edge.from);
       const to = point(edge.to);
 
       ctx.strokeStyle = color;
-      ctx.lineWidth = state === "idle" ? 1.5 : 3;
-      ctx.shadowColor = shouldGlow(color) ? color : "transparent";
-      ctx.shadowBlur = shouldGlow(color) ? 10 : 0;
+      ctx.lineWidth = lerp(fromState === "idle" ? 1.5 : 3, state === "idle" ? 1.5 : 3, tween.t);
+      ctx.shadowColor = shouldGlow(targetColor) ? targetColor : "transparent";
+      ctx.shadowBlur = shouldGlow(targetColor) ? 10 * tween.t : 0;
       ctx.beginPath();
       ctx.moveTo(from.x, from.y);
       ctx.lineTo(to.x, to.y);
@@ -176,11 +183,13 @@ export function GraphVisualizer({ algorithmId }: GraphVisualizerProps) {
 
     for (const node of dataset.nodes) {
       const state = currentFrame.nodeStates[node.id] ?? "idle";
-      const color = NODE_COLORS[state];
+      const targetColor = NODE_COLORS[state];
+      const fromNodeState = fromFrame?.nodeStates[node.id] ?? "idle";
+      const color = mixColor(NODE_COLORS[fromNodeState], targetColor, tween.t);
       const { x, y } = point(node.id);
 
-      ctx.shadowColor = shouldGlow(color) ? color : "transparent";
-      ctx.shadowBlur = shouldGlow(color) ? 14 : 0;
+      ctx.shadowColor = shouldGlow(targetColor) ? targetColor : "transparent";
+      ctx.shadowBlur = shouldGlow(targetColor) ? 14 * tween.t : 0;
       ctx.fillStyle = color;
       ctx.beginPath();
       ctx.arc(x, y, 16, 0, Math.PI * 2);
@@ -201,7 +210,7 @@ export function GraphVisualizer({ algorithmId }: GraphVisualizerProps) {
         ctx.font = "11px var(--font-mono), monospace";
       }
     }
-  }, [frames, stepIndex, dataset, bounds]);
+  }, [frames, stepIndex, dataset, bounds, tween.from, tween.t]);
 
   const bursts = useMemo<ParticleBurst[]>(() => {
     const currentFrame = frames[stepIndex];
@@ -240,7 +249,7 @@ export function GraphVisualizer({ algorithmId }: GraphVisualizerProps) {
 
   return (
     <div className={styles.visualizer}>
-      <ZoomableStage>
+      <ZoomableStage hud={{ kind: stepKinds[stepIndex] ?? "idle", step: stepIndex, total: frames.length }}>
         <div className={styles.canvasWrap}>
           <canvas ref={canvasRef} className={styles.canvas} aria-hidden="true" />
           <ParticleBurstLayer bursts={bursts} />

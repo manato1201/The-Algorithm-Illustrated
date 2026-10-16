@@ -6,8 +6,10 @@ import { PlaybackControls } from "./PlaybackControls";
 import { buildStepKinds, trieEntities } from "./step-timeline";
 import { ZoomableStage } from "./ZoomableStage";
 import { useStepPlayer } from "./useStepPlayer";
+import { useFrameTween } from "./useFrameTween";
 import { useWorkerFrames } from "./useWorkerFrames";
 import { ParticleBurstLayer, type ParticleBurst } from "./ParticleBurstLayer";
+import { lerp, mixColor } from "@/lib/color-mix";
 import { readableTextColor, shouldGlow, stateColors } from "@/lib/design-tokens";
 import type { TrieFrame, TrieNodeState } from "@/lib/trie-visualizer";
 import type { WorkerRequest } from "@/workers/algorithm-worker";
@@ -80,6 +82,7 @@ export function TrieVisualizer({ algorithmId }: TrieVisualizerProps) {
   const { stepIndex, isFinished, showPause, speed, setSpeed, handlePlayPause, handleStep, handleScrub, reset } =
     useStepPlayer(frames.length);
   const stepKinds = useMemo(() => buildStepKinds(frames, trieEntities), [frames]);
+  const tween = useFrameTween(stepIndex, speed);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   // burstsのxRatio/yRatio計算にcanvasの実サイズが必要だが、useMemo内でref.currentを直接読むのは
   // レンダー中のref参照になり許可されない(react-hooks/refs)。描画useEffectで測定した値をstateとして
@@ -97,6 +100,13 @@ export function TrieVisualizer({ algorithmId }: TrieVisualizerProps) {
     const positions = computeLayout(currentFrame.nodes, currentFrame.rootId);
     return { positions, marginX, marginTop, marginBottom };
   }, [frames, stepIndex]);
+
+  // 補間の起点になるフレームの配置(語が増えて木の幅が変わるとき、頂点が滑らかに動くように)
+  const fromPositions = useMemo(() => {
+    const fromFrame = frames[tween.from];
+    if (!fromFrame || tween.from === stepIndex) return null;
+    return computeLayout(fromFrame.nodes, fromFrame.rootId);
+  }, [frames, tween.from, stepIndex]);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -118,13 +128,19 @@ export function TrieVisualizer({ algorithmId }: TrieVisualizerProps) {
 
     const { positions, marginX, marginTop, marginBottom } = layout;
 
+    const fromFrame = frames[tween.from];
+
+    // 直前のフレームにも居た頂点は、その位置から現在の位置へ動かす
     const point = (id: string) => {
       const pos = positions[id];
+      const prev = fromPositions?.[id];
+      const mixed = prev ? { x: lerp(prev.x, pos.x, tween.t), y: lerp(prev.y, pos.y, tween.t) } : pos;
       return {
-        x: marginX + pos.x * (width - marginX * 2),
-        y: marginTop + pos.y * (height - marginTop - marginBottom),
+        x: marginX + mixed.x * (width - marginX * 2),
+        y: marginTop + mixed.y * (height - marginTop - marginBottom),
       };
     };
+    const isNew = (id: string) => fromFrame !== undefined && tween.from !== stepIndex && !(id in fromFrame.nodes);
 
     ctx.font = "12px var(--font-mono), monospace";
     ctx.textAlign = "center";
@@ -137,12 +153,14 @@ export function TrieVisualizer({ algorithmId }: TrieVisualizerProps) {
         ctx.strokeStyle = stateColors.idle;
         ctx.lineWidth = 1.5;
         ctx.setLineDash([]);
+        ctx.globalAlpha = isNew(childId) ? tween.t : 1;
         ctx.beginPath();
         ctx.moveTo(from.x, from.y);
         ctx.lineTo(to.x, to.y);
         ctx.stroke();
       });
     });
+    ctx.globalAlpha = 1;
 
     if (currentFrame.failEdges) {
       ctx.strokeStyle = stateColors.pivot;
@@ -164,12 +182,20 @@ export function TrieVisualizer({ algorithmId }: TrieVisualizerProps) {
 
     Object.values(currentFrame.nodes).forEach((node) => {
       const state = currentFrame.nodeStates[node.id] ?? "idle";
-      const color = NODE_COLORS[state];
+      const targetColor = NODE_COLORS[state];
       const { x, y } = point(node.id);
-      const radius = node.isEndOfWord ? 15 : 13;
+      const newNode = isNew(node.id);
+      const baseRadius = node.isEndOfWord ? 15 : 13;
+      // 新しい頂点は、小さい透明な状態から通常の大きさへ現れる
+      const radius = newNode ? baseRadius * (0.4 + 0.6 * tween.t) : baseRadius;
 
-      ctx.shadowColor = shouldGlow(color) ? color : "transparent";
-      ctx.shadowBlur = shouldGlow(color) ? 12 : 0;
+      // 直前のフレームにも居た頂点は、状態色を補間して塗る
+      const fromState = fromFrame?.nodes[node.id] ? (fromFrame.nodeStates[node.id] ?? "idle") : null;
+      const color = fromState && tween.from !== stepIndex ? mixColor(NODE_COLORS[fromState], targetColor, tween.t) : targetColor;
+
+      ctx.globalAlpha = newNode ? tween.t : 1;
+      ctx.shadowColor = shouldGlow(targetColor) ? targetColor : "transparent";
+      ctx.shadowBlur = shouldGlow(targetColor) ? 12 * tween.t : 0;
       ctx.fillStyle = color;
       ctx.beginPath();
       ctx.arc(x, y, radius, 0, Math.PI * 2);
@@ -188,8 +214,9 @@ export function TrieVisualizer({ algorithmId }: TrieVisualizerProps) {
       // ノードの塗り色(color)の実際の輝度から文字色を決める。状態色が増減しても常に読める組み合わせになる。
       ctx.fillStyle = readableTextColor(color);
       ctx.fillText(node.char || "∅", x, y);
+      ctx.globalAlpha = 1;
     });
-  }, [frames, stepIndex, layout]);
+  }, [frames, stepIndex, layout, tween.from, tween.t, fromPositions]);
 
   const bursts = useMemo<ParticleBurst[]>(() => {
     const currentFrame = frames[stepIndex];
@@ -222,7 +249,7 @@ export function TrieVisualizer({ algorithmId }: TrieVisualizerProps) {
 
   return (
     <div className={styles.visualizer}>
-      <ZoomableStage>
+      <ZoomableStage hud={{ kind: stepKinds[stepIndex] ?? "idle", step: stepIndex, total: frames.length }}>
         <div className={styles.canvasWrap}>
           <canvas ref={canvasRef} className={styles.canvas} aria-hidden="true" />
           <ParticleBurstLayer bursts={bursts} />

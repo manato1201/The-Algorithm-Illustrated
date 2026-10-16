@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import styles from "./AlgorithmCatalog.module.css";
 import { AlgorithmStackBrowser } from "./AlgorithmStackBrowser";
+import { LivePreview } from "./LivePreview";
 import { ComplexityBadge } from "@/components/hud/ComplexityBadge";
 import { FavoriteToggleButton } from "@/components/hud/FavoriteToggleButton";
 import {
@@ -215,6 +216,7 @@ export function AlgorithmCatalog({
   return (
     <div className={styles.page}>
       <section className={styles.hero}>
+        <div className={styles.heroText}>
         <p className={styles.eyebrow}>■ CATALOG アルゴリズム図鑑</p>
         <h1 className={styles.heroTitle}>
           アルゴリズムを、
@@ -359,6 +361,11 @@ export function AlgorithmCatalog({
             <span className={styles.chipCount}>{favorites.size}</span>
           </button>
         </div>
+        </div>
+        {/* ライブステージ: クイックソートが自動でループする小さな舞台(動きを減らす設定では結果を静止表示) */}
+        <div className={styles.heroStage}>
+          <LivePreview algorithmId="quick-sort" variant="hero" label="QUICK SORT" />
+        </div>
       </section>
 
       {!isFiltering && recentAlgorithms.length > 0 ? (
@@ -390,13 +397,17 @@ export function AlgorithmCatalog({
                 アルゴリズムとは?
               </Link>
             </p>
-            <div className={styles.chipRow}>
+            <ul className={styles.startGrid}>
               {entryPoints.start.map((algorithm) => (
-                <Link key={algorithm.id} href={`/algorithms/${algorithm.id}`} className={styles.chip}>
-                  {algorithm.name}
-                </Link>
+                <li key={algorithm.id}>
+                  <Link href={`/algorithms/${algorithm.id}`} className={styles.startCard}>
+                    <LivePreview algorithmId={algorithm.id} variant="card" />
+                    <span className={styles.startName}>{algorithm.name}</span>
+                    <span className={styles.startMeta}>{algorithm.complexity}</span>
+                  </Link>
+                </li>
               ))}
-            </div>
+            </ul>
           </div>
           <div className={styles.entryBlock}>
             <h2 className={styles.sectionLabel}>■ BY USE 用途から</h2>
@@ -492,15 +503,22 @@ export function AlgorithmCatalog({
               href={`/algorithms/${featured.id}`}
               className={styles.featuredCard}
             >
-              <div className={styles.featuredMeta}>
-                <span className={styles.category}>
-                  {featured.category} ・ {featured.subcategory}
-                </span>
-                <ComplexityBadge notation={featured.complexity} />
-                {featured.hasVisualizer ? <VisualizedBadge /> : null}
+              <div className={styles.featuredLayout}>
+                <div className={styles.featuredText}>
+                  <div className={styles.featuredMeta}>
+                    <span className={styles.category}>
+                      {featured.category} ・ {featured.subcategory}
+                    </span>
+                    <ComplexityBadge notation={featured.complexity} />
+                    {featured.hasVisualizer ? <VisualizedBadge /> : null}
+                  </div>
+                  <h3 className={styles.featuredName}>{featured.name}</h3>
+                  <p className={styles.featuredDesc}>{featured.summary}</p>
+                </div>
+                <div className={styles.featuredPreview}>
+                  <LivePreview algorithmId={featured.id} variant="card" />
+                </div>
               </div>
-              <h3 className={styles.featuredName}>{featured.name}</h3>
-              <p className={styles.featuredDesc}>{featured.summary}</p>
             </Link>
           </section>
 

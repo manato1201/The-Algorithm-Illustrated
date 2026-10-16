@@ -74,7 +74,7 @@ export function DPTableVisualizer({ algorithmId }: DPTableVisualizerProps) {
         ))}
       </div>
 
-      <ZoomableStage>
+      <ZoomableStage hud={{ kind: stepKinds[stepIndex] ?? "idle", step: stepIndex, total: frames.length }}>
         <div className={styles.tableWrap}>
           <table className={styles.table}>
             <thead>
