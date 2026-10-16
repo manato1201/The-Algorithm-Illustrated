@@ -6,10 +6,12 @@ import { PlaybackControls } from "./PlaybackControls";
 import { buildStepKinds, highlightEntities } from "./step-timeline";
 import { ZoomableStage } from "./ZoomableStage";
 import { useStepPlayer } from "./useStepPlayer";
+import { useFrameTween } from "./useFrameTween";
 import { useWorkerFrames } from "./useWorkerFrames";
 import { ParticleBurstLayer, type ParticleBurst } from "./ParticleBurstLayer";
 import { shouldGlow, stateColors, type StateColorKey } from "@/lib/design-tokens";
 import { SEARCH_TARGET, type SearchFrame } from "@/lib/search-visualizers";
+import { lerp, mixColor } from "@/lib/color-mix";
 import { useMediaQuery } from "@/lib/use-media-query";
 import type { WorkerRequest } from "@/workers/algorithm-worker";
 
@@ -53,6 +55,7 @@ export function SearchVisualizer({ algorithmId }: SearchVisualizerProps) {
   const { stepIndex, isFinished, showPause, speed, setSpeed, handlePlayPause, handleStep, handleScrub, reset } =
     useStepPlayer(frames.length);
   const stepKinds = useMemo(() => buildStepKinds(frames, highlightEntities), [frames]);
+  const tween = useFrameTween(stepIndex, speed);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [onionSkin, setOnionSkin] = useState(false);
   const reduceMotion = useMediaQuery("(prefers-reduced-motion: reduce)");
@@ -104,20 +107,30 @@ export function SearchVisualizer({ algorithmId }: SearchVisualizerProps) {
       ctx.restore();
     }
 
+    const fromFrame = frames[tween.from];
+    const canTween = fromFrame !== undefined && fromFrame.array.length === n;
+
     values.forEach((value, index) => {
-      const valueY = yFor(value);
+      const targetY = yFor(value);
       const x = index * (barWidth + gap);
+      const state = currentFrame.highlight[index] ?? "idle";
+      const targetColor = stateColors[state];
+
+      let valueY = targetY;
+      let color: string = targetColor;
+      if (canTween) {
+        valueY = lerp(yFor(fromFrame.array[index]), targetY, tween.t);
+        color = mixColor(stateColors[fromFrame.highlight[index] ?? "idle"], targetColor, tween.t);
+      }
       const rectTop = Math.min(valueY, zeroY);
       const rectHeight = Math.abs(zeroY - valueY);
-      const state = currentFrame.highlight[index] ?? "idle";
-      const color = stateColors[state];
 
-      ctx.shadowColor = shouldGlow(color) ? color : "transparent";
-      ctx.shadowBlur = shouldGlow(color) ? 14 : 0;
+      ctx.shadowColor = shouldGlow(targetColor) ? targetColor : "transparent";
+      ctx.shadowBlur = shouldGlow(targetColor) ? 14 * tween.t : 0;
       ctx.fillStyle = color;
       ctx.fillRect(x, rectTop, barWidth, rectHeight);
     });
-  }, [frames, stepIndex, onionSkin, reduceMotion]);
+  }, [frames, stepIndex, onionSkin, reduceMotion, tween.from, tween.t]);
 
   const bursts = useMemo<ParticleBurst[]>(() => {
     const currentFrame = frames[stepIndex];
@@ -144,7 +157,7 @@ export function SearchVisualizer({ algorithmId }: SearchVisualizerProps) {
       {TARGET_SEARCH_ALGORITHMS.has(algorithmId) ? (
         <p className={styles.target}>検索対象の値: {SEARCH_TARGET}</p>
       ) : null}
-      <ZoomableStage>
+      <ZoomableStage hud={{ kind: stepKinds[stepIndex] ?? "idle", step: stepIndex, total: frames.length }}>
         <div className={styles.canvasWrap}>
           <canvas ref={canvasRef} className={styles.canvas} aria-hidden="true" />
           <ParticleBurstLayer bursts={bursts} />

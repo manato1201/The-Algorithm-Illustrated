@@ -3,10 +3,29 @@
   flex-direction: column;
 }
 
-/* ヒーロー(1. タイポグラフィック全面の転用) — 余白多め */
+/* ヒーロー(1. タイポグラフィック全面の転用) — 余白多め。広い画面では右にライブステージを置く。 */
 .hero {
   padding: var(--space-16) var(--space-6) var(--space-12);
+  max-width: 80rem;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--space-8);
+  align-items: center;
+}
+
+.heroText {
   max-width: 56rem;
+}
+
+.heroStage {
+  min-width: 0;
+}
+
+@media (min-width: 1100px) {
+  .hero {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 26rem);
+    gap: var(--space-12);
+  }
 }
 
 .eyebrow {
@@ -619,6 +638,74 @@
 
 @media (prefers-reduced-motion: reduce) {
   .useCaseLink {
+    transition: none;
+  }
+}
+
+/* ---- 入口: ライブプレビュー付きカード(まずはここから) ---- */
+.startGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(11rem, 1fr));
+  gap: var(--space-3);
+  list-style: none;
+}
+
+.startCard {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  height: 100%;
+  padding: var(--space-2);
+  border: 1px solid var(--color-line);
+  border-radius: 8px;
+  background: var(--color-bg-surface);
+  transition: border-color 0.15s ease;
+}
+
+.startCard:hover,
+.startCard:focus-visible {
+  border-color: var(--color-accent-amber);
+}
+
+.startName {
+  font-family: var(--font-body);
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: var(--color-text);
+  padding: 0 var(--space-1);
+}
+
+.startMeta {
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+  color: var(--color-text-muted);
+  padding: 0 var(--space-1) var(--space-1);
+}
+
+/* ---- 代表カード: 右にライブプレビュー ---- */
+.featuredLayout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--space-6);
+  align-items: center;
+}
+
+.featuredText {
+  min-width: 0;
+}
+
+.featuredPreview {
+  min-width: 0;
+}
+
+@media (min-width: 900px) {
+  .featuredLayout {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 20rem);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .startCard {
     transition: none;
   }
 }

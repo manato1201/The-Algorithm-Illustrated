@@ -6,13 +6,15 @@ import { PlaybackControls } from "./PlaybackControls";
 import { buildStepKinds, gridEntities } from "./step-timeline";
 import { ZoomableStage } from "./ZoomableStage";
 import { useStepPlayer } from "./useStepPlayer";
+import { useFrameTween } from "./useFrameTween";
 import { useWorkerFrames } from "./useWorkerFrames";
 import { ParticleBurstLayer, type ParticleBurst } from "./ParticleBurstLayer";
+import { mixColor } from "@/lib/color-mix";
 import { coreColors, shouldGlow, stateColors } from "@/lib/design-tokens";
 import { type GridCellState, type GridFrame } from "@/lib/pathfinding-visualizers";
 import type { WorkerRequest } from "@/workers/algorithm-worker";
 
-const CELL_COLORS: Record<GridCellState, string> = {
+export const CELL_COLORS: Record<GridCellState, string> = {
   idle: stateColors.idle,
   wall: coreColors.bgSurface2,
   start: coreColors.accentAmber,
@@ -51,6 +53,7 @@ export function PathfindingVisualizer({ algorithmId }: PathfindingVisualizerProp
   const { stepIndex, isFinished, showPause, speed, setSpeed, handlePlayPause, handleStep, handleScrub, reset } =
     useStepPlayer(frames.length);
   const stepKinds = useMemo(() => buildStepKinds(frames, gridEntities), [frames]);
+  const tween = useFrameTween(stepIndex, speed);
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
   useEffect(() => {
@@ -76,20 +79,24 @@ export function PathfindingVisualizer({ algorithmId }: PathfindingVisualizerProp
     const cellWidth = (width - gap * (cols - 1)) / cols;
     const cellHeight = (height - gap * (rows - 1)) / rows;
 
+    const fromFrame = frames[tween.from];
+
     currentFrame.cellStates.forEach((row, r) => {
       row.forEach((state, c) => {
         const x = c * (cellWidth + gap);
         const y = r * (cellHeight + gap);
-        const color = CELL_COLORS[state];
-        const glow = shouldGlow(color);
+        const targetColor = CELL_COLORS[state];
+        const fromState = fromFrame?.cellStates[r]?.[c];
+        const color = fromState ? mixColor(CELL_COLORS[fromState], targetColor, tween.t) : targetColor;
+        const glow = shouldGlow(targetColor);
 
-        ctx.shadowColor = glow ? color : "transparent";
-        ctx.shadowBlur = glow ? 10 : 0;
+        ctx.shadowColor = glow ? targetColor : "transparent";
+        ctx.shadowBlur = glow ? 10 * tween.t : 0;
         ctx.fillStyle = color;
         ctx.fillRect(x, y, cellWidth, cellHeight);
       });
     });
-  }, [frames, stepIndex]);
+  }, [frames, stepIndex, tween.from, tween.t]);
 
   const bursts = useMemo<ParticleBurst[]>(() => {
     const currentFrame = frames[stepIndex];
@@ -119,7 +126,7 @@ export function PathfindingVisualizer({ algorithmId }: PathfindingVisualizerProp
 
   return (
     <div className={styles.visualizer}>
-      <ZoomableStage>
+      <ZoomableStage hud={{ kind: stepKinds[stepIndex] ?? "idle", step: stepIndex, total: frames.length }}>
         <div className={styles.canvasWrap}>
           <canvas ref={canvasRef} className={styles.canvas} aria-hidden="true" />
           <ParticleBurstLayer bursts={bursts} />

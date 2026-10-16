@@ -192,7 +192,7 @@ export function GeometryVisualizer({ algorithmId }: GeometryVisualizerProps) {
 
   return (
     <div className={styles.visualizer}>
-      <ZoomableStage>
+      <ZoomableStage hud={{ kind: stepKinds[stepIndex] ?? "idle", step: stepIndex, total: frames.length }}>
         <div className={styles.canvasWrap}>
           <canvas ref={canvasRef} className={styles.canvas} aria-hidden="true" />
           <ParticleBurstLayer bursts={bursts} />

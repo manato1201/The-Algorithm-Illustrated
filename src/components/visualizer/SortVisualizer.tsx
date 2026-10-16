@@ -6,10 +6,12 @@ import { PlaybackControls } from "./PlaybackControls";
 import { buildStepKinds, highlightEntities } from "./step-timeline";
 import { ZoomableStage } from "./ZoomableStage";
 import { useStepPlayer } from "./useStepPlayer";
+import { useFrameTween } from "./useFrameTween";
 import { useWorkerFrames } from "./useWorkerFrames";
 import { ParticleBurstLayer, type ParticleBurst } from "./ParticleBurstLayer";
 import { shouldGlow, stateColors, type StateColorKey } from "@/lib/design-tokens";
 import type { SortFrame } from "@/lib/sort-visualizers";
+import { lerp, mixColor } from "@/lib/color-mix";
 import { useMediaQuery } from "@/lib/use-media-query";
 import type { WorkerRequest } from "@/workers/algorithm-worker";
 
@@ -71,6 +73,8 @@ export function SortVisualizer({ algorithmId }: SortVisualizerProps) {
   const { stepIndex, isFinished, showPause, speed, setSpeed, handlePlayPause, handleStep, handleScrub, reset } =
     useStepPlayer(frames.length);
   const stepKinds = useMemo(() => buildStepKinds(frames, highlightEntities), [frames]);
+  // ステップ間の補間(棒の高さと色)。動きを減らす設定では常にt=1で切り替えのみ
+  const tween = useFrameTween(stepIndex, speed);
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
   useEffect(() => {
@@ -112,19 +116,31 @@ export function SortVisualizer({ algorithmId }: SortVisualizerProps) {
       ctx.restore();
     }
 
-    values.forEach((value, index) => {
-      const barHeight = (value / maxValue) * (height - 24);
-      const x = index * (barWidth + gap);
-      const y = height - floorPadding - barHeight;
-      const state = currentFrame.highlight[index] ?? "idle";
-      const color = stateColors[state];
+    const fromFrame = frames[tween.from];
+    const canTween = fromFrame !== undefined && fromFrame.array.length === n;
 
-      ctx.shadowColor = shouldGlow(color) ? color : "transparent";
-      ctx.shadowBlur = shouldGlow(color) ? 14 : 0;
+    values.forEach((value, index) => {
+      const targetHeight = (value / maxValue) * (height - 24);
+      const x = index * (barWidth + gap);
+      const state = currentFrame.highlight[index] ?? "idle";
+      const targetColor = stateColors[state];
+
+      let barHeight = targetHeight;
+      let color: string = targetColor;
+      if (canTween) {
+        const fromHeight = (fromFrame.array[index] / maxValue) * (height - 24);
+        const fromColor = stateColors[fromFrame.highlight[index] ?? "idle"];
+        barHeight = lerp(fromHeight, targetHeight, tween.t);
+        color = mixColor(fromColor, targetColor, tween.t);
+      }
+      const y = height - floorPadding - barHeight;
+
+      ctx.shadowColor = shouldGlow(targetColor) ? targetColor : "transparent";
+      ctx.shadowBlur = shouldGlow(targetColor) ? 14 * tween.t : 0;
       ctx.fillStyle = color;
       ctx.fillRect(x, y, barWidth, barHeight);
     });
-  }, [frames, stepIndex, onionSkin, reduceMotion]);
+  }, [frames, stepIndex, onionSkin, reduceMotion, tween.from, tween.t]);
 
   const bursts = useMemo<ParticleBurst[]>(() => {
     const currentFrame = frames[stepIndex];
@@ -180,7 +196,7 @@ export function SortVisualizer({ algorithmId }: SortVisualizerProps) {
 
   return (
     <div className={styles.visualizer}>
-      <ZoomableStage>
+      <ZoomableStage hud={{ kind: stepKinds[stepIndex] ?? "idle", step: stepIndex, total: frames.length }}>
         <div className={styles.canvasWrap}>
           <canvas ref={canvasRef} className={styles.canvas} aria-hidden="true" />
           <ParticleBurstLayer bursts={bursts} />

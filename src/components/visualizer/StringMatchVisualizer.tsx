@@ -62,7 +62,7 @@ export function StringMatchVisualizer({ algorithmId }: StringMatchVisualizerProp
 
   return (
     <div className={styles.visualizer}>
-      <ZoomableStage>
+      <ZoomableStage hud={{ kind: stepKinds[stepIndex] ?? "idle", step: stepIndex, total: frames.length }}>
         <div className={styles.grid}>
           <div className={styles.row}>
             <span className={styles.rowLabel}>text</span>

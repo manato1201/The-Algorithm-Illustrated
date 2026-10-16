@@ -98,7 +98,7 @@ export function LaneVisualizer({ algorithmId }: LaneVisualizerProps) {
         ))}
       </div>
 
-      <ZoomableStage>
+      <ZoomableStage hud={{ kind: stepKinds[stepIndex] ?? "idle", step: stepIndex, total: frames.length }}>
         <div className={styles.lanes}>
           {visibleLanes?.map((lane) => (
             <LaneCard key={lane.id} lane={lane} size={meta.size} maxReads={meta.maxReads} />
