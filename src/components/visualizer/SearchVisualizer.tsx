@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import styles from "./SearchVisualizer.module.css";
 import { PlaybackControls } from "./PlaybackControls";
+import { PseudoCodePanel } from "./PseudoCodePanel";
 import { buildStepKinds, highlightEntities } from "./step-timeline";
 import { ZoomableStage } from "./ZoomableStage";
 import { useStepPlayer } from "./useStepPlayer";
@@ -203,6 +204,7 @@ export function SearchVisualizer({ algorithmId }: SearchVisualizerProps) {
           </li>
         ) : null}
       </ul>
+      <PseudoCodePanel algorithmId={algorithmId} kind={stepKinds[stepIndex] ?? "idle"} />
     </div>
   );
 }

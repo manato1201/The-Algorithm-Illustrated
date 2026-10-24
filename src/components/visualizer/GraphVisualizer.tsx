@@ -142,10 +142,26 @@ export function GraphVisualizer({ algorithmId }: GraphVisualizerProps) {
       ctx.lineWidth = lerp(fromState === "idle" ? 1.5 : 3, state === "idle" ? 1.5 : 3, tween.t);
       ctx.shadowColor = shouldGlow(targetColor) ? targetColor : "transparent";
       ctx.shadowBlur = shouldGlow(targetColor) ? 10 * tween.t : 0;
+      // 線の描き込み: 未探索の辺が使われた瞬間は、元の線を残したまま、色のついた線を始点から終点へ伸ばす
+      const drawing = fromState === "idle" && state !== "idle" && tween.t < 1;
       ctx.beginPath();
       ctx.moveTo(from.x, from.y);
-      ctx.lineTo(to.x, to.y);
-      ctx.stroke();
+      if (drawing) {
+        ctx.strokeStyle = EDGE_COLORS.idle;
+        ctx.shadowBlur = 0;
+        ctx.lineTo(to.x, to.y);
+        ctx.stroke();
+        ctx.strokeStyle = targetColor;
+        ctx.shadowColor = shouldGlow(targetColor) ? targetColor : "transparent";
+        ctx.shadowBlur = shouldGlow(targetColor) ? 10 * tween.t : 0;
+        ctx.beginPath();
+        ctx.moveTo(from.x, from.y);
+        ctx.lineTo(lerp(from.x, to.x, tween.t), lerp(from.y, to.y, tween.t));
+        ctx.stroke();
+      } else {
+        ctx.lineTo(to.x, to.y);
+        ctx.stroke();
+      }
 
       if (dataset.directed) {
         const angle = Math.atan2(to.y - from.y, to.x - from.x);

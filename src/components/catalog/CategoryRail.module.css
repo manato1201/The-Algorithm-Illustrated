@@ -1,0 +1,111 @@
+/* 画面右端に固定した縦のレール。広い画面の一覧の範囲でだけ現れ、動きは位置の追従だけ。 */
+.wrap {
+  position: fixed;
+  top: 50%;
+  right: 1rem;
+  z-index: 20;
+  height: min(60vh, 32rem);
+  transform: translateY(-50%);
+  opacity: 0;
+  pointer-events: none;
+}
+
+.wrap[data-visible="true"] {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .wrap {
+    transition: opacity 0.2s ease;
+  }
+  .thumb,
+  .label {
+    transition: top 0.12s ease-out;
+  }
+}
+
+.rail {
+  position: relative;
+  width: 1.5rem;
+  height: 100%;
+  margin-left: auto;
+  cursor: grab;
+  touch-action: none;
+  border-radius: 6px;
+}
+
+.rail:active {
+  cursor: grabbing;
+}
+
+.rail:focus-visible {
+  outline: 2px solid var(--state-pivot);
+  outline-offset: 4px;
+}
+
+.string {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 50%;
+  width: 1px;
+  background: var(--color-text-muted);
+  opacity: 0.5;
+}
+
+.tick {
+  position: absolute;
+  left: 50%;
+  width: 7px;
+  height: 1px;
+  transform: translateX(-50%);
+  background: var(--color-text-muted);
+  opacity: 0.6;
+}
+
+.tick[data-passed="true"] {
+  background: var(--color-text);
+  opacity: 1;
+}
+
+.thumb {
+  position: absolute;
+  left: 50%;
+  width: 0.75rem;
+  height: 0.75rem;
+  transform: translate(-50%, -50%);
+  border: 2px solid var(--color-bg-void);
+  border-radius: 2px;
+  background: var(--color-text);
+  box-shadow: 0 0 0 1px var(--color-text-muted);
+}
+
+/* 触っている間・フォーカス中だけ、いまのカテゴリ名を出す */
+.label {
+  position: absolute;
+  right: 1.75rem;
+  display: flex;
+  gap: 0.4rem;
+  align-items: baseline;
+  padding: 0.15rem 0.5rem;
+  border: 1px solid var(--color-line);
+  border-radius: 4px;
+  background: var(--color-bg-surface-2);
+  color: var(--color-text);
+  font-size: 0.75rem;
+  white-space: nowrap;
+  transform: translateY(-50%);
+  opacity: 0;
+  pointer-events: none;
+}
+
+.wrap[data-engaged="true"] .label {
+  opacity: 1;
+}
+
+.labelCount {
+  font-family: var(--font-mono), monospace;
+  font-size: 0.65rem;
+  color: var(--color-text-muted);
+}

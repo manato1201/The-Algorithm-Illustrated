@@ -709,3 +709,8 @@
     transition: none;
   }
 }
+
+/* 縦の目次(CategoryRail)から飛んだとき、固定ヘッダーに隠れないようにする */
+.categoryGroup {
+  scroll-margin-top: 5rem;
+}

@@ -361,3 +361,14 @@
   font-variant-numeric: tabular-nums;
   color: var(--color-text);
 }
+
+/* 速度バッジ。再生速度が1x以外のときだけ、STEPの横に出す(実時間の表示は変えない)。 */
+.speedBadge {
+  margin-left: 0.5rem;
+  padding: 0 0.4rem;
+  border: 1px solid currentColor;
+  border-radius: 999px;
+  font-family: var(--font-mono), monospace;
+  font-size: 0.7rem;
+  color: var(--color-accent-amber);
+}

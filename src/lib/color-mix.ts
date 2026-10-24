@@ -28,3 +28,17 @@ export function easeOutCubic(t: number): number {
   const clamped = Math.min(1, Math.max(0, t));
   return 1 - Math.pow(1 - clamped, 3);
 }
+
+/**
+ * 溜め(Anticipation)と余韻(Follow-through)つきのイージング。動き出す前にわずかに逆へ引き、
+ * 目標を少し行き過ぎてから戻る。振れ幅は数%に抑えてあり、棒の入れ替えなど「物が動く」場面にだけ使う。
+ * 色の補間には使わない(0〜1の外に出るため)。端点は必ず0と1に一致する。
+ */
+export function easeSpring(t: number): number {
+  const clamped = Math.min(1, Math.max(0, t));
+  const c1 = 0.7;
+  const c2 = c1 * 1.525;
+  return clamped < 0.5
+    ? (Math.pow(2 * clamped, 2) * ((c2 + 1) * 2 * clamped - c2)) / 2
+    : (Math.pow(2 * clamped - 2, 2) * ((c2 + 1) * (clamped * 2 - 2) + c2) + 2) / 2;
+}

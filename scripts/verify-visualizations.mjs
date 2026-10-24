@@ -133,6 +133,9 @@ import { STRING_VISUALIZERS, TEXT, PATTERN } from "../src/lib/string-visualizers
 import { TRIE_VISUALIZERS } from "../src/lib/trie-visualizer.ts";
 import { GEOMETRY_VISUALIZERS, GEOMETRY_DATASETS } from "../src/lib/geometry-visualizers.ts";
 import { LANE_VISUALIZERS, LANE_META } from "../src/lib/lane-visualizers.ts";
+import { PSEUDO_CODE, activePseudoLines } from "../src/lib/pseudo-code.ts";
+import { buildStepKinds, highlightEntities } from "../src/components/visualizer/step-timeline.ts";
+import { easeSpring } from "../src/lib/color-mix.ts";
 
 let passCount = 0;
 let failCount = 0;
@@ -1552,6 +1555,36 @@ for (const n of [2, 3, 4, 5]) {
 }
 
 // ---------------------------------------------------------------------------
+// ===========================================================================
+// 擬似コードの現在行(X11④)と、動きの補助(Y2): 定義の整合を確認する
+// ===========================================================================
+section("擬似コードの現在行と、溜め/余韻のイージング");
+{
+  const PSEUDO_INPUT = [62, 11, 88, 34, 5, 77, 23, 45, 90, 8, 56, 41, 19, 68, 3, 82, 30, 71, 15, 59];
+  const frameSources = {
+    ...Object.fromEntries(Object.keys(PSEUDO_CODE).filter((id) => id in SORT_VISUALIZERS).map((id) => [id, () => SORT_VISUALIZERS[id]([...PSEUDO_INPUT])])),
+    ...Object.fromEntries(Object.keys(PSEUDO_CODE).filter((id) => id in SEARCH_VISUALIZERS).map((id) => [id, () => SEARCH_VISUALIZERS[id]()])),
+  };
+  for (const [id, lines] of Object.entries(PSEUDO_CODE)) {
+    check(`擬似コード ${id}: 可視化のフレーム生成元がある`, id in frameSources);
+    if (!(id in frameSources)) continue;
+    const kinds = buildStepKinds(frameSources[id](), highlightEntities);
+    const used = new Set(kinds);
+    // 再生中に現れる全ての状態種別に、光らせる行が1つ以上ある(現在行が空になるステップが無い)
+    for (const kind of used) {
+      check(`擬似コード ${id}: 状態「${kind}」に対応する行がある`, activePseudoLines(id, kind).length > 0);
+    }
+    // 光る行は、実際の再生で一度は使われる(説明用の空kinds行を除く)
+    lines.forEach((line, index) => {
+      if (line.kinds.length === 0) return;
+      check(`擬似コード ${id}: ${index + 1}行目が再生中に一度は光る`, line.kinds.some((kind) => used.has(kind)));
+    });
+  }
+  check("easeSpring: 端点が0と1に一致", easeSpring(0) === 0 && Math.abs(easeSpring(1) - 1) < 1e-9);
+  const springSamples = Array.from({ length: 101 }, (_, i) => easeSpring(i / 100));
+  check("easeSpring: 溜め(0未満)と余韻(1超)があり、振れ幅は10%以内", Math.min(...springSamples) < 0 && Math.max(...springSamples) > 1 && Math.min(...springSamples) > -0.1 && Math.max(...springSamples) < 1.1);
+}
+
 console.log(`\n${"=".repeat(60)}`);
 console.log(`結果: ${passCount}件成功 / ${failCount}件失敗 (合計${passCount + failCount}件のアサーション)`);
 if (failCount > 0) {

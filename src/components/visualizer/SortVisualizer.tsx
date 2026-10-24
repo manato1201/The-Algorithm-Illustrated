@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import styles from "./SortVisualizer.module.css";
 import { PlaybackControls } from "./PlaybackControls";
+import { PseudoCodePanel } from "./PseudoCodePanel";
 import { buildStepKinds, highlightEntities } from "./step-timeline";
 import { ZoomableStage } from "./ZoomableStage";
 import { useStepPlayer } from "./useStepPlayer";
@@ -117,6 +118,7 @@ export function SortVisualizer({ algorithmId }: SortVisualizerProps) {
     }
 
     const fromFrame = frames[tween.from];
+    const isSwapStep = stepKinds[stepIndex] === "swapping";
     const canTween = fromFrame !== undefined && fromFrame.array.length === n;
 
     values.forEach((value, index) => {
@@ -130,7 +132,8 @@ export function SortVisualizer({ algorithmId }: SortVisualizerProps) {
       if (canTween) {
         const fromHeight = (fromFrame.array[index] / maxValue) * (height - 24);
         const fromColor = stateColors[fromFrame.highlight[index] ?? "idle"];
-        barHeight = lerp(fromHeight, targetHeight, tween.t);
+        // 入れ替えのステップだけ、棒の動きに溜めと余韻をつける(色は通常のイージングのまま)
+        barHeight = lerp(fromHeight, targetHeight, isSwapStep ? tween.m : tween.t);
         color = mixColor(fromColor, targetColor, tween.t);
       }
       const y = height - floorPadding - barHeight;
@@ -140,7 +143,7 @@ export function SortVisualizer({ algorithmId }: SortVisualizerProps) {
       ctx.fillStyle = color;
       ctx.fillRect(x, y, barWidth, barHeight);
     });
-  }, [frames, stepIndex, onionSkin, reduceMotion, tween.from, tween.t]);
+  }, [frames, stepIndex, stepKinds, onionSkin, reduceMotion, tween.from, tween.t, tween.m]);
 
   const bursts = useMemo<ParticleBurst[]>(() => {
     const currentFrame = frames[stepIndex];
@@ -239,6 +242,7 @@ export function SortVisualizer({ algorithmId }: SortVisualizerProps) {
           </li>
         ))}
       </ul>
+      <PseudoCodePanel algorithmId={algorithmId} kind={stepKinds[stepIndex] ?? "idle"} />
     </div>
   );
 }

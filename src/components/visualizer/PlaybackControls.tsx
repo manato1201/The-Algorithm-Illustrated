@@ -173,6 +173,11 @@ export function PlaybackControls({
         </ul>
         <span className={styles.stepCount}>
           STEP <FlipNumber value={stepIndex + 1} /> / {frameCount}
+          {speed !== 1 ? (
+            <span className={styles.speedBadge} aria-label={`再生速度 ${speed}倍`}>
+              ×{speed}
+            </span>
+          ) : null}
         </span>
       </div>
 

@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import styles from "./AlgorithmCatalog.module.css";
 import { AlgorithmStackBrowser } from "./AlgorithmStackBrowser";
+import { CategoryRail } from "./CategoryRail";
 import { LivePreview } from "./LivePreview";
 import { ComplexityBadge } from "@/components/hud/ComplexityBadge";
 import { FavoriteToggleButton } from "@/components/hud/FavoriteToggleButton";
@@ -522,12 +523,24 @@ export function AlgorithmCatalog({
             </Link>
           </section>
 
-          <section className={styles.list} aria-labelledby="list-heading">
+          <section id="catalog-index" className={styles.list} aria-labelledby="list-heading">
             <h2 id="list-heading" className={styles.sectionLabel}>
               ■ INDEX 一覧
             </h2>
-            {groupedByCategory.map(({ category, items }) => (
-              <div key={category} className={styles.categoryGroup}>
+            <CategoryRail
+              containerId="catalog-index"
+              items={groupedByCategory.map(({ category, items }, index) => ({
+                label: category,
+                targetId: `catalog-cat-${index}`,
+                count: items.length,
+              }))}
+            />
+            {groupedByCategory.map(({ category, items }, index) => (
+              <div
+                key={category}
+                id={`catalog-cat-${index}`}
+                className={styles.categoryGroup}
+              >
                 <h3 className={styles.categoryHeading}>
                   {category}
                   <span className={styles.categoryCount}>{items.length}</span>
