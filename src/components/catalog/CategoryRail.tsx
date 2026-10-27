@@ -88,6 +88,14 @@ export function CategoryRail({ items, containerId }: CategoryRailProps) {
     return Math.round(ratio * (items.length - 1));
   };
 
+  // 離した・中断した・キャプチャを失ったときに、つまみを離す(二重に呼ばれても害がない)
+  const endDrag = (event: React.PointerEvent<HTMLDivElement>) => {
+    dragging.current = false;
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+      event.currentTarget.releasePointerCapture(event.pointerId);
+    }
+  };
+
   if (!isWide || items.length < 2) return null;
 
   const current = items[Math.min(activeIndex, items.length - 1)];
@@ -123,10 +131,9 @@ export function CategoryRail({ items, containerId }: CategoryRailProps) {
           const next = indexFromPointer(event.clientY);
           if (next !== activeIndex) goTo(next, true);
         }}
-        onPointerUp={(event) => {
-          dragging.current = false;
-          event.currentTarget.releasePointerCapture(event.pointerId);
-        }}
+        onPointerUp={endDrag}
+        onPointerCancel={endDrag}
+        onLostPointerCapture={endDrag}
         onKeyDown={(event) => {
           if (event.key in KEY_STEP) {
             event.preventDefault();

@@ -5,6 +5,7 @@ import Link from "next/link";
 import styles from "./AlgorithmCatalog.module.css";
 import { AlgorithmStackBrowser } from "./AlgorithmStackBrowser";
 import { CategoryRail } from "./CategoryRail";
+import { AsciiMycelium } from "@/components/hud/AsciiMycelium";
 import { LivePreview } from "./LivePreview";
 import { ComplexityBadge } from "@/components/hud/ComplexityBadge";
 import { FavoriteToggleButton } from "@/components/hud/FavoriteToggleButton";
@@ -213,6 +214,16 @@ export function AlgorithmCatalog({
       }),
     );
   }, [algorithms, featured.id]);
+
+  const railItems = useMemo(
+    () =>
+      groupedByCategory.map(({ category, items }, index) => ({
+        label: category,
+        targetId: `catalog-cat-${index}`,
+        count: items.length,
+      })),
+    [groupedByCategory],
+  );
 
   return (
     <div className={styles.page}>
@@ -467,6 +478,7 @@ export function AlgorithmCatalog({
           </div>
           {filteredResults.length === 0 ? (
             <div className={styles.emptyState}>
+              <AsciiMycelium />
               該当するアルゴリズムが見つかりませんでした。別のキーワードやカテゴリでお試しください。
             </div>
           ) : isMobile && stackMode ? (
@@ -527,14 +539,7 @@ export function AlgorithmCatalog({
             <h2 id="list-heading" className={styles.sectionLabel}>
               ■ INDEX 一覧
             </h2>
-            <CategoryRail
-              containerId="catalog-index"
-              items={groupedByCategory.map(({ category, items }, index) => ({
-                label: category,
-                targetId: `catalog-cat-${index}`,
-                count: items.length,
-              }))}
-            />
+            <CategoryRail containerId="catalog-index" items={railItems} />
             {groupedByCategory.map(({ category, items }, index) => (
               <div
                 key={category}

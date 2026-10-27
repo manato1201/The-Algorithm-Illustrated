@@ -16,7 +16,7 @@ export type StageHud = {
   total: number;
 };
 
-const HUD_LABELS: Record<StepKind, { glyph: string; ja: string; en: string }> = {
+export const STEP_KIND_LABELS: Record<StepKind, { glyph: string; ja: string; en: string }> = {
   idle: { glyph: "○", ja: "待機", en: "STANDBY" },
   comparing: { glyph: "●", ja: "比較中", en: "COMPARING" },
   swapping: { glyph: "▲", ja: "入れ替え", en: "SWAPPING" },
@@ -81,9 +81,9 @@ export function ZoomableStage({ children, hud }: ZoomableStageProps) {
         {hud ? (
           <div className={styles.hud} data-surface="dark" data-kind={hud.kind} aria-hidden="true">
             <span className={styles.hudKind}>
-              <span className={styles.hudGlyph}>{HUD_LABELS[hud.kind].glyph}</span>
-              {HUD_LABELS[hud.kind].en}
-              <span className={styles.hudJa}>{HUD_LABELS[hud.kind].ja}</span>
+              <span className={styles.hudGlyph}>{STEP_KIND_LABELS[hud.kind].glyph}</span>
+              {STEP_KIND_LABELS[hud.kind].en}
+              <span className={styles.hudJa}>{STEP_KIND_LABELS[hud.kind].ja}</span>
             </span>
             <span className={styles.hudStep}>
               STEP {String(hud.step + 1).padStart(3, "0")}/{String(hud.total).padStart(3, "0")}

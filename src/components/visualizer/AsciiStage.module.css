@@ -1,0 +1,36 @@
+.stage {
+  overflow-x: auto;
+  padding: var(--space-4);
+  background: var(--color-bg-void);
+  border: 1px solid var(--color-line);
+  border-radius: 4px;
+}
+
+.grid {
+  display: inline-flex;
+  flex-direction: column;
+  min-width: 100%;
+  font-family: var(--font-mono), monospace;
+  font-size: 0.8rem;
+  line-height: 1.15;
+}
+
+.row {
+  display: flex;
+  justify-content: center;
+}
+
+/* 1マス = 等幅の4文字分。数字は半角・等幅(決めごと表) */
+.cell {
+  flex: none;
+  width: 4ch;
+  text-align: center;
+  white-space: pre;
+  color: var(--color-text-muted);
+}
+
+.valueRow {
+  margin-top: 0.25rem;
+  font-variant-numeric: tabular-nums;
+  color: var(--color-text-muted);
+}

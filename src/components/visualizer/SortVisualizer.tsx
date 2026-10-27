@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import styles from "./SortVisualizer.module.css";
 import { PlaybackControls } from "./PlaybackControls";
+import { AsciiStage } from "./AsciiStage";
 import { PseudoCodePanel } from "./PseudoCodePanel";
 import { buildStepKinds, highlightEntities } from "./step-timeline";
 import { ZoomableStage } from "./ZoomableStage";
@@ -65,6 +66,7 @@ type SortVisualizerProps = {
 export function SortVisualizer({ algorithmId }: SortVisualizerProps) {
   const [seedArray, setSeedArray] = useState<number[]>(INITIAL_ARRAY);
   const [onionSkin, setOnionSkin] = useState(false);
+  const [textView, setTextView] = useState(false);
   const reduceMotion = useMediaQuery("(prefers-reduced-motion: reduce)");
   const request = useMemo<WorkerRequest>(
     () => ({ kind: "sort", algorithmId, input: seedArray }),
@@ -199,12 +201,16 @@ export function SortVisualizer({ algorithmId }: SortVisualizerProps) {
 
   return (
     <div className={styles.visualizer}>
-      <ZoomableStage hud={{ kind: stepKinds[stepIndex] ?? "idle", step: stepIndex, total: frames.length }}>
-        <div className={styles.canvasWrap}>
-          <canvas ref={canvasRef} className={styles.canvas} aria-hidden="true" />
-          <ParticleBurstLayer bursts={bursts} />
-        </div>
-      </ZoomableStage>
+      {textView && currentFrame ? (
+        <AsciiStage values={currentFrame.array} highlight={currentFrame.highlight} />
+      ) : (
+        <ZoomableStage hud={{ kind: stepKinds[stepIndex] ?? "idle", step: stepIndex, total: frames.length }}>
+          <div className={styles.canvasWrap}>
+            <canvas ref={canvasRef} className={styles.canvas} aria-hidden="true" />
+            <ParticleBurstLayer bursts={bursts} />
+          </div>
+        </ZoomableStage>
+      )}
       <p className={styles.description} role="status">
         {isComputing ? "Web Workerで計算中…" : currentFrame?.description}
       </p>
@@ -222,6 +228,7 @@ export function SortVisualizer({ algorithmId }: SortVisualizerProps) {
         onReset={handleShuffle}
         resetLabel="シャッフル"
         onionSkin={{ enabled: onionSkin, onChange: setOnionSkin }}
+        textView={{ enabled: textView, onChange: setTextView }}
         stepper={{
           label: "要素数",
           value: seedArray.length,

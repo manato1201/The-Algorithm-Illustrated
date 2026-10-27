@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import styles from "./SearchVisualizer.module.css";
 import { PlaybackControls } from "./PlaybackControls";
+import { AsciiStage } from "./AsciiStage";
 import { PseudoCodePanel } from "./PseudoCodePanel";
 import { buildStepKinds, highlightEntities } from "./step-timeline";
 import { ZoomableStage } from "./ZoomableStage";
@@ -59,6 +60,7 @@ export function SearchVisualizer({ algorithmId }: SearchVisualizerProps) {
   const tween = useFrameTween(stepIndex, speed);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [onionSkin, setOnionSkin] = useState(false);
+  const [textView, setTextView] = useState(false);
   const reduceMotion = useMediaQuery("(prefers-reduced-motion: reduce)");
 
   useEffect(() => {
@@ -158,12 +160,16 @@ export function SearchVisualizer({ algorithmId }: SearchVisualizerProps) {
       {TARGET_SEARCH_ALGORITHMS.has(algorithmId) ? (
         <p className={styles.target}>検索対象の値: {SEARCH_TARGET}</p>
       ) : null}
-      <ZoomableStage hud={{ kind: stepKinds[stepIndex] ?? "idle", step: stepIndex, total: frames.length }}>
-        <div className={styles.canvasWrap}>
-          <canvas ref={canvasRef} className={styles.canvas} aria-hidden="true" />
-          <ParticleBurstLayer bursts={bursts} />
-        </div>
-      </ZoomableStage>
+      {textView && currentFrame ? (
+        <AsciiStage values={currentFrame.array} highlight={currentFrame.highlight} />
+      ) : (
+        <ZoomableStage hud={{ kind: stepKinds[stepIndex] ?? "idle", step: stepIndex, total: frames.length }}>
+          <div className={styles.canvasWrap}>
+            <canvas ref={canvasRef} className={styles.canvas} aria-hidden="true" />
+            <ParticleBurstLayer bursts={bursts} />
+          </div>
+        </ZoomableStage>
+      )}
       <p className={styles.description} role="status">
         {isComputing ? "Web Workerで計算中…" : currentFrame?.description}
       </p>
@@ -181,6 +187,7 @@ export function SearchVisualizer({ algorithmId }: SearchVisualizerProps) {
         onReset={reset}
         resetLabel="最初から"
         onionSkin={{ enabled: onionSkin, onChange: setOnionSkin }}
+        textView={{ enabled: textView, onChange: setTextView }}
       />
       <ul className={styles.legend}>
         {LEGEND_ITEMS.map((item) => (

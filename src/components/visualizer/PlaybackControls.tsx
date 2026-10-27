@@ -31,6 +31,8 @@ type PlaybackControlsProps = {
   resetLabel?: string;
   /** 残像(直前のステップの状態を薄く残す)。対応する可視化だけが渡す。動きを減らす設定では出さない。 */
   onionSkin?: { enabled: boolean; onChange: (enabled: boolean) => void };
+  /** 文字のマスで表す別表示への切り替え(対応する可視化だけが渡す)。 */
+  textView?: { enabled: boolean; onChange: (enabled: boolean) => void };
   /** 条件の調整(要素数・行列サイズなど)。ステッパー(−/+)として表示する。 */
   stepper?: { label: string; value: number; min: number; max: number; onChange: (value: number) => void };
 };
@@ -72,6 +74,7 @@ export function PlaybackControls({
   onReset,
   resetLabel = "リセット",
   onionSkin,
+  textView,
   stepper,
 }: PlaybackControlsProps) {
   const [rippleCount, setRippleCount] = useState(0);
@@ -174,7 +177,7 @@ export function PlaybackControls({
         <span className={styles.stepCount}>
           STEP <FlipNumber value={stepIndex + 1} /> / {frameCount}
           {speed !== 1 ? (
-            <span className={styles.speedBadge} aria-label={`再生速度 ${speed}倍`}>
+            <span className={styles.speedBadge} role="img" aria-label={`再生速度 ${speed}倍`}>
               ×{speed}
             </span>
           ) : null}
@@ -252,6 +255,18 @@ export function PlaybackControls({
             title="直前のステップの状態を薄く残して表示する"
           >
             残像
+          </button>
+        ) : null}
+        {textView ? (
+          <button
+            type="button"
+            className={styles.speedButton}
+            aria-pressed={textView.enabled}
+            data-active={textView.enabled}
+            onClick={() => textView.onChange(!textView.enabled)}
+            title="棒グラフの代わりに、文字のマスで表示する"
+          >
+            文字表示
           </button>
         ) : null}
         <div className={styles.speedGroup} role="group" aria-label="再生速度">

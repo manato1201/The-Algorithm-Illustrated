@@ -1,5 +1,6 @@
 "use client";
 
+import { AsciiMycelium } from "@/components/hud/AsciiMycelium";
 import { useMemo, useState } from "react";
 import Link from "next/link";
 import styles from "./CompareView.module.css";
@@ -138,6 +139,7 @@ export function CompareView({ algorithms }: CompareViewProps) {
 
       {selected.length === 0 ? (
         <div className={styles.emptyState}>
+          <AsciiMycelium />
           上の検索欄からアルゴリズムを追加すると、ここに比較表が表示されます。
         </div>
       ) : (

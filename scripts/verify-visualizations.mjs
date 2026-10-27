@@ -136,6 +136,7 @@ import { LANE_VISUALIZERS, LANE_META } from "../src/lib/lane-visualizers.ts";
 import { PSEUDO_CODE, activePseudoLines } from "../src/lib/pseudo-code.ts";
 import { buildStepKinds, highlightEntities } from "../src/components/visualizer/step-timeline.ts";
 import { easeSpring } from "../src/lib/color-mix.ts";
+import { ASCII_LEVELS, asciiBarLevels, asciiBarRows } from "../src/lib/ascii-view.ts";
 
 let passCount = 0;
 let failCount = 0;
@@ -1583,6 +1584,31 @@ section("擬似コードの現在行と、溜め/余韻のイージング");
   check("easeSpring: 端点が0と1に一致", easeSpring(0) === 0 && Math.abs(easeSpring(1) - 1) < 1e-9);
   const springSamples = Array.from({ length: 101 }, (_, i) => easeSpring(i / 100));
   check("easeSpring: 溜め(0未満)と余韻(1超)があり、振れ幅は10%以内", Math.min(...springSamples) < 0 && Math.max(...springSamples) > 1 && Math.min(...springSamples) > -0.1 && Math.max(...springSamples) < 1.1);
+}
+
+// ===========================================================================
+// 文字のマスで表す別表示(D1): 段データの性質を確認する
+// ===========================================================================
+section("文字表示(ascii-view): 段データ");
+{
+  const samples = [
+    [62, 11, 88, 34, 5, 77, 23, 45, 90, 8, 56, 41, 19, 68, 3, 82, 30, 71, 15, 59],
+    [5, 5, 5, 5],
+    [1],
+    [0, 3],
+    [],
+  ];
+  for (const values of samples) {
+    const tag = JSON.stringify(values.slice(0, 4)) + "…" + values.length + "件";
+    const levels = asciiBarLevels(values);
+    const rows = asciiBarRows(values);
+    check("文字表示 " + tag + ": 段数の配列が値と同じ長さ", levels.length === values.length);
+    check("文字表示 " + tag + ": 行数が" + ASCII_LEVELS + "段", rows.length === ASCII_LEVELS);
+    check("文字表示 " + tag + ": 値が大きいほど段が低くならない(単調)", values.every((a, i) => values.every((b, j) => (a <= b ? levels[i] <= levels[j] : true))));
+    check("文字表示 " + tag + ": 正の値は最低1段、0以下は0段", values.every((v, i) => (v > 0 ? levels[i] >= 1 : levels[i] === 0)));
+    check("文字表示 " + tag + ": 行列の各列の true の数が段数と一致", levels.every((level, c) => rows.filter((row) => row[c]).length === level));
+    if (values.some((v) => v > 0)) check("文字表示 " + tag + ": 最大値の棒がちょうど全段に届く", Math.max(...levels) === ASCII_LEVELS);
+  }
 }
 
 console.log(`\n${"=".repeat(60)}`);
