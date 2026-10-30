@@ -1,5 +1,5 @@
 import styles from "./AsciiStage.module.css";
-import { STEP_KIND_LABELS } from "./ZoomableStage";
+import { STEP_KIND_LABELS } from "./step-timeline";
 import { asciiBarRows } from "@/lib/ascii-view";
 import { stateColors, type StateColorKey } from "@/lib/design-tokens";
 

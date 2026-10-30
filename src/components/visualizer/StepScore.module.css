@@ -1,0 +1,69 @@
+.score {
+  display: flex;
+  gap: 2px;
+  height: 4.5rem;
+  padding: 0.25rem;
+  border: 1px solid var(--color-line);
+  border-radius: 6px;
+  background: var(--color-bg-surface);
+  overflow: hidden;
+}
+
+.cell {
+  position: relative;
+  flex: 1 1 0;
+  min-width: 0;
+  border-radius: 4px;
+}
+
+.cell[data-empty="true"] {
+  opacity: 0.25;
+}
+
+/* 五線のような細い罫線 */
+.cell::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: repeating-linear-gradient(
+    to bottom,
+    transparent 0,
+    transparent calc(25% - 1px),
+    var(--color-line) calc(25% - 1px),
+    var(--color-line) 25%
+  );
+}
+
+/* いまの1つを枠で強調する(色ではなく枠と太さで示す) */
+.cell[data-current="true"] {
+  outline: 2px solid var(--color-text);
+  outline-offset: -2px;
+  background: color-mix(in srgb, var(--color-text) 8%, transparent);
+}
+
+.note {
+  position: absolute;
+  left: 50%;
+  transform: translate(-50%, 50%);
+  font-size: 0.85rem;
+  line-height: 1;
+  color: var(--color-text-muted);
+}
+
+.note[data-kind="comparing"] {
+  color: var(--state-comparing);
+}
+.note[data-kind="swapping"] {
+  color: var(--state-swapping);
+}
+.note[data-kind="pivot"] {
+  color: var(--state-pivot);
+}
+.note[data-kind="settled"] {
+  color: var(--state-settled);
+}
+
+.cell[data-current="true"] .note {
+  font-size: 1.1rem;
+  font-weight: 700;
+}

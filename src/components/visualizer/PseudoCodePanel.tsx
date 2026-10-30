@@ -15,11 +15,16 @@ type PseudoCodePanelProps = {
 export function PseudoCodePanel({ algorithmId, kind }: PseudoCodePanelProps) {
   const lines = PSEUDO_CODE[algorithmId];
   if (!lines) return null;
-  const active = new Set(activePseudoLines(algorithmId, kind));
+  const activeLines = activePseudoLines(algorithmId, kind);
+  const active = new Set(activeLines);
+  const lensText = activeLines.length > 0 ? lines[activeLines[0]].text : null;
 
   return (
     <section className={styles.panel} aria-label="擬似コードと現在の行">
       <h3 className={styles.title}>PSEUDO CODE</h3>
+      <p className={styles.lens} aria-hidden="true">
+        {lensText ?? "\u00a0"}
+      </p>
       <ol className={styles.lines}>
         {lines.map((line, index) => (
           <li

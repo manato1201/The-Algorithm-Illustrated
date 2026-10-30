@@ -47,10 +47,6 @@ export const PSEUDO_CODE: Record<string, readonly PseudoLine[]> = {
   ],
 };
 
-export function hasPseudoCode(algorithmId: string): boolean {
-  return algorithmId in PSEUDO_CODE;
-}
-
 /** 状態種別に対応する行番号(0始まり)。該当する行が無ければ空。 */
 export function activePseudoLines(algorithmId: string, kind: StateColorKey): number[] {
   const lines = PSEUDO_CODE[algorithmId] ?? [];

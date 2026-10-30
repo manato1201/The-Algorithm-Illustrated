@@ -2,7 +2,7 @@
 
 import { useState, type ReactNode } from "react";
 import styles from "./ZoomableStage.module.css";
-import type { StepKind } from "./step-timeline";
+import { STEP_KIND_LABELS, type StepKind } from "./step-timeline";
 
 const ZOOM_MIN = 0.5;
 const ZOOM_MAX = 2.5;
@@ -14,14 +14,6 @@ export type StageHud = {
   kind: StepKind;
   step: number;
   total: number;
-};
-
-export const STEP_KIND_LABELS: Record<StepKind, { glyph: string; ja: string; en: string }> = {
-  idle: { glyph: "○", ja: "待機", en: "STANDBY" },
-  comparing: { glyph: "●", ja: "比較中", en: "COMPARING" },
-  swapping: { glyph: "▲", ja: "入れ替え", en: "SWAPPING" },
-  pivot: { glyph: "◆", ja: "基準", en: "PIVOT" },
-  settled: { glyph: "■", ja: "確定", en: "SETTLED" },
 };
 
 type ZoomableStageProps = {

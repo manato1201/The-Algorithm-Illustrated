@@ -134,7 +134,8 @@ import { TRIE_VISUALIZERS } from "../src/lib/trie-visualizer.ts";
 import { GEOMETRY_VISUALIZERS, GEOMETRY_DATASETS } from "../src/lib/geometry-visualizers.ts";
 import { LANE_VISUALIZERS, LANE_META } from "../src/lib/lane-visualizers.ts";
 import { PSEUDO_CODE, activePseudoLines } from "../src/lib/pseudo-code.ts";
-import { buildStepKinds, highlightEntities } from "../src/components/visualizer/step-timeline.ts";
+import { buildStepKinds, highlightEntities, STEP_KIND_LABELS } from "../src/components/visualizer/step-timeline.ts";
+import { STEP_TONE, STEP_TONE_MAX_RANK } from "../src/lib/step-sound.ts";
 import { easeSpring } from "../src/lib/color-mix.ts";
 import { ASCII_LEVELS, asciiBarLevels, asciiBarRows } from "../src/lib/ascii-view.ts";
 
@@ -1609,6 +1610,21 @@ section("文字表示(ascii-view): 段データ");
     check("文字表示 " + tag + ": 行列の各列の true の数が段数と一致", levels.every((level, c) => rows.filter((row) => row[c]).length === level));
     if (values.some((v) => v > 0)) check("文字表示 " + tag + ": 最大値の棒がちょうど全段に届く", Math.max(...levels) === ASCII_LEVELS);
   }
+}
+
+// ===========================================================================
+// 譜面と音(Z25): 状態ごとの音の高さと段の対応を確認する
+// ===========================================================================
+section("譜面と音(step-sound): 状態ごとの音と段");
+{
+  const entries = Object.entries(STEP_TONE);
+  const pitched = entries.filter(([, tone]) => tone.hz !== null);
+  check("譜面: 待機は鳴らさない(hz=null)", STEP_TONE.idle.hz === null);
+  check("譜面: 待機以外の4状態すべてに音の高さがある", pitched.length === 4);
+  check("譜面: 音の高さが状態ごとに異なる", new Set(pitched.map(([, t]) => t.hz)).size === pitched.length);
+  check("譜面: 段(rank)が状態ごとに異なり、0〜最大段に収まる", new Set(entries.map(([, t]) => t.rank)).size === entries.length && entries.every(([, t]) => t.rank >= 0 && t.rank <= STEP_TONE_MAX_RANK));
+  check("譜面: 段が高いほど音も高い(段と音の高さが同じ順序)", pitched.every(([, a]) => pitched.every(([, b]) => (a.rank < b.rank ? a.hz < b.hz : true))));
+  check("譜面: 状態の表示名(記号)が5状態分ある", Object.keys(STEP_KIND_LABELS).length === 5 && new Set(Object.values(STEP_KIND_LABELS).map((l) => l.glyph)).size === 5);
 }
 
 console.log(`\n${"=".repeat(60)}`);

@@ -56,3 +56,16 @@
   font-size: 0.7rem;
   color: var(--color-text-muted);
 }
+
+/* 拡大レンズ: いま光っている行を、大きな字でもう一度読めるようにする(読み上げは下の一覧に任せる) */
+.lens {
+  min-height: 1.6em;
+  margin: 0 0 0.5rem;
+  padding: 0.4rem 0.6rem;
+  border-left: 3px solid var(--state-pivot);
+  border-radius: 2px;
+  background: color-mix(in srgb, var(--state-pivot) 8%, transparent);
+  font-size: 1.05rem;
+  font-weight: 700;
+  color: var(--color-text);
+}

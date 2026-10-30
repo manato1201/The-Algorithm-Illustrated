@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import styles from "./PlaybackControls.module.css";
 import {
   PauseIcon,
@@ -10,9 +10,11 @@ import {
   StepBackIcon,
   StepForwardIcon,
 } from "./PlaybackIcons";
-import { countKindsUpTo, type StepKind } from "./step-timeline";
+import { StepScore } from "./StepScore";
+import { countKindsUpTo, STEP_KIND_LABELS, type StepKind } from "./step-timeline";
 import { PLAYBACK_SPEEDS, type PlaybackSpeed } from "./useStepPlayer";
 import { useRegisterScrub } from "./ScrubBridge";
+import { playStepTone } from "@/lib/step-sound";
 import { useMediaQuery } from "@/lib/use-media-query";
 
 type PlaybackControlsProps = {
@@ -38,12 +40,9 @@ type PlaybackControlsProps = {
 };
 
 /** タイムラインに並べる状態と表示名(決めごと表の状態語彙)。idleは数えない。 */
-const COUNTED_KINDS: { kind: Exclude<StepKind, "idle">; label: string }[] = [
-  { kind: "comparing", label: "比較中" },
-  { kind: "swapping", label: "入れ替え" },
-  { kind: "pivot", label: "基準" },
-  { kind: "settled", label: "確定" },
-];
+const COUNTED_KINDS: { kind: Exclude<StepKind, "idle">; label: string }[] = (
+  ["comparing", "swapping", "pivot", "settled"] as const
+).map((kind) => ({ kind, label: STEP_KIND_LABELS[kind].ja }));
 
 /** 長い再生でもタイムラインのDOM数が膨らまないよう、目盛りはこの数までに丸める。 */
 const MAX_TICKS = 240;
@@ -78,6 +77,9 @@ export function PlaybackControls({
   stepper,
 }: PlaybackControlsProps) {
   const [rippleCount, setRippleCount] = useState(0);
+  // 譜面(操作の列を流す表示)と音。どちらも既定はオフで、この画面の中だけの状態
+  const [scoreOn, setScoreOn] = useState(false);
+  const [soundOn, setSoundOn] = useState(false);
   const reduceMotion = useMediaQuery("(prefers-reduced-motion: reduce)");
   // 詳細ページでは、解説のスクロール位置から再生位置を動かせるよう、操作口を登録する(Providerが無ければ何もしない)
   useRegisterScrub(frameCount, onScrub);
@@ -109,6 +111,11 @@ export function PlaybackControls({
   const playedTicks =
     ticks.length === 0 ? 0 : Math.floor((stepIndex / frameCount) * ticks.length) + 1;
   const currentKind = stepKinds[stepIndex] ?? "idle";
+  // 音は、押したあとのステップ移動(再生・コマ送り・タイムライン操作)ごとに1つ鳴らす
+  useEffect(() => {
+    if (soundOn) playStepTone(stepKinds[stepIndex] ?? "idle");
+  }, [soundOn, stepIndex, stepKinds]);
+
   const currentLabel = COUNTED_KINDS.find(({ kind }) => kind === currentKind)?.label ?? "待機";
 
   // ← →でステップ送り、Spaceで再生/一時停止。比較画面では可視化パネルが複数並ぶことがあるため、
@@ -163,6 +170,8 @@ export function PlaybackControls({
           aria-valuetext={`ステップ ${stepIndex + 1} / ${frameCount}(${currentLabel})`}
         />
       </div>
+
+      {scoreOn ? <StepScore stepKinds={stepKinds} stepIndex={stepIndex} /> : null}
 
       <div className={styles.readout}>
         <ul className={styles.legend} aria-label="タイムラインの凡例と累計ステップ数">
@@ -269,6 +278,26 @@ export function PlaybackControls({
             文字表示
           </button>
         ) : null}
+        <button
+          type="button"
+          className={styles.speedButton}
+          aria-pressed={scoreOn}
+          data-active={scoreOn}
+          onClick={() => setScoreOn((on) => !on)}
+          title="操作の列を譜面のように流し、いまの1つを枠で示す"
+        >
+          譜面
+        </button>
+        <button
+          type="button"
+          className={styles.speedButton}
+          aria-pressed={soundOn}
+          data-active={soundOn}
+          onClick={() => setSoundOn((on) => !on)}
+          title="ステップごとに状態の種類に応じた短い音を鳴らす(既定はオフ)"
+        >
+          音
+        </button>
         <div className={styles.speedGroup} role="group" aria-label="再生速度">
           <SpeedIcon className={styles.speedIcon} />
           {PLAYBACK_SPEEDS.map((s) => (

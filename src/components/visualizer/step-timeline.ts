@@ -15,6 +15,15 @@ import type { TrieFrame } from "@/lib/trie-visualizer";
  */
 export type StepKind = StateColorKey;
 
+/** 状態語彙ごとの表示名。HUD・タイムラインの凡例・文字表示で同じ記号とラベルを使う(形でも区別する)。 */
+export const STEP_KIND_LABELS: Record<StepKind, { glyph: string; ja: string; en: string }> = {
+  idle: { glyph: "○", ja: "待機", en: "STANDBY" },
+  comparing: { glyph: "●", ja: "比較中", en: "COMPARING" },
+  swapping: { glyph: "▲", ja: "入れ替え", en: "SWAPPING" },
+  pivot: { glyph: "◆", ja: "基準", en: "PIVOT" },
+  settled: { glyph: "■", ja: "確定", en: "SETTLED" },
+};
+
 type EntityStates = Map<string, StepKind>;
 
 /** 同じステップで複数の状態が混在したときの優先順位(注目すべき順)。 */
