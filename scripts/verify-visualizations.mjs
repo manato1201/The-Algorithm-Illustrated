@@ -155,6 +155,9 @@ import {
   hdPayoffHawk, hdPayoffDove, NASH_ROW_PAYOFF, NASH_COL_PAYOFF, MINIMAX_MATRIX, STACKELBERG_QUANTITIES,
 } from "../src/lib/game-visualizers.ts";
 import { SIGNAL_VISUALIZERS, SIGNAL_META } from "../src/lib/signal-visualizers.ts";
+import * as BAR from "../src/lib/bar-visualizers.ts";
+import * as RANK from "../src/lib/ranking-visualizers.ts";
+import * as PROC from "../src/lib/procedural-visualizers.ts";
 import {
   AUTOCORR_MIN_LAG, AUTOCORR_MAX_LAG, AUTOCORR_PERIOD, autocorrInput,
   STFT_N, STFT_WIN, STFT_HOP, STFT_SWITCH, stftInput,
@@ -2809,6 +2812,135 @@ section("文字表示(ascii-view): 段データ");
     check("文字表示 " + tag + ": 正の値は最低1段、0以下は0段", values.every((v, i) => (v > 0 ? levels[i] >= 1 : levels[i] === 0)));
     check("文字表示 " + tag + ": 行列の各列の true の数が段数と一致", levels.every((level, c) => rows.filter((row) => row[c]).length === level));
     if (values.some((v) => v > 0)) check("文字表示 " + tag + ": 最大値の棒がちょうど全段に届く", Math.max(...levels) === ASCII_LEVELS);
+  }
+}
+
+// ===========================================================================
+// BAR (4件): 配列の棒グラフで描く情報検索(SimHash)・ゲームの手続き型生成(中点変位・パーリン・ウォーリー)。
+// 定義式どおりに別途書いた再計算(固定シード乱数・FNVハッシュも別実装)と、アルゴリズムごとの性質で確認する。
+// ===========================================================================
+section("BAR (4件): SimHash・中点変位・パーリンノイズ・ウォーリーノイズ");
+{
+  const near = (a, b, eps = 1e-9) => Math.abs(a - b) <= eps;
+  const lastOf = (registry, id) => {
+    const frames = registry[id]();
+    checkWellFormed(id, frames);
+    return { frames, last: frames[frames.length - 1] };
+  };
+  const makeRng = (seed) => {
+    let state = seed >>> 0;
+    return () => {
+      state = (1664525 * state + 1013904223) % 4294967296;
+      return state / 4294967296;
+    };
+  };
+  const round2 = (v) => Math.round(v * 100) / 100;
+
+  // ---- 全件共通 ----
+  for (const [group, registry] of Object.entries(BAR.BAR_GROUPS)) {
+    for (const id of Object.keys(registry)) {
+      const frames = registry[id]();
+      check(`${id}(${group}): 全フレームで棒の数が同じ・有限値`, frames.every((f) => f.array.length === frames[0].array.length && f.array.every(Number.isFinite)));
+      check(`${id}(${group}): 印の添字が範囲内`, frames.every((f) => Object.keys(f.highlight).every((k) => Number(k) >= 0 && Number(k) < f.array.length)));
+      check(`${id}(${group}): 2回生成しても同一(決定的)`, JSON.stringify(registry[id]()) === JSON.stringify(frames));
+      check(`${id}(${group}): barGroupOf が正しいグループを返す`, BAR.barGroupOf(id) === group && id in BAR.BAR_VISUALIZERS);
+    }
+  }
+  check("BAR: グループ間でidが重複しない", Object.values(BAR.BAR_GROUPS).flatMap((r) => Object.keys(r)).length === Object.keys(BAR.BAR_VISUALIZERS).length);
+  check(
+    "BAR: 棒グラフ可視化のidが、他の可視化レジストリのidと重複していない(重複すると片方が呼ばれない)",
+    Object.keys(BAR.BAR_VISUALIZERS).every((id) => ![SEARCH_VISUALIZERS, SORT_VISUALIZERS, DP_VISUALIZERS, GRAPH_VISUALIZERS, PATHFINDING_VISUALIZERS, SIGNAL_VISUALIZERS].some((r) => id in r)),
+  );
+
+  // ---- simhash ----
+  {
+    const fnv = (text) => {
+      let hash = 2166136261;
+      for (const ch of text) {
+        hash = (hash ^ ch.charCodeAt(0)) >>> 0;
+        hash = Math.imul(hash, 16777619) >>> 0;
+      }
+      return hash & 0xff;
+    };
+    const fingerprint = (doc) => {
+      const sums = Array(8).fill(0);
+      for (const [token, weight] of doc) for (let b = 0; b < 8; b++) sums[b] += ((fnv(token) >> (7 - b)) & 1) === 1 ? weight : -weight;
+      return sums;
+    };
+    const A = RANK.SIMHASH_DOC_A;
+    const B = RANK.SIMHASH_DOC_B;
+    const sumsA = fingerprint(A);
+    const { last } = lastOf(BAR.BAR_GROUPS.ranking, "simhash");
+    check("simhash: ビットごとの重み付き合計が参照計算と一致", last.array.every((v, i) => v === sumsA[i]), `${last.array} vs ${sumsA}`);
+    const bitsA = sumsA.map((s) => (s > 0 ? 1 : 0));
+    const bitsB = fingerprint(B).map((s) => (s > 0 ? 1 : 0));
+    check("simhash: 示した指紋が参照計算と一致", last.description.includes(`指紋 ${bitsA.join("")}`) && last.description.includes(`は ${bitsB.join("")} で`));
+    const distance = bitsA.filter((b, i) => b !== bitsB[i]).length;
+    check(`simhash: ハミング距離(${distance})が参照計算と一致`, new RegExp(`ハミング距離は${distance}`).test(last.description));
+    check("simhash: 確定(settled)の印は指紋が1のビットと一致", last.array.every((_, b) => (last.highlight[b] === "settled") === (bitsA[b] === 1)));
+    check("simhash: 重み1の語を1つ替えても、合計の絶対値が2を超えるビットは変わらない", sumsA.every((s, b) => Math.abs(s) <= 2 || bitsA[b] === bitsB[b]));
+    check("simhash: ハッシュが決定的(同じ語は同じ値)", RANK.tokenHash("graph") === RANK.tokenHash("graph") && RANK.tokenHash("graph") === fnv("graph"));
+  }
+
+  // ---- midpoint-displacement ----
+  {
+    const rng = makeRng(5);
+    const size = 17;
+    const h = Array(size).fill(0);
+    h[0] = 40;
+    h[16] = 60;
+    for (let span = 16, level = 1; span >= 2; span /= 2, level++) {
+      for (let left = 0; left < 16; left += span) {
+        const mid = left + span / 2;
+        const shift = (rng() * 2 - 1) * (40 / 2 ** (level - 1));
+        h[mid] = round2(Math.min(100, Math.max(0, (h[left] + h[left + span]) / 2 + shift)));
+      }
+    }
+    const { frames, last } = lastOf(BAR.BAR_GROUPS.procedural, "midpoint-displacement");
+    check("midpoint-displacement: 最終の高さが参照の中点変位(別実装のLCG)と一致", last.array.every((v, i) => near(v, h[i], 1e-9)), `${last.array}`);
+    check("midpoint-displacement: 両端は最初から最後まで変わらない", frames.every((f) => f.array[0] === 40 && f.array[16] === 60));
+    check("midpoint-displacement: 高さが0〜100に収まる", last.array.every((v) => v >= 0 && v <= 100));
+    let withinBound = true;
+    for (let span = 16, level = 1; span >= 2; span /= 2, level++) {
+      for (let left = 0; left < 16; left += span) {
+        const avg = (last.array[left] + last.array[left + span]) / 2;
+        if (Math.abs(last.array[left + span / 2] - avg) > 40 / 2 ** (level - 1) + 0.01) withinBound = false;
+      }
+    }
+    check("midpoint-displacement: 各中点が「両端の平均 ± 段階ごとの振幅(半分ずつ)」の範囲内", withinBound);
+    check("midpoint-displacement: 中点15個を1つずつ決める(フレームは15+2)", frames.length === 17);
+  }
+
+  // ---- perlin-noise ----
+  {
+    const rng = makeRng(9);
+    const g = Array.from({ length: 5 }, () => rng() * 2 - 1);
+    const fade = (t) => 6 * t ** 5 - 15 * t ** 4 + 10 * t ** 3;
+    const noise = (i) => {
+      const cell = Math.min(3, Math.floor(i / 8));
+      const t = i / 8 - cell;
+      const a = g[cell] * t;
+      const b = g[cell + 1] * (t - 1);
+      return a + fade(t) * (b - a);
+    };
+    const { last } = lastOf(BAR.BAR_GROUPS.procedural, "perlin-noise");
+    check("perlin-noise: 33サンプルの値が参照計算(別実装のLCG・fade 6t^5−15t^4+10t^3)と一致", last.array.length === 33 && last.array.every((v, i) => near(v, round2(noise(i)), 1e-9)));
+    check("perlin-noise: 格子点(0,8,16,24,32)の値がちょうど0", [0, 8, 16, 24, 32].every((i) => last.array[i] === 0));
+    check("perlin-noise: 値が±0.5に収まる(勾配が±1以内のとき)", last.array.every((v) => Math.abs(v) <= 0.5 + 0.005));
+    check("perlin-noise: fadeが0で0・1で1・中央で0.5", near(PROC.perlinFade(0), 0) && near(PROC.perlinFade(1), 1) && near(PROC.perlinFade(0.5), 0.5));
+    check("perlin-noise: ライブラリのfadeが参照式と一致", [0, 0.2, 0.5, 0.9, 1].every((t) => near(PROC.perlinFade(t), fade(t))));
+  }
+
+  // ---- worley-noise ----
+  {
+    const rng = makeRng(21);
+    const points = Array.from({ length: 4 }, (_, c) => round2(c * 8 + rng() * 8));
+    const { last } = lastOf(BAR.BAR_GROUPS.procedural, "worley-noise");
+    const brute = Array.from({ length: 32 }, (_, x) => round2(Math.min(...points.map((p) => Math.abs(p - x)))));
+    check("worley-noise: 各位置の値が、全特徴点を総当たりした最短距離と一致(隣の区画だけの探索で十分)", last.array.every((v, x) => near(v, brute[x], 1e-9)), `${last.array}`);
+    check("worley-noise: 特徴点が各区画の内側にある", points.every((p, c) => p >= c * 8 && p < (c + 1) * 8 + 0.01));
+    check("worley-noise: 特徴点のすぐ近く(距離1未満)の位置が確定(settled)", last.array.every((v, x) => (v < 1) === (last.highlight[x] === "settled")));
+    check("worley-noise: 最大距離が区画の幅(8)以下", Math.max(...last.array) <= 8 + 0.005);
   }
 }
 

@@ -20,6 +20,7 @@ import { TRIE_VISUALIZERS } from "@/lib/trie-visualizer";
 import { GEOMETRY_VISUALIZERS } from "@/lib/geometry-visualizers";
 import { LANE_VISUALIZERS } from "@/lib/lane-visualizers";
 import { SIGNAL_VISUALIZERS } from "@/lib/signal-visualizers";
+import { BAR_VISUALIZERS } from "@/lib/bar-visualizers";
 
 /**
  * このidに対応する可視化コンポーネントが存在するかどうか。詳細ページ・比較画面の両方から使う。
@@ -49,7 +50,7 @@ export function AlgorithmVisualizer({ algorithmId }: AlgorithmVisualizerProps) {
     return <DPTableVisualizer algorithmId={algorithmId} />;
   if (algorithmId in GRAPH_VISUALIZERS)
     return <GraphVisualizer algorithmId={algorithmId} />;
-  if (algorithmId in SEARCH_VISUALIZERS)
+  if (algorithmId in SEARCH_VISUALIZERS || algorithmId in BAR_VISUALIZERS)
     return <SearchVisualizer algorithmId={algorithmId} />;
   if (algorithmId in TREE_VISUALIZERS)
     return <TreeVisualizer algorithmId={algorithmId} />;

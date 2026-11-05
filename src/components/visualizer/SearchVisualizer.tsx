@@ -13,6 +13,7 @@ import { useWorkerFrames } from "./useWorkerFrames";
 import { ParticleBurstLayer, type ParticleBurst } from "./ParticleBurstLayer";
 import { shouldGlow, stateColors, type StateColorKey } from "@/lib/design-tokens";
 import { SEARCH_TARGET, type SearchFrame } from "@/lib/search-visualizers";
+import { barGroupOf, type BarGroup } from "@/lib/bar-visualizers";
 import { lerp, mixColor } from "@/lib/color-mix";
 import { useMediaQuery } from "@/lib/use-media-query";
 import type { WorkerRequest } from "@/workers/algorithm-worker";
@@ -23,6 +24,24 @@ const LEGEND_ITEMS: { key: StateColorKey; label: string }[] = [
   { key: "pivot", label: "現在の候補位置" },
   { key: "settled", label: "発見" },
 ];
+
+/** 棒グラフ可視化のグループでは、探索用の凡例(未検査・検査中・発見)が意味に合わないので、グループごとの言葉に置き換える。 */
+const BAR_GROUP_LEGENDS: Record<BarGroup, { key: StateColorKey; label: string }[]> = {
+  ranking: [
+    { key: "idle", label: "未計算" },
+    { key: "comparing", label: "計算済み・候補" },
+    { key: "pivot", label: "いま計算している対象" },
+    { key: "swapping", label: "割り引かれた" },
+    { key: "settled", label: "確定した結果" },
+  ],
+  procedural: [
+    { key: "idle", label: "未計算" },
+    { key: "comparing", label: "計算に使った値・計算済み" },
+    { key: "pivot", label: "いま計算している位置" },
+    { key: "swapping", label: "減少・不利な結果" },
+    { key: "settled", label: "確定した結果" },
+  ],
+};
 
 /** SEARCH_TARGET(検索対象の値)を実際に使う「探索」系アルゴリズムのみ、その値をラベル表示する。 */
 const TARGET_SEARCH_ALGORITHMS = new Set([
@@ -52,6 +71,7 @@ type SearchVisualizerProps = {
  * シャッフル操作は持たない(探索対象の配列・値は固定)。
  */
 export function SearchVisualizer({ algorithmId }: SearchVisualizerProps) {
+  const barGroup = barGroupOf(algorithmId);
   const request = useMemo<WorkerRequest>(() => ({ kind: "search", algorithmId }), [algorithmId]);
   const { frames, isComputing } = useWorkerFrames<SearchFrame>(request);
   const { stepIndex, isFinished, showPause, speed, setSpeed, handlePlayPause, handleStep, handleScrub, reset } =
@@ -190,7 +210,7 @@ export function SearchVisualizer({ algorithmId }: SearchVisualizerProps) {
         textView={{ enabled: textView, onChange: setTextView }}
       />
       <ul className={styles.legend}>
-        {LEGEND_ITEMS.map((item) => (
+        {(barGroup ? BAR_GROUP_LEGENDS[barGroup] : LEGEND_ITEMS).map((item) => (
           <li key={item.key} className={styles.legendItem}>
             <span
               className={styles.legendSwatch}
@@ -200,7 +220,7 @@ export function SearchVisualizer({ algorithmId }: SearchVisualizerProps) {
             {item.label}
           </li>
         ))}
-        {SWAPPING_LEGEND_LABEL[algorithmId] ? (
+        {SWAPPING_LEGEND_LABEL[algorithmId] && !barGroup ? (
           <li className={styles.legendItem}>
             <span
               className={styles.legendSwatch}

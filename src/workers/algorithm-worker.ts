@@ -9,6 +9,7 @@ import { TRIE_VISUALIZERS } from "../lib/trie-visualizer";
 import { GEOMETRY_VISUALIZERS } from "../lib/geometry-visualizers";
 import { LANE_VISUALIZERS } from "../lib/lane-visualizers";
 import { SIGNAL_VISUALIZERS } from "../lib/signal-visualizers";
+import { BAR_VISUALIZERS } from "../lib/bar-visualizers";
 
 export type WorkerRequest =
   | { kind: "sort"; algorithmId: string; input: number[] }
@@ -57,7 +58,8 @@ ctx.onmessage = (event) => {
     const generate = GRAPH_VISUALIZERS[request.algorithmId];
     frames = generate ? generate() : [];
   } else if (request.kind === "search") {
-    const generate = SEARCH_VISUALIZERS[request.algorithmId];
+    // 情報検索(SimHash)・手続き型生成の棒グラフ可視化も、配列+状態色のフレーム(SearchFrame)なので search kind で描画する
+    const generate = SEARCH_VISUALIZERS[request.algorithmId] ?? BAR_VISUALIZERS[request.algorithmId];
     frames = generate ? generate() : [];
   } else if (request.kind === "tree") {
     const generate = TREE_VISUALIZERS[request.algorithmId];
