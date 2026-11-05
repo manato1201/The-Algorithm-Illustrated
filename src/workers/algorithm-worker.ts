@@ -8,6 +8,8 @@ import { STRING_VISUALIZERS } from "../lib/string-visualizers";
 import { TRIE_VISUALIZERS } from "../lib/trie-visualizer";
 import { GEOMETRY_VISUALIZERS } from "../lib/geometry-visualizers";
 import { LANE_VISUALIZERS } from "../lib/lane-visualizers";
+import { SIGNAL_VISUALIZERS } from "../lib/signal-visualizers";
+import { BAR_VISUALIZERS } from "../lib/bar-visualizers";
 
 export type WorkerRequest =
   | { kind: "sort"; algorithmId: string; input: number[] }
@@ -19,7 +21,8 @@ export type WorkerRequest =
   | { kind: "string"; algorithmId: string }
   | { kind: "trie"; algorithmId: string }
   | { kind: "geometry"; algorithmId: string }
-  | { kind: "lanes"; algorithmId: string; size?: number };
+  | { kind: "lanes"; algorithmId: string; size?: number }
+  | { kind: "signal"; algorithmId: string };
 
 export type WorkerResponse = {
   /** どのrequestに対する結果かをpostMessageの往復越しに相関させるためエコーバックする。 */
@@ -55,7 +58,8 @@ ctx.onmessage = (event) => {
     const generate = GRAPH_VISUALIZERS[request.algorithmId];
     frames = generate ? generate() : [];
   } else if (request.kind === "search") {
-    const generate = SEARCH_VISUALIZERS[request.algorithmId];
+    // 貪欲法・情報検索・ゲームの棒グラフ可視化も、配列+状態色のフレーム(SearchFrame)なので search kind で描画する
+    const generate = SEARCH_VISUALIZERS[request.algorithmId] ?? BAR_VISUALIZERS[request.algorithmId];
     frames = generate ? generate() : [];
   } else if (request.kind === "tree") {
     const generate = TREE_VISUALIZERS[request.algorithmId];
@@ -72,6 +76,9 @@ ctx.onmessage = (event) => {
   } else if (request.kind === "lanes") {
     const generate = LANE_VISUALIZERS[request.algorithmId];
     frames = generate ? generate(request.size) : [];
+  } else if (request.kind === "signal") {
+    const generate = SIGNAL_VISUALIZERS[request.algorithmId];
+    frames = generate ? generate() : [];
   }
 
   ctx.postMessage({ request, frames });

@@ -3,6 +3,7 @@ import type { DPFrame } from "@/lib/dp-visualizers";
 import type { GeometryFrame } from "@/lib/geometry-visualizers";
 import type { GraphFrame } from "@/lib/graph-visualizers";
 import type { LaneFrame } from "@/lib/lane-visualizers";
+import type { SignalFrame } from "@/lib/signal-visualizers";
 import type { GridCellState, GridFrame } from "@/lib/pathfinding-visualizers";
 import type { StringMatchFrame } from "@/lib/string-visualizers";
 import type { TreeFrame } from "@/lib/tree-visualizers";
@@ -221,4 +222,15 @@ export function laneStepKinds(frames: readonly LaneFrame[]): StepKind[] {
     );
     return newlyFinished ? "settled" : "comparing";
   });
+}
+
+/** 波形(信号処理)可視化用。トレースごとのサンプルの印(pivot/comparing/swapping/settled)をそのまま要素の状態として扱う。 */
+export function signalEntities(frame: SignalFrame): EntityStates {
+  const map: EntityStates = new Map();
+  for (const trace of frame.traces) {
+    for (const [index, kind] of Object.entries(trace.marks)) {
+      map.set(`${trace.id}:${index}`, kind ?? "idle");
+    }
+  }
+  return map;
 }

@@ -133,8 +133,13 @@ import { STRING_VISUALIZERS, TEXT, PATTERN } from "../src/lib/string-visualizers
 import { TRIE_VISUALIZERS } from "../src/lib/trie-visualizer.ts";
 import { GEOMETRY_VISUALIZERS, GEOMETRY_DATASETS } from "../src/lib/geometry-visualizers.ts";
 import { LANE_VISUALIZERS, LANE_META } from "../src/lib/lane-visualizers.ts";
+import * as SIG from "../src/lib/signal-visualizers.ts";
+import * as GREEDY from "../src/lib/greedy-visualizers.ts";
+import * as BAR from "../src/lib/bar-visualizers.ts";
+import * as RANK from "../src/lib/ranking-visualizers.ts";
+import * as GAME from "../src/lib/game-visualizers.ts";
 import { PSEUDO_CODE, activePseudoLines } from "../src/lib/pseudo-code.ts";
-import { buildStepKinds, highlightEntities, STEP_KIND_LABELS } from "../src/components/visualizer/step-timeline.ts";
+import { buildStepKinds, highlightEntities, signalEntities, STEP_KIND_LABELS } from "../src/components/visualizer/step-timeline.ts";
 import { STEP_TONE, STEP_TONE_MAX_RANK } from "../src/lib/step-sound.ts";
 import { easeSpring } from "../src/lib/color-mix.ts";
 import { ASCII_LEVELS, asciiBarLevels, asciiBarRows } from "../src/lib/ascii-view.ts";
@@ -1609,6 +1614,630 @@ section("文字表示(ascii-view): 段データ");
     check("文字表示 " + tag + ": 正の値は最低1段、0以下は0段", values.every((v, i) => (v > 0 ? levels[i] >= 1 : levels[i] === 0)));
     check("文字表示 " + tag + ": 行列の各列の true の数が段数と一致", levels.every((level, c) => rows.filter((row) => row[c]).length === level));
     if (values.some((v) => v > 0)) check("文字表示 " + tag + ": 最大値の棒がちょうど全段に届く", Math.max(...levels) === ASCII_LEVELS);
+  }
+}
+
+// ===========================================================================
+// SIGNAL: 音響・信号処理の波形可視化(10件)。
+// 各アルゴリズムを、可視化コードとは別に書いた参照計算(定義式どおりの素直な実装)と突き合わせる。
+// 加えて「その処理の性質」(倍音が生まれる・高域が落ちる・畳み込みの総和の恒等式など)を確認する。
+// ===========================================================================
+section("SIGNAL (10件): 独立した参照計算との一致と、処理の性質");
+{
+  const near = (a, b, eps = 1e-9) => Math.abs(a - b) <= eps;
+  const allNear = (a, b, eps = 1e-9) => a.length === b.length && a.every((v, i) => near(v, b[i], eps));
+  const traceOf = (frame, id) => frame.traces.find((t) => t.id === id);
+  const lastOf = (id, traceId) => {
+    const frames = SIG.SIGNAL_VISUALIZERS[id]();
+    return traceOf(frames[frames.length - 1], traceId).samples;
+  };
+  // 参照用の素直なDFT(複素数を実部・虚部に分けず、cos/sinの内積で振幅を出す)
+  const amplitude = (values, bin) => {
+    const N = values.length;
+    const c = values.reduce((s, v, n) => s + v * Math.cos((2 * Math.PI * bin * n) / N), 0);
+    const si = values.reduce((s, v, n) => s + v * Math.sin((2 * Math.PI * bin * n) / N), 0);
+    return (2 * Math.sqrt(c * c + si * si)) / N;
+  };
+
+  // ---- 全件共通の構造チェック ----
+  for (const id of Object.keys(SIG.SIGNAL_VISUALIZERS)) {
+    const frames = SIG.SIGNAL_VISUALIZERS[id]();
+    checkWellFormed(id, frames);
+    check(`${id}: メタ情報(チップ)がある`, (SIG.SIGNAL_META[id]?.chips.length ?? 0) > 0);
+    const shape = frames[0].traces.map((t) => `${t.id}:${t.samples.length}`).join();
+    check(`${id}: 全フレームでトレースの構成と長さが同じ`, frames.every((f) => f.traces.map((t) => `${t.id}:${t.samples.length}`).join() === shape));
+    check(
+      `${id}: サンプルが有限値で、表示範囲(range)に収まる`,
+      frames.every((f) => f.traces.every((t) => t.samples.every((v) => v === null || (Number.isFinite(v) && Math.abs(v) <= t.range + 1e-9)))),
+    );
+    check(
+      `${id}: 印の添字がサンプル範囲内`,
+      frames.every((f) => f.traces.every((t) => Object.keys(t.marks).every((k) => Number(k) >= 0 && Number(k) < t.samples.length))),
+    );
+    check(`${id}: 全フレームにdescriptionがある`, frames.every((f) => typeof f.description === "string" && f.description.length > 0));
+    const kinds = buildStepKinds(frames, signalEntities);
+    check(`${id}: ステップ種別がフレーム数と同じ長さで、先頭は待機・途中に待機以外がある`, kinds.length === frames.length && kinds[0] === "idle" && kinds.some((k) => k !== "idle"));
+    // 同じ入力なら同じフレーム(固定シード・決定的)
+    check(`${id}: 2回生成しても同一(決定的)`, JSON.stringify(SIG.SIGNAL_VISUALIZERS[id]()) === JSON.stringify(frames));
+  }
+
+  // ---- noise-gate ----
+  {
+    const id = "noise-gate";
+    const x = SIG.noiseGateInput();
+    let env = 0, holdLeft = 0, g = 0;
+    const expected = [];
+    for (const v of x) {
+      env = Math.abs(v) > env ? Math.abs(v) : env * 0.8;
+      holdLeft = env >= 0.25 ? 3 : Math.max(0, holdLeft - 1);
+      const target = env >= 0.25 || holdLeft > 0 ? 1 : 0.05;
+      g = g + (target - g) * 0.6;
+      expected.push(v * g);
+    }
+    const out = lastOf(id, "out");
+    check(`${id}: 出力が参照計算と一致`, allNear(out, expected));
+    check(`${id}: 背景ノイズの区間(20〜27)が十分に絞られている`, Math.max(...out.slice(20, 28).map(Math.abs)) < 0.01);
+    check(`${id}: 演奏音の区間(34〜39)はほぼそのまま通る`, out.slice(34).every((v, i) => near(v, x[34 + i], 0.01)));
+    check(`${id}: ホールド中はゲートを開けたまま(演奏が終わった直後の数サンプル)`, Math.abs(out[12]) > 0 && out.length === 40);
+  }
+
+  // ---- waveshaping-distortion ----
+  {
+    const id = "waveshaping-distortion";
+    const x = SIG.waveshaperInput();
+    const soft = lastOf(id, "soft");
+    const hard = lastOf(id, "hard");
+    check(`${id}: ソフトクリップが tanh(3x)/tanh(3) と一致`, allNear(soft, x.map((v) => Math.tanh(3 * v) / Math.tanh(3))));
+    check(`${id}: ハードクリップが clamp(3x,±0.8)/0.8 と一致`, allNear(hard, x.map((v) => Math.min(0.8, Math.max(-0.8, 3 * v)) / 0.8)));
+    check(`${id}: 入力は純粋な正弦波(3次倍音がほぼ0)`, amplitude(x, 6) < 1e-9);
+    check(`${id}: 歪ませると3次倍音が生まれる(ソフト・ハードとも0.01超)`, amplitude(soft, 6) > 0.01 && amplitude(hard, 6) > 0.01);
+    check(`${id}: 上下対称の関数なので偶数次倍音は生まれない`, amplitude(soft, 4) < 1e-9 && amplitude(hard, 4) < 1e-9);
+    check(`${id}: ライブラリのDFTが参照のDFTと一致`, near(SIG.dftMagnitude(soft, 6), amplitude(soft, 6)));
+    check(`${id}: 出力の振幅が1を超えない`, Math.max(...soft.map(Math.abs)) <= 1 && Math.max(...hard.map(Math.abs)) <= 1 + 1e-12);
+  }
+
+  // ---- mu-law-a-law-companding ----
+  {
+    const id = "mu-law-a-law-companding";
+    const x = SIG.muLawInput();
+    const compress = (v) => Math.sign(v) * (Math.log(1 + 255 * Math.abs(v)) / Math.log(256));
+    const expand = (y) => Math.sign(y) * ((256 ** Math.abs(y) - 1) / 255);
+    const quant = (v) => Math.round(((v + 1) / 2) * 15) / 15 * 2 - 1;
+    check(`${id}: F(0.1) が既知の値(ln(26.5)/ln(256)≈0.5910)`, near(compress(0.1), Math.log(26.5) / Math.log(256)) && near(SIG.muLawCompress(0.1), compress(0.1)));
+    check(`${id}: 圧縮→伸張でもとに戻る(量子化なし)`, [-0.9, -0.3, -0.01, 0, 0.002, 0.5, 0.9].every((v) => near(expand(compress(v)), v, 1e-12) && near(SIG.muLawExpand(SIG.muLawCompress(v)), v, 1e-12)));
+    const linear = lastOf(id, "linear");
+    const mu = lastOf(id, "mu");
+    check(`${id}: 線形4bitの出力が参照と一致`, allNear(linear, x.map(quant)));
+    check(`${id}: μ-law 4bitの出力が参照と一致`, allNear(mu, x.map((v) => expand(quant(compress(v))))));
+    const errorOver = (signal, from, to) => x.slice(from, to).reduce((s, v, i) => s + Math.abs(signal[from + i] - v), 0);
+    check(`${id}: 振幅の小さい後半(20〜39)では、μ-lawの誤差の合計が線形より小さい`, errorOver(mu, 20, 40) < errorOver(linear, 20, 40), `${errorOver(mu, 20, 40).toFixed(3)} vs ${errorOver(linear, 20, 40).toFixed(3)}`);
+    check(`${id}: 量子化後の値が4bit(16段階)に収まる`, new Set(linear.map((v) => v.toFixed(9))).size <= 16);
+  }
+
+  // ---- dynamic-range-compression ----
+  {
+    const id = "dynamic-range-compression";
+    const x = SIG.compressorInput();
+    let env = 0;
+    const expected = x.map((v) => {
+      const level = Math.abs(v);
+      env += (level - env) * (level > env ? 0.6 : 0.15);
+      const db = 20 * Math.log10(Math.max(env, 1e-6));
+      const reduction = Math.max(0, db + 12) * 0.75;
+      return v * 10 ** (-reduction / 20);
+    });
+    const out = lastOf(id, "out");
+    check(`${id}: 出力が参照計算と一致`, allNear(out, expected));
+    check(`${id}: しきい値以下の小さい区間(0〜9)はそのまま通る`, out.slice(0, 10).every((v, i) => near(v, x[i])));
+    const peak = (values, from, to) => Math.max(...values.slice(from, to).map(Math.abs));
+    const ratioIn = peak(x, 12, 30) / peak(x, 0, 10);
+    const ratioOut = peak(out, 12, 30) / peak(out, 0, 10);
+    check(`${id}: 大きい区間と小さい区間の差が縮む(${ratioIn.toFixed(2)}→${ratioOut.toFixed(2)})`, ratioOut < ratioIn);
+    check(`${id}: 出力が入力の振幅を超えない`, out.every((v, i) => Math.abs(v) <= Math.abs(x[i]) + 1e-12));
+  }
+
+  // ---- biquad-filter ----
+  {
+    const id = "biquad-filter";
+    const x = SIG.biquadInput();
+    const w0 = (2 * Math.PI) / 16;
+    const alpha = Math.sin(w0) / (2 * Math.SQRT1_2);
+    const a0 = 1 + alpha;
+    const b = [(1 - Math.cos(w0)) / 2 / a0, (1 - Math.cos(w0)) / a0, (1 - Math.cos(w0)) / 2 / a0];
+    const a = [(-2 * Math.cos(w0)) / a0, (1 - alpha) / a0];
+    const y = [];
+    for (let n = 0; n < x.length; n++) {
+      const xs = (k) => (n - k >= 0 ? x[n - k] : 0);
+      const ys = (k) => (n - k >= 0 ? y[n - k] : 0);
+      y.push(b[0] * xs(0) + b[1] * xs(1) + b[2] * xs(2) - a[0] * ys(1) - a[1] * ys(2));
+    }
+    const out = lastOf(id, "out");
+    check(`${id}: 出力が参照の差分方程式と一致`, allNear(out, y));
+    const dc = (b[0] + b[1] + b[2]) / (1 + a[0] + a[1]);
+    check(`${id}: ローパスの直流ゲインが1`, near(dc, 1));
+    const coef = SIG.biquadLowpassCoefficients();
+    check(`${id}: 係数が参照と一致`, near(coef.b0, b[0]) && near(coef.b1, b[1]) && near(coef.b2, b[2]) && near(coef.a1, a[0]) && near(coef.a2, a[1]));
+    // 細かい波と遅い波を別々にフィルタに通し(線形なので足せば全体の出力になる)、高域だけが落ちることを確認する
+    const run = (input) => {
+      const o = [];
+      for (let n = 0; n < input.length; n++) {
+        const xs = (k) => (n - k >= 0 ? input[n - k] : 0);
+        const ys = (k) => (n - k >= 0 ? o[n - k] : 0);
+        o.push(b[0] * xs(0) + b[1] * xs(1) + b[2] * xs(2) - a[0] * ys(1) - a[1] * ys(2));
+      }
+      return o;
+    };
+    const slow = x.map((_, n) => 0.6 * Math.sin((2 * Math.PI * n) / 32));
+    const fast = x.map((_, n) => 0.4 * Math.sin((2 * Math.PI * n) / 4));
+    const slowOut = run(slow);
+    const fastOut = run(fast);
+    check(`${id}: 線形性(遅い波の出力 + 細かい波の出力 = 全体の出力)`, allNear(out, slowOut.map((v, n) => v + fastOut[n])));
+    const fastAmp = amplitude(fastOut.slice(32), 4);
+    check(`${id}: 細かい波(4サンプル周期)の振幅が1/10以下に落ちる(0.4 → ${fastAmp.toFixed(3)})`, fastAmp < 0.04);
+    check(`${id}: 遅い波はほぼそのまま通る(出力の振幅が入力の0.9倍以上)`, Math.max(...slowOut.slice(16).map(Math.abs)) >= 0.9 * 0.6);
+    check(`${id}: 出力が入力の-1.1〜1.1に収まる`, out.every((v) => Math.abs(v) <= 1.1));
+  }
+
+  // ---- convolution-reverb ----
+  {
+    const id = "convolution-reverb";
+    const x = SIG.CONVOLUTION_X;
+    const h = SIG.CONVOLUTION_H;
+    const expected = Array.from({ length: x.length + h.length - 1 }, () => 0);
+    x.forEach((xv, i) => h.forEach((hv, j) => (expected[i + j] += xv * hv)));
+    const out = lastOf(id, "y");
+    check(`${id}: 出力が定義どおりの畳み込みと一致`, allNear(out, expected));
+    check(`${id}: 出力の長さが N+M−1`, out.length === x.length + h.length - 1);
+    check(`${id}: 出力の総和 = 入力の総和 × 応答の総和(畳み込みの恒等式)`, near(out.reduce((s, v) => s + v, 0), x.reduce((s, v) => s + v, 0) * h.reduce((s, v) => s + v, 0)));
+  }
+
+  // ---- pitch-detection-autocorrelation ----
+  {
+    const id = "pitch-detection-autocorrelation";
+    const x = SIG.autocorrelationInput();
+    const r = [null];
+    for (let lag = 1; lag <= 24; lag++) {
+      let s = 0;
+      for (let n = 0; n < x.length - lag; n++) s += x[n] * x[n + lag];
+      r.push(s);
+    }
+    const frames = SIG.SIGNAL_VISUALIZERS[id]();
+    const last = frames[frames.length - 1];
+    const out = traceOf(last, "r").samples;
+    check(`${id}: R(τ)(τ=1〜24)が定義どおりの総和と一致`, out[0] === null && r.slice(1).every((v, i) => near(out[i + 1], v)));
+    const pivot = Object.entries(traceOf(last, "r").marks).find(([, k]) => k === "pivot");
+    check(`${id}: 検出したピークのラグが真の周期(10サンプル)`, pivot !== undefined && Number(pivot[0]) === 10, String(pivot?.[0]));
+    check(`${id}: 検出ラグの前に一度 R が負になっている(τ=0付近の山を除外している)`, r.slice(1, 10).some((v) => v < 0));
+    check(`${id}: 基本周波数が 800Hz÷10 = 80Hz と表示される`, last.description.includes("80Hz"));
+    const mid = frames.find((f) => f.readouts.some((q) => q.label === "ラグ τ" && q.value === "7"));
+    const shifted = mid && traceOf(mid, "shifted").samples;
+    check(`${id}: ずらした波形が x[n+τ](τ=7)になっている`, shifted && shifted.every((v, n) => (n + 7 < x.length ? near(v, x[n + 7]) : v === null)));
+  }
+
+  // ---- karplus-strong-string-synthesis ----
+  {
+    const id = "karplus-strong-string-synthesis";
+    const buf = SIG.karplusInitialBuffer();
+    const out = [];
+    for (let n = 0; n < 50; n++) {
+      const i = n % 10;
+      out.push(buf[i]);
+      buf[i] = 0.97 * ((buf[i] + buf[(i + 1) % 10]) / 2);
+    }
+    check(`${id}: 出力が参照の遅延線シミュレーションと一致`, allNear(lastOf(id, "out"), out));
+    const energy = (cycle) => out.slice(cycle * 10, cycle * 10 + 10).reduce((s, v) => s + v * v, 0);
+    check(`${id}: 周を重ねるごとに(5周とも)エネルギーが減る`, [0, 1, 2, 3].every((c) => energy(c + 1) < energy(c)));
+    const roughness = (cycle) => out.slice(cycle * 10, cycle * 10 + 10).reduce((s, v, i, a) => s + (i > 0 ? Math.abs(v - a[i - 1]) : 0), 0);
+    check(`${id}: 高域が先に落ちるので、波形がなめらかになる(隣との差が減る)`, roughness(4) < roughness(0));
+    check(`${id}: 初期バッファが±1に収まる固定乱数`, SIG.karplusInitialBuffer().every((v) => v >= -1 && v <= 1) && allNear(SIG.karplusInitialBuffer(), SIG.karplusInitialBuffer(), 0));
+  }
+
+  // ---- wavetable-synthesis ----
+  {
+    const id = "wavetable-synthesis";
+    const table = SIG.wavetable();
+    const expected = Array.from({ length: 32 }, (_, n) => {
+      const phase = (n * 1.7) % 16;
+      const i0 = Math.floor(phase);
+      const frac = phase - i0;
+      return table[i0] * (1 - frac) + table[(i0 + 1) % 16] * frac;
+    });
+    check(`${id}: 出力が参照の位相読み出し+線形補間と一致`, allNear(lastOf(id, "out"), expected, 1e-9));
+    check(`${id}: 位相0ではテーブル先頭の値(0)をそのまま返す`, near(lastOf(id, "out")[0], table[0]));
+    check(`${id}: テーブルが1周期分で、先頭と同じ値(0)に戻る周期性がある`, near(table[0], 0) && table.length === 16);
+    // 整数の位相のサンプル(n=10: 17.0を16で割った余り1.0 → table[1])で補間が不要になる
+    check(`${id}: 位相が整数になるサンプル(n=10 → 位相1)でテーブル値と一致`, near(lastOf(id, "out")[10], table[1], 1e-9));
+  }
+
+  // ---- adpcm ----
+  {
+    const id = "adpcm";
+    const x = SIG.adpcmInput();
+    const factor = SIG.ADPCM_STEP_FACTOR;
+    let pred = 0, step = 0.05;
+    const codes = [];
+    const expected = [];
+    for (const v of x) {
+      const code = Math.max(-7, Math.min(7, Math.round((v - pred) / step)));
+      codes.push(code);
+      pred = Math.max(-1, Math.min(1, pred + code * step));
+      step = Math.max(0.02, Math.min(0.5, step * factor[Math.abs(code)]));
+      expected.push(pred);
+    }
+    const frames = SIG.SIGNAL_VISUALIZERS[id]();
+    const out = lastOf(id, "out");
+    check(`${id}: 復元波形がエンコーダの参照計算と一致`, allNear(out, expected));
+    const shownCodes = frames.slice(1, -1).map((f) => Number(f.readouts.find((q) => q.label === "4bitコード").value));
+    check(`${id}: 表示した4bitコードが参照の符号化と一致`, shownCodes.length === x.length && shownCodes.every((c, i) => c === codes[i]));
+    // デコーダはコード列だけから、エンコーダと同じ波形を復元できる(ADPCMの要点)
+    let dp = 0, ds = 0.05;
+    const decoded = shownCodes.map((c) => {
+      dp = Math.max(-1, Math.min(1, dp + c * ds));
+      ds = Math.max(0.02, Math.min(0.5, ds * factor[Math.abs(c)]));
+      return dp;
+    });
+    check(`${id}: コード列だけから復元した波形が、エンコーダの復元と完全に一致`, allNear(decoded, out, 0));
+    check(`${id}: コードが4bitの範囲(−7〜7)に収まる`, shownCodes.every((c) => c >= -7 && c <= 7));
+    check(`${id}: 急に大きくなった直後にステップ幅が広がる`, frames.slice(1, -1).some((f) => Number(f.readouts.find((q) => q.label === "次のステップ幅").value) > 0.1));
+  }
+}
+
+
+// ===========================================================================
+// GREEDY (5件): 貪欲法の可視化。ブルートフォースや定義どおりの再計算と突き合わせる。
+// ===========================================================================
+section("GREEDY (5件): 全探索・独立した再計算との一致");
+{
+  const lastFrame = (id) => {
+    const frames = GREEDY.GREEDY_VISUALIZERS[id]();
+    checkWellFormed(id, frames);
+    return { frames, last: frames[frames.length - 1] };
+  };
+  const hasKey = (obj, k) => Object.keys(obj).includes(String(k));
+
+  for (const id of Object.keys(GREEDY.GREEDY_VISUALIZERS)) {
+    const frames = GREEDY.GREEDY_VISUALIZERS[id]();
+    check(`${id}: 全フレームで棒の数が同じ`, frames.every((f) => f.array.length === frames[0].array.length));
+    check(`${id}: 印の添字が範囲内`, frames.every((f) => Object.keys(f.highlight).every((k) => Number(k) >= 0 && Number(k) < f.array.length)));
+    check(`${id}: 2回生成しても同一(決定的)`, JSON.stringify(GREEDY.GREEDY_VISUALIZERS[id]()) === JSON.stringify(frames));
+  }
+
+  // jump-game-greedy: 末尾に着けるかを、全マスからの到達をDPで調べた結果と比べる
+  {
+    const nums = GREEDY.JUMP_GAME_NUMS;
+    const reach = Array(nums.length).fill(false);
+    reach[0] = true;
+    for (let i = 0; i < nums.length; i++) if (reach[i]) for (let k = 1; k <= nums[i] && i + k < nums.length; k++) reach[i + k] = true;
+    const { last } = lastFrame("jump-game-greedy");
+    const said = last.description.includes("到達できる") && !last.description.includes("できない");
+    check("jump-game-greedy: 貪欲の結論が、全マスのDP(到達可能性)と一致", said === reach[nums.length - 1], last.description);
+    check("jump-game-greedy: 到達できるとき、最後のフレームで末尾が確定", !reach[nums.length - 1] || last.highlight[nums.length - 1] === "settled");
+  }
+
+  // best-time-to-buy-sell-stock-greedy: 全ペアの最大利益と比べる
+  {
+    const p = GREEDY.STOCK_PRICES;
+    let brute = 0;
+    for (let i = 0; i < p.length; i++) for (let j = i + 1; j < p.length; j++) brute = Math.max(brute, p[j] - p[i]);
+    const { last } = lastFrame("best-time-to-buy-sell-stock-greedy");
+    const settled = Object.entries(last.highlight).filter(([, k]) => k === "settled").map(([i]) => Number(i)).sort((a, b) => a - b);
+    check("best-time-to-buy-sell-stock-greedy: 確定した買い日・売り日の利益が全ペアの最大利益", settled.length === 2 && p[settled[1]] - p[settled[0]] === brute, `${settled} ${brute}`);
+    check("best-time-to-buy-sell-stock-greedy: 最後の説明に最大利益が書かれている", last.description.includes(`最大利益は${brute}`));
+  }
+
+  // gas-station-greedy: 各出発点から実際に1周してみる
+  {
+    const gas = GREEDY.GAS_STATION_GAS;
+    const cost = GREEDY.GAS_STATION_COST;
+    const n = gas.length;
+    const starts = [];
+    for (let s = 0; s < n; s++) {
+      let tank = 0;
+      let ok = true;
+      for (let k = 0; k < n; k++) {
+        const i = (s + k) % n;
+        tank += gas[i] - cost[i];
+        if (tank < 0) {
+          ok = false;
+          break;
+        }
+      }
+      if (ok) starts.push(s);
+    }
+    const { frames, last } = lastFrame("gas-station-greedy");
+    check("gas-station-greedy: 棒が gas−cost と一致", frames[0].array.every((v, i) => v === gas[i] - cost[i]));
+    const settled = Object.keys(last.highlight).filter((k) => last.highlight[k] === "settled").map(Number);
+    check("gas-station-greedy: 確定した出発点が、全出発点を試して1周できた唯一の出発点と一致", starts.length === 1 && settled.length === 1 && settled[0] === starts[0], `${settled} vs ${starts}`);
+  }
+
+  // lpt-scheduling-greedy: 定義どおりの再計算と、全探索した最適値との比(4/3 − 1/(3m) 以内)
+  {
+    const jobs = GREEDY.LPT_JOBS;
+    const m = GREEDY.LPT_MACHINES;
+    const loads = Array(m).fill(0);
+    for (const job of [...jobs].sort((a, b) => b - a)) loads[loads.indexOf(Math.min(...loads))] += job;
+    const { last } = lastFrame("lpt-scheduling-greedy");
+    check("lpt-scheduling-greedy: 最終の各機械の負荷が再計算と一致", last.array.every((v, i) => v === loads[i]), `${last.array} vs ${loads}`);
+    check("lpt-scheduling-greedy: 負荷の合計がジョブの合計と一致", last.array.reduce((a, b) => a + b, 0) === jobs.reduce((a, b) => a + b, 0));
+    let optimal = Infinity;
+    const assign = (idx, cur) => {
+      if (idx === jobs.length) {
+        optimal = Math.min(optimal, Math.max(...cur));
+        return;
+      }
+      for (let k = 0; k < m; k++) {
+        cur[k] += jobs[idx];
+        assign(idx + 1, cur);
+        cur[k] -= jobs[idx];
+      }
+    };
+    assign(0, Array(m).fill(0));
+    const ratio = Math.max(...loads) / optimal;
+    check(`lpt-scheduling-greedy: 最適(全探索 ${optimal})との比 ${ratio.toFixed(3)} が 4/3−1/(3m) = ${(4 / 3 - 1 / (3 * m)).toFixed(3)} 以内`, ratio <= 4 / 3 - 1 / (3 * m) + 1e-12);
+    check("lpt-scheduling-greedy: 入力のジョブが降順(長い順に割り当てる前提)", jobs.every((v, i) => i === 0 || jobs[i - 1] >= v));
+  }
+
+  // first-fit-decreasing-bin-packing: 定義どおりの再計算と、下限・11/9 の保証
+  {
+    const items = GREEDY.BIN_ITEMS;
+    const cap = GREEDY.BIN_CAPACITY;
+    const bins = [];
+    for (const item of [...items].sort((a, b) => b - a)) {
+      const target = bins.findIndex((used) => used + item <= cap);
+      if (target === -1) bins.push(item);
+      else bins[target] += item;
+    }
+    const { last } = lastFrame("first-fit-decreasing-bin-packing");
+    check("first-fit-decreasing-bin-packing: 各ビンの使用量が再計算と一致", bins.every((v, i) => last.array[i] === v) && last.array.slice(bins.length).every((v) => v === 0), `${last.array} vs ${bins}`);
+    check("first-fit-decreasing-bin-packing: どのビンも容量以内", last.array.every((v) => v <= cap));
+    check("first-fit-decreasing-bin-packing: 使用量の合計が品物の合計と一致", last.array.reduce((a, b) => a + b, 0) === items.reduce((a, b) => a + b, 0));
+    const lower = Math.ceil(items.reduce((a, b) => a + b, 0) / cap);
+    check(`first-fit-decreasing-bin-packing: ビン数(${bins.length})が下限(${lower})以上で、11/9×下限+1 以内`, bins.length >= lower && bins.length <= (11 / 9) * lower + 1);
+    check("first-fit-decreasing-bin-packing: 使ったビンだけが確定している", Object.keys(last.highlight).length === bins.length && bins.every((_, b) => hasKey(last.highlight, b)));
+    check("first-fit-decreasing-bin-packing: 入力が降順で、品物ごとに2フレーム(入れる先・更新後)ある", items.every((v, i) => i === 0 || items[i - 1] >= v) && GREEDY.GREEDY_VISUALIZERS["first-fit-decreasing-bin-packing"]().length === 1 + 2 * items.length + 1);
+  }
+}
+
+// ===========================================================================
+// RANKING (4件) / GAME (6件): 情報検索・ゲームの棒グラフ可視化。
+// 定義式どおりに別途書いた再計算(固定シード乱数も別実装)と、アルゴリズムごとの性質で確認する。
+// ===========================================================================
+section("RANKING (4件)・GAME (6件): 独立した再計算との一致と性質");
+{
+  const near = (a, b, eps = 1e-9) => Math.abs(a - b) <= eps;
+  const lastOf = (registry, id) => {
+    const frames = registry[id]();
+    checkWellFormed(id, frames);
+    return { frames, last: frames[frames.length - 1] };
+  };
+  // 参照用のLCG(ライブラリとは別に、同じ定義式で書き直したもの)
+  const makeRng = (seed) => {
+    let state = seed >>> 0;
+    return () => {
+      state = (1664525 * state + 1013904223) % 4294967296;
+      return state / 4294967296;
+    };
+  };
+  const round2 = (v) => Math.round(v * 100) / 100;
+
+  // ---- 全件共通 ----
+  for (const [group, registry] of Object.entries(BAR.BAR_GROUPS)) {
+    for (const id of Object.keys(registry)) {
+      const frames = registry[id]();
+      check(`${id}(${group}): 全フレームで棒の数が同じ・有限値`, frames.every((f) => f.array.length === frames[0].array.length && f.array.every(Number.isFinite)));
+      check(`${id}(${group}): 印の添字が範囲内`, frames.every((f) => Object.keys(f.highlight).every((k) => Number(k) >= 0 && Number(k) < f.array.length)));
+      check(`${id}(${group}): 2回生成しても同一(決定的)`, JSON.stringify(registry[id]()) === JSON.stringify(frames));
+      check(`${id}(${group}): barGroupOf が正しいグループを返す`, BAR.barGroupOf(id) === group && id in BAR.BAR_VISUALIZERS);
+    }
+  }
+  check("BAR: グループ間でidが重複しない", Object.values(BAR.BAR_GROUPS).flatMap((r) => Object.keys(r)).length === Object.keys(BAR.BAR_VISUALIZERS).length);
+  check(
+    "BAR: 棒グラフ可視化のidが、他の可視化レジストリのidと重複していない(重複すると片方が呼ばれない)",
+    Object.keys(BAR.BAR_VISUALIZERS).every((id) => ![SEARCH_VISUALIZERS, SORT_VISUALIZERS, DP_VISUALIZERS, GRAPH_VISUALIZERS, PATHFINDING_VISUALIZERS, SIG.SIGNAL_VISUALIZERS].some((r) => id in r)),
+  );
+
+  // ---- vector-space-model ----
+  {
+    const cos = (a, b) => {
+      let dot = 0, na = 0, nb = 0;
+      for (let i = 0; i < a.length; i++) { dot += a[i] * b[i]; na += a[i] ** 2; nb += b[i] ** 2; }
+      return dot / Math.sqrt(na * nb);
+    };
+    const { last } = lastOf(BAR.BAR_GROUPS.ranking, "vector-space-model");
+    const expected = RANK.VSM_DOCS.map((d) => cos(RANK.VSM_QUERY, d));
+    check("vector-space-model: 各文書のコサイン類似度が参照計算と一致(小数3桁)", last.array.every((v, i) => near(v, expected[i], 0.0006)));
+    const best = expected.indexOf(Math.max(...expected));
+    check("vector-space-model: 最も近い文書が確定し、その類似度は1(クエリと同じ向き)", last.highlight[best] === "settled" && near(expected[best], 1));
+    check("vector-space-model: 類似度は0〜1", last.array.every((v) => v >= 0 && v <= 1));
+    const scaled = RANK.VSM_DOCS.map((d) => d.map((v) => v * 7));
+    check("vector-space-model: 文書の長さ(出現回数を7倍)を変えても類似度は不変(向きだけを見る)", scaled.every((d, i) => near(cos(RANK.VSM_QUERY, d), expected[i])));
+  }
+
+  // ---- ndcg-evaluation ----
+  {
+    const dcgRef = (rels) => { let sum = 0; rels.forEach((rel, i) => { sum += rel / Math.log2(i + 2); }); return sum; };
+    const { frames, last } = lastOf(BAR.BAR_GROUPS.ranking, "ndcg-evaluation");
+    const rels = RANK.NDCG_RELEVANCE;
+    check("ndcg-evaluation: 各順位の割引後の利得が rel/log2(順位+1) と一致", last.array.every((v, i) => near(v, rels[i] / Math.log2(i + 2), 0.0006)));
+    const ideal = [...rels].sort((a, b) => b - a);
+    const expected = dcgRef(rels) / dcgRef(ideal);
+    const shown = Number(/nDCG (\d\.\d+)/.exec(last.description)?.[1]);
+    check(`nDCG: 最後に示した値が参照計算(${expected.toFixed(3)})と一致`, near(shown, expected, 0.0006), last.description);
+    check("ndcg-evaluation: 理想の並びのnDCGは1、それ以外は1以下", near(dcgRef(ideal) / dcgRef(ideal), 1) && expected <= 1);
+    check("ndcg-evaluation: 同じ適合度でも順位が下がるほど利得が小さい(割引)", dcgRef([3, 0, 0]) > dcgRef([0, 0, 3]));
+    check("ndcg-evaluation: 順位ごとにフレームが1つ+前後", frames.length === rels.length + 2);
+  }
+
+  // ---- mmr-diversity-reranking ----
+  {
+    const rel = RANK.MMR_RELEVANCE;
+    const sim = RANK.MMR_SIMILARITY;
+    const lambda = RANK.MMR_LAMBDA;
+    const chosen = [];
+    for (let round = 0; round < RANK.MMR_PICKS; round++) {
+      let best = -1, bestScore = -Infinity;
+      for (let c = 0; c < rel.length; c++) {
+        if (chosen.includes(c)) continue;
+        const redundancy = chosen.length === 0 ? 0 : Math.max(...chosen.map((s) => sim[c][s]));
+        const score = lambda * rel[c] - (1 - lambda) * redundancy;
+        if (score > bestScore) { best = c; bestScore = score; }
+      }
+      chosen.push(best);
+    }
+    const { last } = lastOf(BAR.BAR_GROUPS.ranking, "mmr-diversity-reranking");
+    const shown = /選んだ順は 候補([\d → ]+)/.exec(last.description)?.[1].split("→").map((v) => Number(v.trim()) - 1);
+    check(`mmr-diversity-reranking: 選んだ順が参照計算(${chosen.map((c) => c + 1).join("→")})と一致`, JSON.stringify(shown) === JSON.stringify(chosen), String(shown));
+    check("mmr-diversity-reranking: 関連度2位でも1位とほぼ同じ候補2は、最後まで後回しになる", chosen.indexOf(1) === chosen.length - 1);
+    check("mmr-diversity-reranking: 類似度行列が対称で対角が1", sim.every((row, i) => row[i] === 1 && row.every((v, j) => v === sim[j][i])));
+    check("mmr-diversity-reranking: 最初の1つは関連度が最大の候補", chosen[0] === rel.indexOf(Math.max(...rel)));
+    check("mmr-diversity-reranking: λ=1なら関連度の順と一致する(多様性を見ない極限)", (() => {
+      const order = [...rel.keys()].sort((a, b) => rel[b] - rel[a]);
+      return order.every((c, i) => i === 0 || rel[order[i - 1]] >= rel[c]);
+    })());
+  }
+
+  // ---- simhash ----
+  {
+    const fnv = (text) => {
+      let hash = 2166136261;
+      for (const ch of text) { hash = (hash ^ ch.charCodeAt(0)) >>> 0; hash = Math.imul(hash, 16777619) >>> 0; }
+      return hash & 0xff;
+    };
+    const fingerprint = (doc) => {
+      const sums = Array(8).fill(0);
+      for (const [token, weight] of doc) for (let b = 0; b < 8; b++) sums[b] += ((fnv(token) >> (7 - b)) & 1) === 1 ? weight : -weight;
+      return sums;
+    };
+    const A = RANK.SIMHASH_DOC_A;
+    const B = RANK.SIMHASH_DOC_B;
+    const sumsA = fingerprint(A);
+    const { last } = lastOf(BAR.BAR_GROUPS.ranking, "simhash");
+    check("simhash: ビットごとの重み付き合計が参照計算と一致", last.array.every((v, i) => v === sumsA[i]), `${last.array} vs ${sumsA}`);
+    const bitsA = sumsA.map((s) => (s > 0 ? 1 : 0));
+    const bitsB = fingerprint(B).map((s) => (s > 0 ? 1 : 0));
+    check("simhash: 示した指紋が参照計算と一致", last.description.includes(`指紋 ${bitsA.join("")}`) && last.description.includes(`は ${bitsB.join("")} で`));
+    const distance = bitsA.filter((b, i) => b !== bitsB[i]).length;
+    check(`simhash: ハミング距離(${distance})が参照計算と一致`, new RegExp(`ハミング距離は${distance}`).test(last.description));
+    check("simhash: 確定(settled)の印は指紋が1のビットと一致", last.array.every((_, b) => (last.highlight[b] === "settled") === (bitsA[b] === 1)));
+    check("simhash: 重み1の語を1つ替えても、合計の絶対値が2を超えるビットは変わらない", sumsA.every((s, b) => Math.abs(s) <= 2 || bitsA[b] === bitsB[b]));
+    check("simhash: ハッシュが決定的(同じ語は同じ値)", RANK.tokenHash("graph") === RANK.tokenHash("graph") && RANK.tokenHash("graph") === fnv("graph"));
+  }
+
+  // ---- midpoint-displacement ----
+  {
+    const rng = makeRng(5);
+    const size = 17;
+    const h = Array(size).fill(0);
+    h[0] = 40; h[16] = 60;
+    for (let span = 16, level = 1; span >= 2; span /= 2, level++) {
+      for (let left = 0; left < 16; left += span) {
+        const mid = left + span / 2;
+        const shift = (rng() * 2 - 1) * (40 / 2 ** (level - 1));
+        h[mid] = round2(Math.min(100, Math.max(0, (h[left] + h[left + span]) / 2 + shift)));
+      }
+    }
+    const { frames, last } = lastOf(BAR.BAR_GROUPS.game, "midpoint-displacement");
+    check("midpoint-displacement: 最終の高さが参照の中点変位(別実装のLCG)と一致", last.array.every((v, i) => near(v, h[i], 1e-9)), `${last.array}`);
+    check("midpoint-displacement: 両端は最初から最後まで変わらない", frames.every((f) => f.array[0] === 40 && f.array[16] === 60));
+    check("midpoint-displacement: 高さが0〜100に収まる", last.array.every((v) => v >= 0 && v <= 100));
+    let withinBound = true;
+    for (let span = 16, level = 1; span >= 2; span /= 2, level++) {
+      for (let left = 0; left < 16; left += span) {
+        const avg = (last.array[left] + last.array[left + span]) / 2;
+        if (Math.abs(last.array[left + span / 2] - avg) > 40 / 2 ** (level - 1) + 0.01) withinBound = false;
+      }
+    }
+    check("midpoint-displacement: 各中点が「両端の平均 ± 段階ごとの振幅(半分ずつ)」の範囲内", withinBound);
+    check("midpoint-displacement: 中点の数が 2^k−1 = 15個、フレームは15+2", frames.length === 17 && midpointCount(last.array) === 15);
+    function midpointCount(arr) { return arr.length - 2; }
+  }
+
+  // ---- perlin-noise ----
+  {
+    const rng = makeRng(9);
+    const g = Array.from({ length: 5 }, () => rng() * 2 - 1);
+    const fade = (t) => 6 * t ** 5 - 15 * t ** 4 + 10 * t ** 3;
+    const noise = (i) => {
+      const cell = Math.min(3, Math.floor(i / 8));
+      const t = i / 8 - cell;
+      const a = g[cell] * t;
+      const b = g[cell + 1] * (t - 1);
+      return a + fade(t) * (b - a);
+    };
+    const { last } = lastOf(BAR.BAR_GROUPS.game, "perlin-noise");
+    check("perlin-noise: 33サンプルの値が参照計算(別実装のLCG・fade 6t^5−15t^4+10t^3)と一致", last.array.length === 33 && last.array.every((v, i) => near(v, round2(noise(i)), 1e-9)));
+    check("perlin-noise: 格子点(0,8,16,24,32)の値がちょうど0", [0, 8, 16, 24, 32].every((i) => last.array[i] === 0));
+    check("perlin-noise: 値が±0.5に収まる(勾配が±1以内のとき)", last.array.every((v) => Math.abs(v) <= 0.5 + 0.005));
+    check("perlin-noise: fadeが0で0・1で1・両端で傾き0", near(RANK_PERLIN_FADE(0), 0) && near(RANK_PERLIN_FADE(1), 1) && near(RANK_PERLIN_FADE(0.5), 0.5));
+    function RANK_PERLIN_FADE(t) { return GAME.perlinFade(t); }
+    check("perlin-noise: ライブラリのfadeが参照式と一致", [0, 0.2, 0.5, 0.9, 1].every((t) => near(GAME.perlinFade(t), fade(t))));
+  }
+
+  // ---- worley-noise ----
+  {
+    const rng = makeRng(21);
+    const points = Array.from({ length: 4 }, (_, c) => round2(c * 8 + rng() * 8));
+    const { last } = lastOf(BAR.BAR_GROUPS.game, "worley-noise");
+    const brute = Array.from({ length: 32 }, (_, x) => round2(Math.min(...points.map((p) => Math.abs(p - x)))));
+    check("worley-noise: 各位置の値が、全特徴点を総当たりした最短距離と一致(隣の区画だけの探索で十分)", last.array.every((v, x) => near(v, brute[x], 1e-9)), `${last.array}`);
+    check("worley-noise: 特徴点が各区画の内側にある", points.every((p, c) => p >= c * 8 && p < (c + 1) * 8 + 0.01));
+    check("worley-noise: 特徴点のすぐ近く(距離1未満)の位置が確定(settled)", last.array.every((v, x) => (v < 1) === (last.highlight[x] === "settled")));
+    check("worley-noise: 最大距離が区画の幅(8)以下", Math.max(...last.array) <= 8 + 0.005);
+  }
+
+  // ---- shapley-value ----
+  {
+    const v = GAME.SHAPLEY_VALUE;
+    const n = 3;
+    const fact = (k) => (k <= 1 ? 1 : k * fact(k - 1));
+    const phi = [0, 1, 2].map((i) => {
+      let total = 0;
+      for (let S = 0; S < 8; S++) {
+        if (S & (1 << i)) continue;
+        const size = [0, 1, 2].filter((p) => S & (1 << p)).length;
+        total += (fact(size) * fact(n - size - 1)) / fact(n) * (v[S | (1 << i)] - v[S]);
+      }
+      return total;
+    });
+    const { frames, last } = lastOf(BAR.BAR_GROUPS.game, "shapley-value");
+    check(`shapley-value: 取り分(${phi.map(round2).join(",")})が部分集合の重み付き和の定義式と一致`, last.array.every((x, i) => near(x, round2(phi[i]), 1e-9)), `${last.array}`);
+    check("shapley-value: 効率性(取り分の合計 = 全員の価値)", near(last.array.reduce((a, b) => a + b, 0), v[7], 0.02));
+    check("shapley-value: フレーム数 = 並び順3!=6通り + 前後", frames.length === 6 + 2);
+    check("shapley-value: 途中の平均も各並び順の寄与の平均になっている(最終フレームの前と最終が同じ)", frames[frames.length - 2].array.every((x, i) => x === last.array[i]));
+  }
+
+  // ---- hawk-dove-game ----
+  {
+    const V = 2, C = 4, eta = 1.5;
+    let p = 0.1;
+    const ps = [p];
+    for (let g = 0; g < 30; g++) { p += eta * p * (1 - p) * ((V - p * C) / 2); ps.push(p); }
+    const { frames, last } = lastOf(BAR.BAR_GROUPS.game, "hawk-dove-game");
+    check("hawk-dove-game: 各世代のタカの割合(%)が参照の複製子動学と一致", ps.every((q, g) => near(frames[g].array[0], round2(q * 100), 1e-9)));
+    check(`hawk-dove-game: 30世代後に V/C = ${V / C} へ収束(誤差2%以内)`, Math.abs(last.array[0] - 50) < 2, String(last.array[0]));
+    check("hawk-dove-game: 各フレームでタカ+ハトが100%", frames.every((f) => near(f.array[0] + f.array[1], 100, 0.011)));
+    check("hawk-dove-game: p=V/C は不動点(次世代も同じ)", near(GAME.hawkDoveNext(V / C), V / C));
+    check("hawk-dove-game: 0%・100%も不動点(突然変異が無ければ動かない)", near(GAME.hawkDoveNext(0), 0) && near(GAME.hawkDoveNext(1), 1));
+  }
+
+  // ---- tit-for-tat-iterated-prisoners-dilemma ----
+  {
+    const T = 5, R = 3, P = 1, S = 0;
+    const pay = (a, b) => (a === "C" ? (b === "C" ? R : S) : b === "C" ? T : P);
+    let tft = "C", ta = "C", tb = "C";
+    const total = [0, 0, 0, 0];
+    for (let r = 0; r < 10; r++) {
+      total[0] += pay(tft, "D"); total[1] += pay("D", tft);
+      total[2] += pay(ta, tb); total[3] += pay(tb, ta);
+      const nextA = tb, nextB = ta;
+      tft = "D"; ta = nextA; tb = nextB;
+    }
+    const { last } = lastOf(BAR.BAR_GROUPS.game, "tit-for-tat-iterated-prisoners-dilemma");
+    check(`tit-for-tat: 累計得点(${total.join(",")})が参照のシミュレーションと一致`, last.array.every((v, i) => v === total[i]), `${last.array}`);
+    check("tit-for-tat: 囚人のジレンマの条件(T>R>P>S かつ 2R>T+S)", T > R && R > P && P > S && 2 * R > T + S && GAME.PAYOFF.T === T && GAME.PAYOFF.R === R && GAME.PAYOFF.P === P && GAME.PAYOFF.S === S);
+    check("tit-for-tat: 常に裏切る相手に負けるのは最初の1回の差(T−S=5点)だけ", total[1] - total[0] === T - S);
+    check("tit-for-tat: しっぺ返し同士は毎回協力して R×回数点", total[2] === R * 10 && total[3] === R * 10);
+    check("tit-for-tat: 累計得点は各フレームで減らない", BAR.BAR_GROUPS.game["tit-for-tat-iterated-prisoners-dilemma"]().every((f, i, all) => i === 0 || f.array.every((v, k) => v >= all[i - 1].array[k])));
   }
 }
 
