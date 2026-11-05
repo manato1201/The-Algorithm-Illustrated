@@ -1,5 +1,7 @@
 # The-Algorithm-Illustrated 改善・リファクタリング計画書
 
+> **2026-11-04 注**: 本書は初期(2026-07〜08)の計画で、記録として残す。その後の改善は [IMPROVEMENT_PLAN_2026-10.md](IMPROVEMENT_PLAN_2026-10.md)(作業の一覧)と [IMPROVEMENT_DESIGN_2026-10.md](IMPROVEMENT_DESIGN_2026-10.md)(設計と追補)。両方にある話題は、**新しい日付の文書を優先**する。
+
 **改善指標: 収録カテゴリの拡充と検索性・保守自動化の強化**
 作成日: 2026-08-11 / 調査範囲: `content/algorithms/*.md`(367件・24カテゴリ)、Next.js 16.2.10(React 19.2.4 / App Router / 静的生成)
 
