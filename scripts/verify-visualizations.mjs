@@ -67,6 +67,7 @@ import {
 } from "../src/lib/graph-visualizers.ts";
 import {
   DP_VISUALIZERS,
+  DP_TABLE_META,
   Q_LEARNING_GRID_SIZE,
   Q_LEARNING_GOAL_STATE,
   Q_LEARNING_ACTIONS,
@@ -139,6 +140,20 @@ import {
   FFD_ITEMS, FFD_CAPACITY, EGYPTIAN_NUMERATOR, EGYPTIAN_DENOMINATOR, SET_COVER_UNIVERSE, SET_COVER_SETS,
   MERGE_FILE_SIZES, SHANNON_FANO_SYMBOLS, CANONICAL_HUFFMAN_LENGTHS, TASK_SCHEDULER_COUNTS, TASK_SCHEDULER_COOLDOWN,
 } from "../src/lib/greedy-visualizers.ts";
+import {
+  CONSTANT_FOLDING_EXPR, foldOnce, evalExpr, runProgram, TAC_EXPR, generateThreeAddressCode, runTac,
+  CONSTANT_PROPAGATION_PROGRAM, propagateConstants, DCE_PROGRAM, DCE_RESULT_VAR, deadCodeAnalysis, usedVars,
+  CSE_PROGRAM, eliminateCommonSubexpressions, PEEPHOLE_PROGRAM, peepholeRewrite,
+  SHUNTING_YARD_TOKENS, shuntingYard, RECURSIVE_DESCENT_TOKENS, recursiveDescent,
+  PRATT_TOKENS, prattParse, evalPrattTree, LL1_INPUT, LL1_TABLE, ll1Parse, MAXIMAL_MUNCH_INPUT, maximalMunch,
+} from "../src/lib/compiler-visualizers.ts";
+import {
+  IR_VISUALIZERS, IR_DOCS, IR_QUERY, BM25F_DOCS, NDCG_RELEVANCE, MMR_RELEVANCE, mmrSelect,
+} from "../src/lib/ir-visualizers.ts";
+import {
+  GAME_THEORY_VISUALIZERS, SHAPLEY_PLAYERS, SHAPLEY_VALUE, shapleyContributions, VICKREY_VALUES, TFT_OPPONENT,
+  hdPayoffHawk, hdPayoffDove, NASH_ROW_PAYOFF, NASH_COL_PAYOFF, MINIMAX_MATRIX, STACKELBERG_QUANTITIES,
+} from "../src/lib/game-visualizers.ts";
 import { SIGNAL_VISUALIZERS, SIGNAL_META } from "../src/lib/signal-visualizers.ts";
 import {
   AUTOCORR_MIN_LAG, AUTOCORR_MAX_LAG, AUTOCORR_PERIOD, autocorrInput,
@@ -2271,6 +2286,474 @@ section("GREEDY: 最適解(全探索・独立実装)との一致");
       idx.forEach((i, k) => { if (k > 0 && i - idx[k - 1] <= TASK_SCHEDULER_COOLDOWN) spaced = false; });
     }
     check("タスクスケジューラ: 全タスクを実行し、同じタスクの間隔が(クールダウン+1)以上", spaced);
+  }
+}
+
+// ===========================================================================
+// COMPILER (コンパイラ・構文解析11件): 最適化は「書き換え前後を実行して同じ結果になるか」、
+// 構文解析は独立の評価器・認識器・正規表現との突き合わせで確認する。
+// ===========================================================================
+section("COMPILER: 意味保存(実行して照合)・構文解析の正しさ");
+{
+  const lastFrame = (id) => {
+    const frames = DP_VISUALIZERS[id]();
+    checkWellFormed(id, frames);
+    return frames[frames.length - 1];
+  };
+  const meta = (id) => DP_TABLE_META[id];
+  const rngInts = (seed, n) => {
+    let s = seed;
+    return Array.from({ length: n }, () => ((s = (s * 1103515245 + 12345) % 2147483648), (s % 41) - 20));
+  };
+  for (const id of ["constant-folding", "three-address-code-generation", "constant-propagation", "dead-code-elimination", "common-subexpression-elimination", "peephole-optimization", "shunting-yard-algorithm", "recursive-descent-parsing", "pratt-parsing", "ll1-parsing", "maximal-munch-tokenization"]) {
+    const t = DP_VISUALIZERS[id]()[0].table;
+    check(`${id}: 表の行数・列数がメタ情報(行見出し・列見出し)と一致`, t.length === meta(id).rowHeaders.length && t[0].length === meta(id).colHeaders.length, `${t.length}x${t[0].length} vs ${meta(id).rowHeaders.length}x${meta(id).colHeaders.length}`);
+  }
+
+  // 定数畳み込み: 各段で式の値が変わらない。最終は変数yによらず20
+  {
+    const literal = (y) => (2 + 3) * 4 - y * (10 / 5 - 2);
+    const ys = [-7, 0, 3, 12];
+    check("定数畳み込み: 元の式の評価が独立の計算と一致", ys.every((y) => evalExpr(CONSTANT_FOLDING_EXPR, { y }) === literal(y)));
+    let current = CONSTANT_FOLDING_EXPR, preserved = true, steps = 0;
+    for (let step = foldOnce(current); step; step = foldOnce(current)) {
+      if (!ys.every((y) => evalExpr(step.expr, { y }) === literal(y))) preserved = false;
+      current = step.expr;
+      steps++;
+    }
+    check("定数畳み込み: 各段で式の値(yの任意の値で)が変わらない", preserved && steps === 6, `steps=${steps}`);
+    const last = lastFrame("constant-folding").table[0].at(-1).value;
+    check("定数畳み込み: 最終の式が定数20", last === "20", String(last));
+  }
+  // 3番地コード: 実行して元の式と一致、1命令に演算1つ
+  {
+    const { code } = generateThreeAddressCode(TAC_EXPR);
+    const envs = rngInts(7, 25).map((v, i, a) => ({ a: v, b: a[(i + 3) % a.length], c: a[(i + 7) % a.length], d: a[(i + 11) % a.length], e: a[(i + 13) % a.length] }));
+    check("3番地コード: 実行結果が元の式 a*b + c*(d−e) と一致(25通りの入力)", envs.every((e) => runTac(code, e) === e.a * e.b + e.c * (e.d - e.e)));
+    check("3番地コード: 命令数は演算の数(4)と一致し、一時変数は重複しない", code.length === 4 && new Set(code.map((c) => c.dest)).size === 4);
+    const t = lastFrame("three-address-code-generation").table;
+    check("3番地コード: 表の命令が生成コードと一致", t[0].every((c, i) => c.value === `${code[i].dest} = ${code[i].left} ${code[i].op} ${code[i].right}`));
+  }
+  // 定数伝播: 全変数の値が同じ。畳み込み後の文が独立計算と一致
+  {
+    const { result } = propagateConstants(CONSTANT_PROPAGATION_PROGRAM);
+    const xs = [-5, 0, 9, 100];
+    check("定数伝播: 伝播前後で全変数の値が一致(xの任意の値で)", xs.every((x) => JSON.stringify(runProgram(CONSTANT_PROPAGATION_PROGRAM, { x })) === JSON.stringify(runProgram(result, { x }))));
+    const a = 4, b = a + 2, c = b * 3, d = c - a;
+    const expected = [`a = ${a}`, `b = ${b}`, `c = ${c}`, `d = ${d}`, `d = ${d} + x`, `e = d * 2`];
+    const got = lastFrame("constant-propagation").table[2].map((c) => c.value);
+    check("定数伝播: 畳み込み後の各文が独立計算(a=4,b=6,c=18,d=14、再代入後のdは伝えない)と一致", JSON.stringify(got) === JSON.stringify(expected), `got=${got}`);
+  }
+  // 不要コード除去: 生存解析を不動点反復で独立に。残した文を消すと結果が変わる/消した文は影響なし
+  {
+    const prog = DCE_PROGRAM;
+    const frameKeep = lastFrame("dead-code-elimination").table[2].map((c) => c.value === "残す");
+    // 独立: 各文を取り除いた版を実行し、結果変数dが変わるかで必要性を判定(未定義参照は変化とみなす)
+    const resultOf = (p) => {
+      try { return runProgram(p, {})[DCE_RESULT_VAR]; } catch { return "ERR"; }
+    };
+    const full = resultOf(prog);
+    const necessary = prog.map((_, i) => resultOf(prog.filter((_, j) => j !== i)) !== full);
+    check("不要コード除去: 残す/削除の判定が「取り除くと結果が変わるか」の実測と一致", JSON.stringify(frameKeep) === JSON.stringify(necessary), `keep=${frameKeep} necessary=${necessary}`);
+    const reduced = prog.filter((_, i) => frameKeep[i]);
+    check("不要コード除去: 削除後も結果変数の値が同じ", resultOf(reduced) === full, `${resultOf(reduced)} vs ${full}`);
+    const { liveOut } = deadCodeAnalysis(prog, DCE_RESULT_VAR);
+    // 不動点反復による生存変数(直線コードなので1回の後ろ向き伝播と同じはずだが、別の書き方で)
+    let live = new Set([DCE_RESULT_VAR]);
+    const expectedLive = new Array(prog.length);
+    for (let i = prog.length - 1; i >= 0; i--) {
+      expectedLive[i] = [...live].sort().join(",");
+      if (live.has(prog[i].target)) { live.delete(prog[i].target); usedVars(prog[i].expr).forEach((u) => live.add(u)); }
+    }
+    check("不要コード除去: 各文の直後の生存変数集合が独立の計算と一致", liveOut.every((s, i) => [...s].sort().join(",") === expectedLive[i]));
+  }
+  // CSE: 実行して一致。意味的に異なる値の数(ランダム入力で一致を調べる)と計算回数が一致
+  {
+    const { rows } = eliminateCommonSubexpressions(CSE_PROGRAM);
+    const out = rows.map((r) => r.out);
+    const envs = rngInts(3, 8).map((v, i, a) => ({ a: v, b: a[(i + 2) % a.length] }));
+    check("CSE: 置き換え前後で全変数の値が一致", envs.every((e) => JSON.stringify(runProgram(CSE_PROGRAM, e)) === JSON.stringify(runProgram(out, e))));
+    const signature = (p) => CSE_PROGRAM.map((s) => envs.map((e) => runProgram(p.slice(0, CSE_PROGRAM.indexOf(s) + 1), e)[s.target]).join("|"));
+    const distinct = new Set(signature(CSE_PROGRAM)).size;
+    const kept = rows.filter((r) => r.reused === null).length;
+    check("CSE: 実際に計算する回数が、意味的に異なる値の数(ランダム入力で判別)と一致", kept === distinct, `kept=${kept} distinct=${distinct}`);
+    const t = lastFrame("common-subexpression-elimination").table;
+    check("CSE: 「既出」と判定された文が2つ(t3とt5)", t[2].filter((c) => String(c.value).startsWith("既出")).length === 2);
+    check("CSE: b+a と a+b が同じキーになる", t[1][4].value === t[1][0].value, `${t[1][4].value} vs ${t[1][0].value}`);
+  }
+  // ピープホール: 整数の任意の入力で全変数の値が一致
+  {
+    const out = PEEPHOLE_PROGRAM.map((s) => { const r = peepholeRewrite(s.expr); return r ? { target: s.target, expr: r.expr } : s; });
+    const ys = rngInts(11, 20);
+    check("ピープホール: 書き換え前後で全変数の値が一致(20通りの整数入力)", ys.every((y) => JSON.stringify(runProgram(PEEPHOLE_PROGRAM, { y })) === JSON.stringify(runProgram(out, { y }))));
+    check("ピープホール: 4つの規則(*1, +0, *2→<<1, x−x→0)がそれぞれ1回適用された", out.filter((s, i) => s !== PEEPHOLE_PROGRAM[i]).length === 4);
+  }
+  // 操車場: RPNを独立に評価(スタック評価)して、中置式を優先順位つきで直接評価した値と一致
+  {
+    const { rpn } = shuntingYard(SHUNTING_YARD_TOKENS);
+    const stack = [];
+    for (const tk of rpn) {
+      if (/^\d+$/.test(tk)) stack.push(Number(tk));
+      else { const b = stack.pop(), a = stack.pop(); stack.push(tk === "+" ? a + b : tk === "-" ? a - b : tk === "*" ? a * b : tk === "/" ? a / b : a ** b); }
+    }
+    const direct = 3 + (4 * 2) / (1 - 5) ** (2 ** 3); // ^ は右結合
+    check("操車場: RPNをスタックで評価した値が、中置式の直接計算(^右結合)と一致", stack.length === 1 && near(stack[0], direct, 1e-12), `${stack[0]} vs ${direct}`);
+    check("操車場: 教科書の既知の答え 3 4 2 * 1 5 - 2 3 ^ ^ / + と一致", rpn.join(" ") === "3 4 2 * 1 5 - 2 3 ^ ^ / +");
+    const t = lastFrame("shunting-yard-algorithm").table;
+    check("操車場: 最終列の出力が同じRPN", t[1].at(-1).value === rpn.join(" "));
+    check("操車場: 括弧がRPNに現れない", !rpn.includes("(") && !rpn.includes(")"));
+    check("操車場: 右結合の ^ は同順位で待つ(2 3 ^ ^ の順)", rpn.join(" ").includes("2 3 ^ ^"));
+  }
+  // 再帰下降: 値、呼び出しの対応、深さ
+  {
+    const { events, value } = recursiveDescent(RECURSIVE_DESCENT_TOKENS);
+    check("再帰下降: 値が 2 + 3*4 = 14", value === 2 + 3 * 4);
+    const depth = [];
+    let balanced = true;
+    for (const ev of events) {
+      if (ev.kind === "enter") depth.push(ev.fn);
+      else if (depth.pop() !== ev.fn) balanced = false;
+    }
+    check("再帰下降: 入った関数と戻る関数が対応している(スタック)", balanced && depth.length === 0);
+    check("再帰下降: 呼び出しの最大の深さは E→T→F の3(インデント2)", Math.max(...events.map((e) => e.depth)) === 2);
+    check("再帰下降: 最後の戻りが E の値14", events.at(-1).fn === "E" && events.at(-1).value === 14);
+    check("再帰下降: F の呼び出しは数のトークン数(3回)", events.filter((e) => e.kind === "enter" && e.fn === "F").length === 3);
+  }
+  // Pratt: 結合性、値
+  {
+    check("Pratt: 木が 1 + (2 * (3 ^ 2)) − 4 の形", prattParse(PRATT_TOKENS).tree === "((1 + (2 * (3 ^ 2))) - 4)", prattParse(PRATT_TOKENS).tree);
+    check("Pratt: 値が 1 + 2*3^2 − 4 = 15", evalPrattTree(PRATT_TOKENS) === 1 + 2 * 3 ** 2 - 4);
+    check("Pratt: ^ は右結合(2 ^ 3 ^ 2 = 2^(3^2))", prattParse(["2", "^", "3", "^", "2"]).tree === "(2 ^ (3 ^ 2))" && evalPrattTree(["2", "^", "3", "^", "2"]) === 512);
+    check("Pratt: − は左結合(8 − 3 − 2 = (8−3)−2)", prattParse(["8", "-", "3", "-", "2"]).tree === "((8 - 3) - 2)" && evalPrattTree(["8", "-", "3", "-", "2"]) === 3);
+  }
+  // LL(1): 最左導出の再生、独立認識器との一致
+  {
+    const { steps, accepted } = ll1Parse(LL1_INPUT);
+    check("LL(1): 入力を受理する", accepted);
+    let form = ["E"];
+    for (const s of steps) {
+      if (!s.rule) continue;
+      const i = form.findIndex((x) => x in LL1_TABLE);
+      if (form[i] !== s.rule.head) { form = ["ERR"]; break; }
+      form.splice(i, 1, ...s.rule.body);
+    }
+    check("LL(1): 使った規則を順に最左へ適用すると入力 id + id が導出される", form.join(" ") === LL1_INPUT.join(" "), form.join(" "));
+    // 独立の再帰下降認識器(同じ文法)
+    const recognize = (tokens) => {
+      let p = 0;
+      const peek = () => tokens[p];
+      const E = () => { if (!T()) return false; while (peek() === "+") { p++; if (!T()) return false; } return true; };
+      const T = () => { if (!F()) return false; while (peek() === "*") { p++; if (!F()) return false; } return true; };
+      const F = () => { if (peek() === "id") { p++; return true; } if (peek() === "(") { p++; if (!E() || peek() !== ")") return false; p++; return true; } return false; };
+      return E() && p === tokens.length;
+    };
+    const samples = [["id"], ["id", "+", "id"], ["id", "*", "id", "+", "id"], ["(", "id", "+", "id", ")", "*", "id"], ["id", "+"], ["id", "id"], ["+", "id"], ["(", "id"], ["id", "+", "+", "id"]];
+    check("LL(1): 9通りの入力で、受理/拒否が独立の再帰下降認識器と一致", samples.every((s) => ll1Parse(s).accepted === recognize(s)), samples.map((s) => `${s.join(" ")}:${ll1Parse(s).accepted}/${recognize(s)}`).join(" | "));
+    check("LL(1): 規則の適用回数と一致(各ステップでスタック先頭が非終端なら規則を1つ使う)", steps.filter((s) => s.rule).length === steps.filter((s) => s.stack[0] in LL1_TABLE).length);
+  }
+  // 最長一致: 正規表現(最長のものを選ぶ別の書き方)と一致、各位置で最長
+  {
+    const steps = maximalMunch(MAXIMAL_MUNCH_INPUT);
+    const re = /[a-z][a-z0-9]*|[0-9]+|<=|==|!=|<|=/g;
+    const ref = MAXIMAL_MUNCH_INPUT.match(re);
+    check("最長一致: 切り出した文字列が、最長優先に並べた単一の正規表現の結果と一致", JSON.stringify(steps.map((s) => s.text)) === JSON.stringify(ref), `got=${steps.map((s) => s.text)} ref=${ref}`);
+    const full = new RegExp(`^(?:[a-z][a-z0-9]*|[0-9]+|<|<=|=|==|!=)$`);
+    const longestAt = (pos) => { let best = 0; for (let l = 1; pos + l <= MAXIMAL_MUNCH_INPUT.length; l++) if (full.test(MAXIMAL_MUNCH_INPUT.slice(pos, pos + l))) best = l; return best; };
+    check("最長一致: 各位置の採用長が、その位置で取れる最長の長さ(全長を総当たり)と一致", steps.every((s) => s.text.length === longestAt(s.start)));
+    check("最長一致: <= を < と = に分けない", steps.some((s) => s.text === "<=") && !steps.some((s) => s.text === "<"));
+  }
+}
+
+// ===========================================================================
+// IR (情報検索・ランキング7件): 定義式を別に書き直した独立計算との照合
+// ===========================================================================
+section("IR: スコア計算の独立実装との一致");
+{
+  const lastTable = (id) => {
+    const frames = DP_VISUALIZERS[id]();
+    checkWellFormed(id, frames);
+    return frames[frames.length - 1].table;
+  };
+  const row = (t, r) => t[r].map((c) => c.value);
+  const closeAll = (a, b, tol = 0.0011) => a.length === b.length && a.every((v, i) => Math.abs(v - b[i]) <= tol);
+  const rankOf = (xs) => xs.map((v) => 1 + xs.filter((w) => w > v + 1e-12).length);
+  for (const id of Object.keys(IR_VISUALIZERS)) {
+    const t = DP_VISUALIZERS[id]()[0].table;
+    check(`${id}: 表の行数・列数がメタ情報と一致`, t.length === DP_TABLE_META[id].rowHeaders.length && t[0].length === DP_TABLE_META[id].colHeaders.length, `${t.length}x${t[0].length}`);
+  }
+  const N = IR_DOCS.length;
+  const termCount = (d, w) => d.filter((x) => x === w).length;
+  const df = (w) => IR_DOCS.filter((d) => d.includes(w)).length;
+  const avgdl = IR_DOCS.reduce((s, d) => s + d.length, 0) / N;
+  const cf = (w) => IR_DOCS.reduce((s, d) => s + termCount(d, w), 0);
+  const total = IR_DOCS.reduce((s, d) => s + d.length, 0);
+
+  // ベクトル空間モデル: 語彙全体の行列でコサイン類似度(別の書き方)
+  {
+    const vocab = [...new Set(IR_DOCS.flat())];
+    const idf = (w) => Math.log(N / df(w));
+    const dvec = IR_DOCS.map((d) => vocab.map((w) => (termCount(d, w) > 0 ? (1 + Math.log(termCount(d, w))) * idf(w) : 0)));
+    const qvec = vocab.map((w) => (IR_QUERY.includes(w) ? idf(w) : 0));
+    const cos = dvec.map((v) => v.reduce((s, x, i) => s + x * qvec[i], 0) / (Math.hypot(...v) * Math.hypot(...qvec)));
+    const t = lastTable("vector-space-model");
+    check("VSM: コサイン類似度が語彙全体のベクトル計算と一致", closeAll(row(t, 2), cos), `got=${row(t, 2)} ref=${cos}`);
+    check("VSM: 類似度は0〜1の範囲", cos.every((x) => x >= 0 && x <= 1 + 1e-12));
+    check("VSM: 順位が類似度の降順と一致", JSON.stringify(row(t, 3)) === JSON.stringify(rankOf(cos)));
+  }
+  // BM25+
+  {
+    const idf = (w) => Math.log((N - df(w) + 0.5) / (df(w) + 0.5) + 1);
+    const score = IR_DOCS.map((d) => IR_QUERY.reduce((s, w) => {
+      const f = termCount(d, w);
+      if (f === 0) return s;
+      const K = 1.2 * (1 - 0.75 + 0.75 * (d.length / avgdl));
+      return s + idf(w) * ((f * 2.2) / (f + K) + 1);
+    }, 0));
+    const t = lastTable("bm25-plus");
+    check("BM25+: 合計スコアが定義式(各語: idf×(tf(k1+1)/(tf+K)+δ))と一致", closeAll(row(t, 5), score), `got=${row(t, 5)} ref=${score}`);
+    check("BM25+: 順位が降順と一致", JSON.stringify(row(t, 6)) === JSON.stringify(rankOf(score)));
+    const matK = (d) => 1.2 * (1 - 0.75 + 0.75 * (d.length / avgdl));
+    const contribution = (d) => idf("mat") * ((termCount(d, "mat") * 2.2) / (termCount(d, "mat") + matK(d)) + 1);
+    const withoutDelta = (d) => contribution(d) - idf("mat");
+    check("BM25+: tfが4倍でも語の寄与(δ抜き)は4倍未満(飽和)", withoutDelta(IR_DOCS[4]) < 4 * withoutDelta(IR_DOCS[1]));
+    check("BM25+: クエリの語(cat)を含まない文書2では、その語の寄与が0(δも足さない)", lastTable("bm25-plus")[3][1].value === 0 && termCount(IR_DOCS[1], "cat") === 0);
+  }
+  // BM25F
+  {
+    const n = BM25F_DOCS.length;
+    const at = BM25F_DOCS.reduce((s, d) => s + d.title.length, 0) / n;
+    const ab = BM25F_DOCS.reduce((s, d) => s + d.body.length, 0) / n;
+    const dfF = (w) => BM25F_DOCS.filter((d) => d.title.includes(w) || d.body.includes(w)).length;
+    const score = BM25F_DOCS.map((d) => IR_QUERY.reduce((s, w) => {
+      const tfT = d.title.filter((x) => x === w).length;
+      const tfB = d.body.filter((x) => x === w).length;
+      const pseudo = 3 * (tfT / (1 - 0.5 + 0.5 * (d.title.length / at))) + 1 * (tfB / (1 - 0.75 + 0.75 * (d.body.length / ab)));
+      const idf = Math.log((n - dfF(w) + 0.5) / (dfF(w) + 0.5) + 1);
+      return s + (idf * pseudo) / (1.2 + pseudo);
+    }, 0));
+    const t = lastTable("bm25f");
+    check("BM25F: 合計スコアが定義式(フィールド重み付きの擬似tf)と一致", closeAll(row(t, 4), score), `got=${row(t, 4)} ref=${score}`);
+    check("BM25F: 順位が降順と一致", JSON.stringify(row(t, 5)) === JSON.stringify(rankOf(score)));
+    check("BM25F: タイトルに語がある文書(1・2・4)はどれも、本文だけの文書3より上位", [0, 1, 3].every((c) => score[c] > score[2]));
+  }
+  // 言語モデル(JM平滑化)
+  {
+    const pc = (w) => cf(w) / total;
+    const lam = 0.5;
+    const ll = IR_DOCS.map((d) => IR_QUERY.reduce((s, w) => s + Math.log(lam * (termCount(d, w) / d.length) + (1 - lam) * pc(w)), 0));
+    const t = lastTable("language-model-ir");
+    check("言語モデル: 対数尤度が定義式(λ=0.5のJelinek-Mercer)と一致", closeAll(row(t, 5), ll), `got=${row(t, 5)} ref=${ll}`);
+    const mleProduct = IR_DOCS.map((d) => IR_QUERY.reduce((p, w) => p * (termCount(d, w) / d.length), 1));
+    check("言語モデル: 平滑化なしの積は、語を1つでも含まない文書で0", row(t, 2).every((v, c) => (mleProduct[c] === 0) === (v === 0)));
+    check("言語モデル: 平滑化後は全文書で対数尤度が有限(0点にならない)", row(t, 5).every((v) => Number.isFinite(v)));
+    check("言語モデル: 順位が降順と一致", JSON.stringify(row(t, 6)) === JSON.stringify(rankOf(ll)));
+  }
+  // ディリクレ平滑化
+  {
+    const mu = 5;
+    const pc = (w) => cf(w) / total;
+    const ll = IR_DOCS.map((d) => IR_QUERY.reduce((s, w) => s + Math.log((termCount(d, w) + mu * pc(w)) / (d.length + mu)), 0));
+    const t = lastTable("dirichlet-smoothing-lm");
+    check("ディリクレ: 対数尤度が定義式 (tf+μp(t|C))/(|d|+μ) と一致", closeAll(row(t, 4), ll), `got=${row(t, 4)} ref=${ll}`);
+    check("ディリクレ: 各語の確率は0〜1", [2, 3].every((r) => row(t, r).every((v) => v > 0 && v < 1)));
+    const pAll = IR_QUERY.map((w) => IR_DOCS.map((d) => (termCount(d, w) + mu * pc(w)) / (d.length + mu)));
+    check("ディリクレ: 語彙全体で確率の和が1(正規化されている)", IR_DOCS.every((d) => {
+      const vocab = [...new Set(IR_DOCS.flat())];
+      return Math.abs(vocab.reduce((s, w) => s + (termCount(d, w) + mu * pc(w)) / (d.length + mu), 0) - 1) < 1e-12;
+    }));
+    void pAll;
+  }
+  // NDCG
+  {
+    const rel = NDCG_RELEVANCE;
+    const dcgAt = (list, k) => list.slice(0, k).reduce((s, r, i) => s + (2 ** r - 1) / Math.log2(i + 2), 0);
+    const ideal = [...rel].sort((a, b) => b - a);
+    const t = lastTable("ndcg-evaluation");
+    const ref = rel.map((_, i) => dcgAt(rel, i + 1) / dcgAt(ideal, i + 1));
+    check("nDCG: 各kのnDCGが定義(DCG/IDCG)と一致", closeAll(row(t, 6), ref), `got=${row(t, 6)} ref=${ref}`);
+    check("nDCG: 全てのkで0〜1、理想の並びなら1", ref.every((v) => v > 0 && v <= 1 + 1e-12) && Math.abs(dcgAt(ideal, 6) / dcgAt(ideal, 6) - 1) < 1e-12);
+    const worst = [...rel].sort((a, b) => a - b);
+    check("nDCG: 逆順の並びは今の並びより低い(順位に敏感)", dcgAt(worst, 6) / dcgAt(ideal, 6) < ref[5]);
+  }
+  // MMR
+  {
+    const rel = MMR_RELEVANCE, lam = 0.6;
+    const sim = (a, b) => ({ "0-1": 0.9, "0-2": 0.2, "0-3": 0.3, "0-4": 0.1, "0-5": 0.2, "1-2": 0.25, "1-3": 0.35, "1-4": 0.1, "1-5": 0.15, "2-3": 0.8, "2-4": 0.3, "2-5": 0.2, "3-4": 0.2, "3-5": 0.3, "4-5": 0.7 }[`${Math.min(a, b)}-${Math.max(a, b)}`]);
+    const chosen = [];
+    while (chosen.length < 4) {
+      let best = -1, bs = -Infinity;
+      for (let c = 0; c < rel.length; c++) {
+        if (chosen.includes(c)) continue;
+        const s = lam * rel[c] - (1 - lam) * (chosen.length === 0 ? 0 : Math.max(...chosen.map((x) => sim(c, x))));
+        if (s > bs) { bs = s; best = c; }
+      }
+      chosen.push(best);
+    }
+    check("MMR: 選択順が独立実装と一致", JSON.stringify(mmrSelect().order) === JSON.stringify(chosen), `${mmrSelect().order} vs ${chosen}`);
+    check("MMR: 最初の1つは関連度が最大(重複の減点がまだない)", chosen[0] === rel.indexOf(Math.max(...rel)));
+    check("MMR: 文書1に酷似した文書2(類似度0.9)は、関連度が2番目でも後回し(4番目)", chosen[3] === 1 && chosen.indexOf(1) > chosen.indexOf(2));
+    check("MMR: λ=1なら関連度の降順と一致(多様性を無視)", (() => {
+      const c2 = [];
+      while (c2.length < 4) { let b = -1, s = -Infinity; for (let c = 0; c < rel.length; c++) if (!c2.includes(c) && rel[c] > s) { s = rel[c]; b = c; } c2.push(b); }
+      return JSON.stringify(c2) === "[0,1,2,3]";
+    })());
+  }
+}
+
+// ===========================================================================
+// GAME (数理ゲーム理論8件): 定義どおりか(逸脱の総当たり・公式)で照合する
+// ===========================================================================
+section("GAME: 均衡・安定性・公平な分配の定義との一致");
+{
+  const lastTable = (id) => {
+    const frames = DP_VISUALIZERS[id]();
+    checkWellFormed(id, frames);
+    return frames[frames.length - 1].table;
+  };
+  const row = (t, r) => t[r].map((c) => c.value);
+  for (const id of Object.keys(GAME_THEORY_VISUALIZERS)) {
+    const t = DP_VISUALIZERS[id]()[0].table;
+    check(`${id}: 表の行数・列数がメタ情報と一致`, t.length === DP_TABLE_META[id].rowHeaders.length && t[0].length === DP_TABLE_META[id].colHeaders.length, `${t.length}x${t[0].length}`);
+  }
+  // シャープレイ値: 部分集合の重みつき和の公式と一致。効率性
+  {
+    const players = SHAPLEY_PLAYERS, v = SHAPLEY_VALUE, n = players.length;
+    const fact = (k) => (k <= 1 ? 1 : k * fact(k - 1));
+    const key = (s) => [...s].sort().join("");
+    const shapley = players.map((p) => {
+      const others = players.filter((x) => x !== p);
+      let sum = 0;
+      for (let mask = 0; mask < 1 << others.length; mask++) {
+        const S = others.filter((_, k) => mask & (1 << k));
+        sum += (fact(S.length) * fact(n - S.length - 1)) / fact(n) * (v[key([...S, p])] - v[key(S)]);
+      }
+      return sum;
+    });
+    const t = lastTable("shapley-value");
+    const got = players.map((_, k) => t[k][t[0].length - 1].value);
+    check("シャープレイ値: 部分集合の重み付き和の公式と一致", got.every((g, k) => Math.abs(g - shapley[k]) < 0.006), `got=${got} ref=${shapley}`);
+    check("シャープレイ値: 効率性(合計 = 全体の価値100)", Math.abs(shapley.reduce((a, b) => a + b, 0) - v.ABC) < 1e-9);
+    check("シャープレイ値: どの順番でも限界貢献の合計が全体の価値(100)", row(t, 3).slice(0, 6).every((x) => x === 100));
+    check("シャープレイ値: 6通りの並びが全て異なる", new Set(shapleyContributions().map((r) => r.order.join(""))).size === 6);
+  }
+  // ヴィッカリー: 結果、正直な入札の支配戦略性(全入札額を総当たり)
+  {
+    const t = lastTable("auction-theory-vickrey");
+    const values = VICKREY_VALUES;
+    const sorted = [...values].sort((a, b) => b - a);
+    const winner = values.indexOf(sorted[0]);
+    check("ヴィッカリー: 落札者が最高額の入札者", row(t, 3)[winner] === "落札" && row(t, 3).filter((x) => x === "落札").length === 1);
+    check("ヴィッカリー: 落札者の利得 = 評価額 − 2番目の入札額", row(t, 4)[winner] === sorted[0] - sorted[1], `${row(t, 4)[winner]} vs ${sorted[0] - sorted[1]}`);
+    let dominant = true;
+    values.forEach((val, i) => {
+      const utility = (bid) => {
+        const bids = values.map((x, k) => (k === i ? bid : x));
+        const top = Math.max(...bids);
+        if (bid < top || (bid === top && bids.indexOf(top) !== i)) return 0;
+        const second = Math.max(...bids.filter((_, k) => k !== i));
+        return val - second;
+      };
+      const truthful = utility(val);
+      for (let bid = 0; bid <= 150; bid++) if (utility(bid) > truthful + 1e-9) dominant = false;
+    });
+    check("ヴィッカリー: 全員について、正直な入札が全ての入札額(0〜150)以上の利得(支配戦略)", dominant);
+    check("ヴィッカリー: 敗者の利得は0", row(t, 4).every((u, c) => c === winner || u === 0));
+  }
+  // しっぺ返し
+  {
+    const t = lastTable("tit-for-tat-iterated-prisoners-dilemma");
+    const B = TFT_OPPONENT;
+    const A = B.map((_, i) => (i === 0 ? "C" : B[i - 1]));
+    const pay = { CC: [3, 3], CD: [0, 5], DC: [5, 0], DD: [1, 1] };
+    const sa = A.map((a, i) => pay[a + B[i]][0]);
+    const sb = A.map((a, i) => pay[a + B[i]][1]);
+    check("しっぺ返し: TFTの手が「最初は協力、以降は相手の前回の手」", JSON.stringify(row(t, 0)) === JSON.stringify(A));
+    check("しっぺ返し: 得点が利得表どおり", JSON.stringify(row(t, 2)) === JSON.stringify(sa) && JSON.stringify(row(t, 3)) === JSON.stringify(sb));
+    check("しっぺ返し: 累計得点が合計と一致", row(t, 4).at(-1) === sa.reduce((a, b) => a + b, 0) && row(t, 5).at(-1) === sb.reduce((a, b) => a + b, 0));
+    check("しっぺ返し: TFTは先に裏切らない(TFTのDは相手の前回のDの後だけ)", A.every((a, i) => a !== "D" || B[i - 1] === "D"));
+  }
+  // タカハト: 軌跡、均衡 V/C
+  {
+    const t = lastTable("hawk-dove-game");
+    let p = 0.1;
+    const ref = [p];
+    for (let g = 1; g < 12; g++) {
+      const fh = p * ((4 - 6) / 2) + (1 - p) * 4;
+      const fd = (1 - p) * 2;
+      p = p + 0.8 * p * (1 - p) * (fh - fd);
+      ref.push(p);
+    }
+    check("タカハト: 世代ごとのタカの割合が独立の漸化式と一致", row(t, 0).every((v, i) => Math.abs(v - ref[i]) < 0.0011), `got=${row(t, 0)} ref=${ref}`);
+    check("タカハト: 12世代後は V/C=2/3 の近く(誤差0.02以内)", Math.abs(ref.at(-1) - 2 / 3) < 0.02, String(ref.at(-1)));
+    const eq = 4 / 6;
+    check("タカハト: p=V/C でタカとハトの平均利得が等しい(均衡の条件)", Math.abs(hdPayoffHawk(eq) - hdPayoffDove(eq)) < 1e-12);
+    check("タカハト: 均衡の下ではタカが多すぎるとタカが損、少なすぎると得", hdPayoffHawk(eq + 0.1) < hdPayoffDove(eq + 0.1) && hdPayoffHawk(eq - 0.1) > hdPayoffDove(eq - 0.1));
+    check("タカハト: 割合は常に0〜1の範囲で、均衡に向かって単調に増える", ref.every((x) => x > 0 && x < 1) && ref.every((x, i) => i === 0 || x > ref[i - 1]));
+  }
+  // ESS: 利得行列 [[-1,4],[0,2]] による別の書き方で、侵入者を総当たり
+  {
+    const M = [[(4 - 6) / 2, 4], [0, 2]];
+    const E = (x, y) => [x, 1 - x].reduce((s, xi, i) => s + xi * [y, 1 - y].reduce((s2, yj, j) => s2 + yj * M[i][j], 0), 0);
+    const isEss = (p) => {
+      for (let i = 0; i <= 200; i++) {
+        const q = i / 200;
+        if (Math.abs(q - p) < 1e-9) continue;
+        const a = E(p, p), b = E(q, p);
+        if (b > a + 1e-9) return false;
+        if (Math.abs(b - a) <= 1e-9 && !(E(p, q) > E(q, q) + 1e-9)) return false;
+      }
+      return true;
+    };
+    const t = lastTable("evolutionary-stable-strategy");
+    const expected = [1, 0, 4 / 6].map(isEss);
+    const got = row(t, 4).map((x) => x === "ESS");
+    check("ESS: 判定がESSの定義(侵入者を0.005刻みで総当たり)と一致", JSON.stringify(got) === JSON.stringify(expected), `got=${got} ref=${expected}`);
+    check("ESS: タカだけ・ハトだけはESSでなく、混合 V/C だけがESS", JSON.stringify(expected) === JSON.stringify([false, false, true]));
+  }
+  // ナッシュ均衡: 逸脱の総当たり
+  {
+    const t = lastTable("nash-equilibrium");
+    const R = NASH_ROW_PAYOFF, C = NASH_COL_PAYOFF;
+    const n = R.length;
+    const isNash = (i, j) => {
+      for (let k = 0; k < n; k++) if (R[k][j] > R[i][j]) return false;
+      for (let l = 0; l < n; l++) if (C[i][l] > C[i][j]) return false;
+      return true;
+    };
+    const expected = Array.from({ length: n * n }, (_, k) => isNash(Math.floor(k / n), k % n));
+    const got = row(t, 4).map((x) => x === "均衡");
+    check("ナッシュ: 均衡のマスが、片側の逸脱を全て試した結果と一致", JSON.stringify(got) === JSON.stringify(expected), `got=${got} ref=${expected}`);
+    check("ナッシュ: 均衡が2つ((R1,C1)と(R2,C2))", got.filter(Boolean).length === 2 && got[0] && got[4]);
+    check("ナッシュ: 均衡マスでは、どちらの側にも得をする逸脱がない", expected.every((e, k) => !e || (R.every((r) => r[k % n] <= R[Math.floor(k / n)][k % n]) && C[Math.floor(k / n)].every((v) => v <= C[Math.floor(k / n)][k % n]))));
+  }
+  // ミニマックス: 独立の計算、鞍点の性質
+  {
+    const t = lastTable("minimax-theorem");
+    const M = MINIMAX_MATRIX;
+    const rowMin = M.map((r) => Math.min(...r));
+    const colMax = [0, 1, 2].map((j) => Math.max(...M.map((r) => r[j])));
+    check("ミニマックス: 右端の列が行ごとの最小", JSON.stringify([0, 1, 2].map((i) => t[i][3].value)) === JSON.stringify(rowMin));
+    check("ミニマックス: 下端の行が列ごとの最大", JSON.stringify([0, 1, 2].map((j) => t[3][j].value)) === JSON.stringify(colMax));
+    check("ミニマックス: maximin = minimax = 2(鞍点が存在)", Math.max(...rowMin) === 2 && Math.min(...colMax) === 2);
+    const [si, sj] = [0, 1];
+    check("ミニマックス: 鞍点(行1,列2)で、行の人も列の人も逸脱して得をしない", M[si].every((v) => v >= M[si][sj]) && M.every((r) => r[sj] <= M[si][sj]));
+    check("ミニマックス: 鞍点のマスがpivotで示されている", t[si][sj].state === "pivot");
+  }
+  // シュタッケルベルク: 数値最適化と解析解
+  {
+    const a = 100, c = 10;
+    const follower = (q1) => { let best = 0, bp = -Infinity; for (let q2 = 0; q2 <= 100; q2 += 0.01) { const p = (a - q1 - q2 - c) * q2; if (p > bp) { bp = p; best = q2; } } return best; };
+    const leaderProfit = (q1) => { const q2 = follower(q1); return (a - q1 - q2 - c) * q1; };
+    let bestQ = 0, bestP = -Infinity;
+    for (let q1 = 0; q1 <= 90; q1 += 0.5) { const p = leaderProfit(q1); if (p > bestP) { bestP = p; bestQ = q1; } }
+    check("シュタッケルベルク: 先導者の最適生産量が数値最適化と解析解 (a−c)/2=45 に一致", Math.abs(bestQ - 45) < 0.51 && bestQ === 45, String(bestQ));
+    const t = lastTable("stackelberg-competition");
+    const col = STACKELBERG_QUANTITIES.indexOf(45);
+    check("シュタッケルベルク: q₁=45 の先導者利益が 1012.5、追随者が 506.25", t[2][col].value === 1012.5 && t[3][col].value === 506.25, `${t[2][col].value}, ${t[3][col].value}`);
+    check("シュタッケルベルク: 追随者の最適反応が、q₂を総当たりした最大と一致(全q₁)", STACKELBERG_QUANTITIES.every((q1, c) => Math.abs(t[0][c].value - follower(q1)) < 0.011));
+    const cournotProfit = (a - 2 * 30 - c) * 30;
+    check("シュタッケルベルク: 先導者の利益 ≧ クールノー(900)、追随者の利益 ≦ クールノー", t[2][col].value >= cournotProfit && t[3][col].value <= cournotProfit);
+    check("シュタッケルベルク: 先導者の利益の最大がq₁=45の列で確定(settled)", t[2][col].state === "settled");
   }
 }
 

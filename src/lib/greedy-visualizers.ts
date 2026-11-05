@@ -1,4 +1,5 @@
-import type { DPCell, DPCellState, DPFrame, DPTableMeta } from "./dp-visualizers.ts";
+import type { DPFrame, DPTableMeta } from "./dp-visualizers.ts";
+import { makeGrid, range } from "./table-grid.ts";
 
 /**
  * 貪欲法の可視化(DPテーブル型の属性表を再利用する)。
@@ -8,28 +9,6 @@ import type { DPCell, DPCellState, DPFrame, DPTableMeta } from "./dp-visualizers
  * 各アルゴリズムは実際の貪欲な選択を1手ずつ行い、最後に最適解と照合できる値を残す(scripts/verify-visualizations.mjs)。
  */
 
-type Grid = {
-  put: (row: number, col: number, value: DPCell["value"], state?: DPCellState) => void;
-  mark: (row: number, col: number, state: DPCellState) => void;
-  snap: (description: string) => DPFrame;
-};
-
-function makeGrid(rows: number, cols: number): Grid {
-  const cells: DPCell[][] = Array.from({ length: rows }, () =>
-    Array.from({ length: cols }, (): DPCell => ({ value: null, state: "idle" })),
-  );
-  return {
-    put: (row, col, value, state = "idle") => {
-      cells[row][col] = { value, state };
-    },
-    mark: (row, col, state) => {
-      cells[row][col] = { ...cells[row][col], state };
-    },
-    snap: (description) => ({ table: cells.map((row) => row.map((cell) => ({ ...cell }))), description }),
-  };
-}
-
-const range = (n: number) => Array.from({ length: n }, (_, i) => i);
 const gcd = (a: number, b: number): number => (b === 0 ? a : gcd(b, a % b));
 
 // ---------------------------------------------------------------------------
