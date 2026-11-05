@@ -64,7 +64,7 @@ npx tsc --noEmit && npm run lint && npm run verify && npm run verify:categories 
 | 探索 | 38 | 14 | 37% |
 | グラフ | 25 | 25 | 100% |
 | 動的計画法 | 24 | 18 | 75% |
-| 貪欲法 | 24 | 4 | 17% |
+| 貪欲法 | 24 | 22 | 92% |
 | 文字列 | 23 | 15 | 65% |
 | データ構造 | 25 | 18 | 72% |
 | 数論・暗号 | 24 | 21 | 88% |
@@ -84,14 +84,14 @@ npx tsc --noEmit && npm run lint && npm run verify && npm run verify:categories 
 | 並行処理・並列アルゴリズム | 39 | 14 | 36% |
 | スケジューリング | 25 | 14 | 56% |
 | 制御・ロボティクス | 26 | 7 | 27% |
-| 音響・信号処理 | 25 | 0 | 0% |
+| 音響・信号処理 | 25 | 18 | 72% |
 | ゲーム/競技プログラミング | 24 | 6 | 25% |
 | キャラクターAI・空間AI | 25 | 18 | 72% |
 | 強化学習 | 24 | 7 | 29% |
 | CG・3Dレンダリング | 24 | 5 | 21% |
-| **合計(29カテゴリ)** | **758** | **321** | **42%** |
+| **合計(29カテゴリ)** | **758** | **357** | **47%** |
 
-音響・信号処理は、波形・スペクトログラムを描く新しい可視化kindが前提になるため未着手。
+音響・信号処理は、波形とスペクトルをパネルに並べる専用の可視化kind(`signal`)で対応した。貪欲法は、既存のDPテーブル型(属性×要素の表)を再利用した。
 
 ## プロジェクト構成
 
@@ -119,7 +119,7 @@ src/
     not-found/          404の迷路アニメーション
     compare/            比較画面のUI
     updates/            更新情報画面のフィード表示
-    visualizer/         可視化コンポーネント一式(ソート/探索/経路探索/グラフ/DP/木/トライ/文字列/計算幾何/レーン比較)
+    visualizer/         可視化コンポーネント一式(ソート/探索/経路探索/グラフ/DP/木/トライ/文字列/計算幾何/レーン比較/信号)
                         +再生コントロール(useStepPlayer/PlaybackControls: 状態色のタイムライン・速度・累計カウンタ)
                         +step-timeline.ts(フレーム→ステップごとの状態種別)+ScrubBridge(解説のスクロール→再生位置)+Web Worker連携(useWorkerFrames)
                         +パーティクル演出(ParticleBurstLayer)+ディスパッチャ(AlgorithmVisualizer)
@@ -128,7 +128,7 @@ src/
     algorithm-categories.ts  カテゴリ→サブカテゴリの階層定義(CATEGORY_TAXONOMY)。カテゴリ一覧の唯一の情報源
     content/            記事・年表の読み込み(gray-matter + marked)
     has-visualizer.ts   idに可視化があるかの判定(各 *_VISUALIZERS レジストリを照合)
-    *-visualizers.ts    可視化kindごとのステップ列生成(sort/search/pathfinding/graph/dp/tree/string/geometry/lane)
+    *-visualizers.ts    可視化kindごとのステップ列生成(sort/search/pathfinding/graph/dp/tree/string/geometry/lane/signal)。signal-*.ts は音響・信号処理、greedy-visualizers.ts は貪欲法(dpのテーブルに統合)
     entry-points.ts     トップの入口(まずはここから/用途から)に載せるid一覧(存在しないidはビルドで失敗)
     use-favorites.ts, recently-viewed.ts, use-media-query.ts  localStorage・メディアクエリ連携フック
   workers/
@@ -148,7 +148,7 @@ docs/
 ## 現在の実装状況(サマリ)
 
 - ✅ 収録758件・29カテゴリ(category→subcategoryの2階層)。各記事に概要・仕組み・特性/トレードオフ・実装例(Python/TypeScript中心)
-- ✅ 可視化321件(42%)。9種のステップ再生kind(ソート/探索/経路探索/グラフ/DP/木/トライ/文字列/計算幾何)+同じ計算を3方式で並べるレーン比較。ステップ生成はWeb Worker
+- ✅ 可視化357件(47%)。10種のステップ再生kind(ソート/探索/経路探索/グラフ/DP/木/トライ/文字列/計算幾何/信号)+同じ計算を3方式で並べるレーン比較。ステップ生成はWeb Worker
 - ✅ 学習の窓: 擬似コードの現在行(ソート3種・探索2種)、再生速度の「×N」バッジ、絞り込まない一覧の縦の目次(つまんでカテゴリへ移動)、ソート・探索の文字表示、空状態の文字モチーフ、操作列の譜面と音(既定オフ)
 - ✅ 視覚表現: ステップ間の滑らかな補間(棒の高さ・色、頂点の移動・フェード)、ステージ隅のHUD(ステップ種別と位置)、トップのライブステージ、入口のライブプレビュー(動きを減らす設定では静止表示)
 - ✅ 再生コントロール: 状態色のタイムライン(クリック・ドラッグで任意ステップへ)、速度0.25×〜4×、キーボード(Space / ← → / `,` `.`)、累計カウンタ、残像(ソート・探索)、条件ステッパー(ソートの要素数・レーン比較の行列サイズ)。巻き戻すと数値も同じ時点に戻る
@@ -159,7 +159,7 @@ docs/
 - ✅ 404ページ、比較画面、更新情報(RSS)、About、入門(/basics)
 - ✅ CI(`.github/workflows/ci.yml`): lint → tsc → verify → verify:categories → build
 - ⬜ 状態スナップショットのdiffベース記録・IndexedDBキャッシュ(未実装)
-- ⬜ 音響・信号処理カテゴリの可視化(新しい可視化kindが前提)
+- ✅ 音響・信号処理カテゴリの可視化(専用kind `signal`。18件)
 - ⬜ 収録数1500件の目標に向けた拡充(現在758件)
 
 過去の来歴(いつ何を追加したか)は [docs/progress.md](docs/progress.md) を参照。

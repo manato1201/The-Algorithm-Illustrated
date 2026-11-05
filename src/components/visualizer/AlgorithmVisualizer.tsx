@@ -8,6 +8,7 @@ import { StringMatchVisualizer } from "./StringMatchVisualizer";
 import { TrieVisualizer } from "./TrieVisualizer";
 import { GeometryVisualizer } from "./GeometryVisualizer";
 import { LaneVisualizer } from "./LaneVisualizer";
+import { SignalVisualizer } from "./SignalVisualizer";
 import { SORT_VISUALIZERS } from "@/lib/sort-visualizers";
 import { PATHFINDING_VISUALIZERS } from "@/lib/pathfinding-visualizers";
 import { DP_VISUALIZERS } from "@/lib/dp-visualizers";
@@ -18,6 +19,7 @@ import { STRING_VISUALIZERS } from "@/lib/string-visualizers";
 import { TRIE_VISUALIZERS } from "@/lib/trie-visualizer";
 import { GEOMETRY_VISUALIZERS } from "@/lib/geometry-visualizers";
 import { LANE_VISUALIZERS } from "@/lib/lane-visualizers";
+import { SIGNAL_VISUALIZERS } from "@/lib/signal-visualizers";
 
 /**
  * このidに対応する可視化コンポーネントが存在するかどうか。詳細ページ・比較画面の両方から使う。
@@ -59,5 +61,7 @@ export function AlgorithmVisualizer({ algorithmId }: AlgorithmVisualizerProps) {
     return <GeometryVisualizer algorithmId={algorithmId} />;
   if (algorithmId in LANE_VISUALIZERS)
     return <LaneVisualizer algorithmId={algorithmId} />;
+  if (algorithmId in SIGNAL_VISUALIZERS)
+    return <SignalVisualizer algorithmId={algorithmId} />;
   return null;
 }

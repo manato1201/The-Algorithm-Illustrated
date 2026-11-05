@@ -16,6 +16,7 @@ import { STRING_VISUALIZERS } from "../src/lib/string-visualizers.ts";
 import { TRIE_VISUALIZERS } from "../src/lib/trie-visualizer.ts";
 import { GEOMETRY_VISUALIZERS } from "../src/lib/geometry-visualizers.ts";
 import { LANE_VISUALIZERS } from "../src/lib/lane-visualizers.ts";
+import { SIGNAL_VISUALIZERS } from "../src/lib/signal-visualizers.ts";
 
 // src/lib/has-visualizer.ts と同じ判定(レジストリのキーに含まれるか)。
 // 新しい可視化kindを追加したら、has-visualizer.ts・algorithm-worker.ts・AlgorithmVisualizer.tsx と一緒にここにも足す。
@@ -30,6 +31,7 @@ const REGISTRIES = [
   TRIE_VISUALIZERS,
   GEOMETRY_VISUALIZERS,
   LANE_VISUALIZERS,
+  SIGNAL_VISUALIZERS,
 ];
 const hasVisualizer = (id) => REGISTRIES.some((registry) => id in registry);
 

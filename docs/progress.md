@@ -239,6 +239,19 @@
 - **Aho-Corasick法(`ahoCorasickSteps`)**は同じトライ木基盤(`children-first`レイアウト)を再利用し、`TrieNode`/`TrieFrame`型を後方互換に拡張(`word`/`fail`/`failEdges`は全てoptional)して実装した。複数パターン`["HE","SHE","HIS","HERS"]`を1本のトライ木にまとめて挿入した後、各頂点の失敗リンク(マッチ失敗時に飛ぶ先)をBFSで構築し、Canvas上に点線の辺として重ね描画する。続けてテキスト`"USHERS"`を1回だけ走査し、失敗リンクを辿りながら登録した全パターンの出現を同時に検出する(各パターンごとに個別のKMP法を走らせる必要がないのが利点)。頂点の新状態`"matched"`(pivot色)で検出済みパターンの終端頂点をハイライトする
 - 独立実装(`String.prototype.indexOf`によるbrute-force全件検索)との突き合わせで、検出結果("SHE"終端インデックス3、"HE"終端インデックス3、"HERS"終端インデックス5)が完全一致することを`node --experimental-strip-types`で確認済み
 
+### 音響・信号処理の可視化(`src/components/visualizer/SignalVisualizer.tsx` + `src/lib/signal-*.ts`、新規kind `signal`)
+
+- **対応アルゴリズム18件(音響・信号処理カテゴリ 0% → 72%)**: 分析系5件(自己相関ピッチ検出・STFT・LPC・ケプストラム・MFCC)、符号化系4件(μ-law・ADPCM・FLAC方式・MDCT)、エフェクト/合成系9件(双二次フィルタ・ノイズゲート・コンプレッサー・Karplus-Strong・ウェーブシェーピング・ウェーブテーブル・コーラス/フランジャー・コンボリューションリバーブ・グラニュラー)
+- 1フレームは **パネルの列**(`SignalPanel`: 折れ線 `line` か棒 `stem`、縦軸の範囲は全フレームで固定、参照波形・縦の目印・サンプルごとの状態)。状態語彙は他と共通のまま、信号処理では comparing=いま読む/処理中、pivot=参照している値・候補、swapping=いま書き込む出力、settled=確定した結果 と読み替える。印は色だけでなく形(●◆▲■)でも区別する。未計算の値は `NaN` で表し、描画しない
+- 計算は `signal-math.ts`(型・DFT・窓・固定シード乱数)、`signal-analysis.ts`・`signal-codecs.ts`・`signal-effects.ts` に分け、レジストリと入力条件チップは `signal-visualizers.ts`。ステップは実際の信号処理(直接形の差分方程式、Levinson-Durbin、TDACなど)を1段ずつ進めた結果で、見た目だけのアニメーションにしていない
+- 検証(`npm run verify` の SIGNAL 節): 全件に構造チェック(パネル枚数が一定・値が縦軸の範囲内・添字が範囲内)と、スクリプト側に書き直した別実装との突き合わせ。自己相関=定義の総和、STFT=素朴DFT+ハン窓、LPC=正規方程式のガウス消去、ケプストラム/MFCC=別実装、μ-law=可逆性+SN比、ADPCM=独立デコーダ、FLAC=ロスレス復号+Riceビット数の数え直し、MDCT=量子化なしで完全復元(TDAC)+定義式、双二次=差分方程式+周波数応答、Karplus-Strong=周期が遅延線長、ウェーブシェーピング=偶数倍音がほぼ0、リバーブ=定義どおりの畳み込み など
+- 縦軸の範囲チェックが実際に不具合を見つけた(ケプストラムのq=0、μ-lawの大きな音の誤差、歪みの基本波が範囲外で切れていた)。範囲外の値は描画時に黙って切れて「嘘のグラフ」になるため、新しい可視化にも必ず適用すること
+
+### 貪欲法の可視化(`src/lib/greedy-visualizers.ts`、DPテーブル型の属性表を再利用)
+
+- **18件を追加(貪欲法 17% → 92%)**。列=要素(日・区間・ジョブ・記号など)、行=属性や「その時点の状態」の表に、貪欲な選択を1列ずつ左から確定していく。`DP_VISUALIZERS`/`DP_TABLE_META` に統合されるので、描画コンポーネントは既存のまま
+- `npm run verify` の GREEDY 節で、貪欲を使わない方法と照合する: 全探索(点被覆・ジョブ列・Moore-Hodgson・集合被覆・LPTの最適・全ペアの株式売買)、DP(ジャンプゲーム)、独立実装(スパン・FFD・最適マージ・正準符号)、厳密な有理数計算(エジプト分数)、近似比の理論上界(LPT 4/3−1/(3m)、FFD 11/9·OPT+6/9、集合被覆 H(n))。出力をわざと壊すと各チェックが落ちることも確認済み
+
 ### three.js/pixi.jsによるショーケース演出(`src/components/visualizer/ParticleBurstLayer.tsx`)
 
 - **2026-07-12、pixi.js(v8、WebGLベース)を導入し、ソート可視化にパーティクルバースト演出を追加した**。プロジェクト初のWebGLベース演出で、それ以外の可視化(グラフ・経路探索・DP)は引き続きCanvas 2D/HTML+CSSのまま

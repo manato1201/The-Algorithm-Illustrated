@@ -1,0 +1,66 @@
+.visualizer {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.chipRow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.chip {
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  color: var(--color-text-muted);
+  border: 1px solid var(--color-line);
+  border-radius: 4px;
+  padding: var(--space-1) var(--space-2);
+}
+
+/* フルブリード可視化キャンバス(ui-design.md 2.4節: 唯一の破調区画)。高さはパネル数に応じてインラインで指定する */
+.canvasWrap {
+  position: relative;
+}
+
+.canvas {
+  width: 100%;
+  display: block;
+  background: var(--color-bg-void);
+  border: 1px solid var(--color-line);
+  border-radius: 4px;
+}
+
+.description {
+  font-family: var(--font-mono);
+  font-size: 0.875rem;
+  color: var(--color-accent-amber);
+  min-height: 3em;
+  overflow-wrap: anywhere;
+}
+
+.legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-4);
+  list-style: none;
+  padding-top: var(--space-2);
+  border-top: 1px solid var(--color-line);
+}
+
+.legendItem {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  color: var(--color-text-muted);
+}
+
+/* 印の形(●◆▲■)は、色だけに頼らず状態を区別するためのもの(決めごと表 2.7節) */
+.legendGlyph {
+  width: 1em;
+  text-align: center;
+  flex-shrink: 0;
+}

@@ -8,6 +8,7 @@ import { STRING_VISUALIZERS } from "./string-visualizers";
 import { TRIE_VISUALIZERS } from "./trie-visualizer";
 import { GEOMETRY_VISUALIZERS } from "./geometry-visualizers";
 import { LANE_VISUALIZERS } from "./lane-visualizers";
+import { SIGNAL_VISUALIZERS } from "./signal-visualizers";
 
 /**
  * このidに対応する可視化があるかどうか。React componentへの依存を一切持たないため、
@@ -25,6 +26,7 @@ export function hasVisualizer(algorithmId: string): boolean {
     algorithmId in STRING_VISUALIZERS ||
     algorithmId in TRIE_VISUALIZERS ||
     algorithmId in GEOMETRY_VISUALIZERS ||
-    algorithmId in LANE_VISUALIZERS
+    algorithmId in LANE_VISUALIZERS ||
+    algorithmId in SIGNAL_VISUALIZERS
   );
 }

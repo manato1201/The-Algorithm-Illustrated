@@ -3,6 +3,7 @@ import type { DPFrame } from "@/lib/dp-visualizers";
 import type { GeometryFrame } from "@/lib/geometry-visualizers";
 import type { GraphFrame } from "@/lib/graph-visualizers";
 import type { LaneFrame } from "@/lib/lane-visualizers";
+import type { SignalFrame } from "@/lib/signal-math";
 import type { GridCellState, GridFrame } from "@/lib/pathfinding-visualizers";
 import type { StringMatchFrame } from "@/lib/string-visualizers";
 import type { TreeFrame } from "@/lib/tree-visualizers";
@@ -187,6 +188,17 @@ export function stringEntities(frame: StringMatchFrame): EntityStates {
   };
   add("t", frame.textHighlight);
   add("p", frame.patternHighlight);
+  return map;
+}
+
+/** 信号(波形・スペクトル)可視化用。パネルidとサンプル番号の組を要素として、印のついたサンプルの状態を見る。 */
+export function signalEntities(frame: SignalFrame): EntityStates {
+  const map: EntityStates = new Map();
+  for (const panel of frame.panels) {
+    for (const [index, kind] of Object.entries(panel.highlight)) {
+      map.set(`${panel.id}:${index}`, kind ?? "idle");
+    }
+  }
   return map;
 }
 
