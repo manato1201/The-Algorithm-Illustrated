@@ -3,130 +3,218 @@
 import { useEffect, useMemo, useRef } from "react";
 import styles from "./SignalVisualizer.module.css";
 import { PlaybackControls } from "./PlaybackControls";
+import { buildStepKinds, signalEntities } from "./step-timeline";
 import { ZoomableStage } from "./ZoomableStage";
-import { buildStepKinds, signalEntities, STEP_KIND_LABELS } from "./step-timeline";
 import { useStepPlayer } from "./useStepPlayer";
 import { useWorkerFrames } from "./useWorkerFrames";
-import { shouldGlow, stateColors, type StateColorKey } from "@/lib/design-tokens";
-import { SIGNAL_META, type SignalFrame, type SignalTrace } from "@/lib/signal-visualizers";
+import { coreColors, shouldGlow, stateColors, type StateColorKey } from "@/lib/design-tokens";
+import { SIGNAL_META, type SignalFrame, type SignalPanel } from "@/lib/signal-visualizers";
 import type { WorkerRequest } from "@/workers/algorithm-worker";
 
-const LANE_HEIGHT = 112;
-const LABEL_HEIGHT = 20;
-const SIDE_PADDING = 12;
-/** ステージ左上・右上のHUD(状態・ステップ番号)と波形のラベルが重ならないための上余白。 */
-const HUD_MARGIN = 26;
+/** パネル1枚あたりの高さ(px)。タイトル・目盛り・横軸ラベルの分を含む。 */
+const PANEL_HEIGHT = 132;
+/** ステージ左上のHUD(状態・ステップ数)がパネルに重ならないよう、先頭に空ける余白(px)。 */
+const HUD_PAD = 30;
+const PLOT_LEFT = 34;
+const PLOT_RIGHT = 12;
+const TITLE_HEIGHT = 20;
+const AXIS_HEIGHT = 18;
+/** サンプル点を1つずつ描く上限。これを超える長い波形は線だけで描く(印は状態のあるサンプルのみ)。 */
+const MAX_DOTS = 100;
 
-/** 凡例。色だけでなく記号(形)でも区別する(ui-design.md 2.7節)。 */
-const LEGEND_ITEMS: { key: StateColorKey; label: string }[] = [
-  { key: "pivot", label: "いま処理している入力" },
-  { key: "comparing", label: "計算に使っているサンプル" },
-  { key: "swapping", label: "加工された(遮断・圧縮・クリップなど)" },
-  { key: "settled", label: "出力として確定" },
+/** 状態ごとの印の形(色だけに頼らない)。 */
+const MARK_SHAPE: Record<StateColorKey, "circle" | "diamond" | "triangle" | "square"> = {
+  idle: "circle",
+  comparing: "circle",
+  pivot: "diamond",
+  swapping: "triangle",
+  settled: "square",
+};
+
+const LEGEND_ITEMS: { key: StateColorKey; glyph: string; label: string }[] = [
+  { key: "comparing", glyph: "●", label: "いま読んでいる・処理中" },
+  { key: "pivot", glyph: "◆", label: "参照している値・候補" },
+  { key: "swapping", glyph: "▲", label: "いま書き込む値" },
+  { key: "settled", glyph: "■", label: "確定した結果" },
 ];
 
-/** 状態ごとに違う形でサンプル点を描く。 */
-function drawMarker(ctx: CanvasRenderingContext2D, state: StateColorKey, x: number, y: number) {
-  const r = state === "idle" ? 2.5 : 4.5;
+function drawMark(ctx: CanvasRenderingContext2D, shape: (typeof MARK_SHAPE)[StateColorKey], x: number, y: number, r: number) {
   ctx.beginPath();
-  if (state === "swapping") {
-    ctx.moveTo(x, y - r - 1);
-    ctx.lineTo(x + r + 1, y + r);
-    ctx.lineTo(x - r - 1, y + r);
-    ctx.closePath();
-  } else if (state === "pivot") {
+  if (shape === "circle") {
+    ctx.arc(x, y, r, 0, Math.PI * 2);
+  } else if (shape === "diamond") {
     ctx.moveTo(x, y - r - 1);
     ctx.lineTo(x + r + 1, y);
     ctx.lineTo(x, y + r + 1);
     ctx.lineTo(x - r - 1, y);
     ctx.closePath();
-  } else if (state === "settled") {
-    ctx.rect(x - r + 0.5, y - r + 0.5, 2 * r - 1, 2 * r - 1);
+  } else if (shape === "triangle") {
+    ctx.moveTo(x, y - r - 1);
+    ctx.lineTo(x + r + 1, y + r);
+    ctx.lineTo(x - r - 1, y + r);
+    ctx.closePath();
   } else {
-    ctx.arc(x, y, r, 0, Math.PI * 2);
+    ctx.rect(x - r, y - r, r * 2, r * 2);
   }
   ctx.fill();
 }
 
-function drawTrace(
+function cssColor(canvas: HTMLCanvasElement, name: string, fallback: string): string {
+  const value = getComputedStyle(canvas).getPropertyValue(name).trim();
+  return value || fallback;
+}
+
+/** 折れ線を、有限でない値(未計算)の所で途切れさせながら描く。 */
+function strokeSeries(
   ctx: CanvasRenderingContext2D,
-  trace: SignalTrace,
-  guides: SignalFrame["guides"],
-  top: number,
-  width: number,
+  values: readonly number[],
+  xFor: (i: number) => number,
+  yFor: (v: number) => number,
 ) {
-  const n = trace.samples.length;
-  const usable = width - SIDE_PADDING * 2;
-  const mid = top + LABEL_HEIGHT + (LANE_HEIGHT - LABEL_HEIGHT) / 2;
-  const half = (LANE_HEIGHT - LABEL_HEIGHT) / 2 - 6;
-  const xFor = (i: number) => SIDE_PADDING + ((i + 0.5) / n) * usable;
-  const yFor = (v: number) => mid - (Math.max(-trace.range, Math.min(trace.range, v)) / trace.range) * half;
-
-  ctx.font = "12px ui-monospace, monospace";
-  ctx.fillStyle = "#8B93A7";
-  ctx.textBaseline = "top";
-  ctx.fillText(trace.label, SIDE_PADDING, top + 2);
-
-  ctx.strokeStyle = "#2A2F3D";
-  ctx.lineWidth = 1;
   ctx.beginPath();
-  ctx.moveTo(SIDE_PADDING, mid + 0.5);
-  ctx.lineTo(width - SIDE_PADDING, mid + 0.5);
-  ctx.stroke();
-
-  // しきい値などの基準線(破線 + ラベル)
-  for (const guide of guides) {
-    if (guide.traceId !== trace.id) continue;
-    const y = yFor(guide.value);
-    ctx.save();
-    ctx.setLineDash([4, 4]);
-    ctx.strokeStyle = stateColors.pivot;
-    ctx.globalAlpha = 0.6;
-    ctx.beginPath();
-    ctx.moveTo(SIDE_PADDING, y + 0.5);
-    ctx.lineTo(width - SIDE_PADDING, y + 0.5);
-    ctx.stroke();
-    ctx.restore();
-    if (guide.label) {
-      ctx.fillStyle = stateColors.pivot;
-      ctx.fillText(guide.label, width - SIDE_PADDING - ctx.measureText(guide.label).width, y - 14);
-    }
-  }
-
-  // 値の棒(茎)と、サンプル同士をつなぐ細い線
-  ctx.lineWidth = 1;
-  ctx.strokeStyle = "#4A5163";
-  let previous: { x: number; y: number } | null = null;
-  ctx.beginPath();
-  trace.samples.forEach((value, i) => {
-    if (value === null) {
-      previous = null;
+  let pen = false;
+  values.forEach((v, i) => {
+    if (!Number.isFinite(v)) {
+      pen = false;
       return;
     }
-    const x = xFor(i);
-    const y = yFor(value);
-    if (previous) ctx.lineTo(x, y);
-    else ctx.moveTo(x, y);
-    previous = { x, y };
+    if (pen) ctx.lineTo(xFor(i), yFor(v));
+    else ctx.moveTo(xFor(i), yFor(v));
+    pen = true;
   });
   ctx.stroke();
+}
 
-  trace.samples.forEach((value, i) => {
-    if (value === null) return;
-    const x = xFor(i);
-    const y = yFor(value);
-    const state = trace.marks[i] ?? "idle";
-    const color = stateColors[state];
-    ctx.strokeStyle = state === "idle" ? "#2F3442" : color;
+function drawPanel(
+  ctx: CanvasRenderingContext2D,
+  panel: SignalPanel,
+  top: number,
+  width: number,
+  muted: string,
+  line: string,
+  text: string,
+) {
+  const n = panel.values.length;
+  const plotLeft = PLOT_LEFT;
+  const plotWidth = width - PLOT_LEFT - PLOT_RIGHT;
+  const plotTop = top + TITLE_HEIGHT;
+  const plotBottom = top + PANEL_HEIGHT - AXIS_HEIGHT;
+  const range = panel.yMax - panel.yMin || 1;
+  const xFor = (i: number) => plotLeft + ((i + 0.5) / n) * plotWidth;
+  const yFor = (v: number) => plotBottom - ((Math.min(panel.yMax, Math.max(panel.yMin, v)) - panel.yMin) / range) * (plotBottom - plotTop);
+  const zeroY = yFor(Math.min(panel.yMax, Math.max(panel.yMin, 0)));
+
+  // 枠・ゼロ線・目盛り
+  ctx.lineWidth = 1;
+  ctx.strokeStyle = line;
+  ctx.strokeRect(plotLeft + 0.5, plotTop + 0.5, plotWidth, plotBottom - plotTop);
+  ctx.beginPath();
+  ctx.moveTo(plotLeft, zeroY + 0.5);
+  ctx.lineTo(plotLeft + plotWidth, zeroY + 0.5);
+  ctx.stroke();
+  ctx.fillStyle = muted;
+  ctx.font = "9px ui-monospace, monospace";
+  ctx.textAlign = "right";
+  ctx.textBaseline = "top";
+  ctx.fillText(Number(panel.yMax.toPrecision(3)).toString(), plotLeft - 4, plotTop);
+  ctx.textBaseline = "bottom";
+  ctx.fillText(Number(panel.yMin.toPrecision(3)).toString(), plotLeft - 4, plotBottom);
+
+  // タイトルと横軸ラベル
+  ctx.textAlign = "left";
+  ctx.textBaseline = "top";
+  ctx.font = "11px ui-monospace, monospace";
+  ctx.fillStyle = muted;
+  ctx.fillText(panel.title, plotLeft, top + 4, plotWidth);
+  if (panel.xLabel) {
+    ctx.font = "9px ui-monospace, monospace";
+    ctx.textBaseline = "bottom";
+    ctx.fillText(panel.xLabel, plotLeft, top + PANEL_HEIGHT - 3, plotWidth);
+  }
+
+  // 縦の目印(窓の端・重なりの終端など)
+  panel.markers?.forEach((marker) => {
+    const x = xFor(marker.index);
+    ctx.save();
+    ctx.strokeStyle = coreColors.accentAmber;
+    ctx.globalAlpha = 0.7;
+    ctx.setLineDash([3, 3]);
     ctx.beginPath();
-    ctx.moveTo(x, mid);
-    ctx.lineTo(x, y);
+    ctx.moveTo(x, plotTop);
+    ctx.lineTo(x, plotBottom);
     ctx.stroke();
-    ctx.shadowColor = shouldGlow(color) && state !== "idle" ? color : "transparent";
-    ctx.shadowBlur = shouldGlow(color) && state !== "idle" ? 10 : 0;
+    ctx.restore();
+    ctx.fillStyle = coreColors.accentAmber;
+    ctx.font = "9px ui-monospace, monospace";
+    ctx.textAlign = x > width - 80 ? "right" : "left";
+    ctx.textBaseline = "top";
+    ctx.fillText(marker.label, x + (x > width - 80 ? -3 : 3), plotTop + 2);
+  });
+
+  // 参照波形(薄く)
+  if (panel.reference) {
+    ctx.save();
+    ctx.globalAlpha = 0.55;
+    ctx.strokeStyle = muted;
+    ctx.fillStyle = muted;
+    ctx.lineWidth = 1;
+    if (panel.style === "stem") {
+      panel.reference.forEach((v, i) => {
+        if (!Number.isFinite(v)) return;
+        ctx.beginPath();
+        ctx.arc(xFor(i), yFor(v), 2.5, 0, Math.PI * 2);
+        ctx.stroke();
+      });
+    } else {
+      strokeSeries(ctx, panel.reference, xFor, yFor);
+    }
+    ctx.restore();
+  }
+
+  // 本体
+  const stemWidth = Math.max(1.5, Math.min(4, (plotWidth / n) * 0.45));
+  if (panel.style === "line") {
+    ctx.save();
+    ctx.strokeStyle = text;
+    ctx.globalAlpha = 0.85;
+    ctx.lineWidth = 1.5;
+    ctx.lineJoin = "round";
+    strokeSeries(ctx, panel.values, xFor, yFor);
+    ctx.restore();
+  } else {
+    panel.values.forEach((v, i) => {
+      if (!Number.isFinite(v)) return;
+      const state = panel.highlight[i];
+      ctx.strokeStyle = state ? stateColors[state] : muted;
+      ctx.lineWidth = stemWidth;
+      ctx.beginPath();
+      ctx.moveTo(xFor(i), zeroY);
+      ctx.lineTo(xFor(i), yFor(v));
+      ctx.stroke();
+    });
+  }
+
+  panel.values.forEach((v, i) => {
+    if (!Number.isFinite(v)) return;
+    const state = panel.highlight[i];
+    const x = xFor(i);
+    const y = yFor(v);
+    if (!state) {
+      if (panel.style === "line" && n <= MAX_DOTS) {
+        ctx.fillStyle = muted;
+        ctx.beginPath();
+        ctx.arc(x, y, 1.6, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      return;
+    }
+    const color = stateColors[state];
+    ctx.save();
+    ctx.shadowColor = shouldGlow(color) ? color : "transparent";
+    ctx.shadowBlur = shouldGlow(color) ? 12 : 0;
     ctx.fillStyle = color;
-    drawMarker(ctx, state, x, y);
-    ctx.shadowBlur = 0;
+    drawMark(ctx, MARK_SHAPE[state], x, y, state === "idle" ? 2 : 4);
+    ctx.restore();
   });
 }
 
@@ -135,8 +223,9 @@ type SignalVisualizerProps = {
 };
 
 /**
- * 音響・信号処理の波形可視化。入力・係数・出力の波形を縦に並べて、1サンプルずつ進める。
- * サンプル点は状態ごとに形を変える(◆処理中の入力 / ●使っているサンプル / ▲加工された / ■確定)。
+ * 音響・信号処理の可視化。波形(折れ線)とスペクトル・係数(棒)を縦に並べたパネルの列を、
+ * 他の可視化と同じ再生コントロール・状態タイムラインで1ステップずつ進める。
+ * 計算は src/lib/signal-*.ts で実際の信号処理として行い、ここは描くだけ。
  */
 export function SignalVisualizer({ algorithmId }: SignalVisualizerProps) {
   const request = useMemo<WorkerRequest>(() => ({ kind: "signal", algorithmId }), [algorithmId]);
@@ -147,63 +236,54 @@ export function SignalVisualizer({ algorithmId }: SignalVisualizerProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const meta = SIGNAL_META[algorithmId];
   const currentFrame = frames[stepIndex];
-  const laneCount = currentFrame?.traces.length ?? frames[0]?.traces.length ?? 2;
-  const canvasHeight = HUD_MARGIN + laneCount * LANE_HEIGHT;
+  const panelCount = frames[0]?.panels.length ?? 3;
 
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas || !currentFrame) return;
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
+
     const dpr = window.devicePixelRatio || 1;
     const width = canvas.clientWidth;
-    const height = HUD_MARGIN + currentFrame.traces.length * LANE_HEIGHT;
+    const height = canvas.clientHeight;
     if (canvas.width !== width * dpr || canvas.height !== height * dpr) {
       canvas.width = width * dpr;
       canvas.height = height * dpr;
     }
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     ctx.clearRect(0, 0, width, height);
-    currentFrame.traces.forEach((trace, index) => {
-      drawTrace(ctx, trace, currentFrame.guides, HUD_MARGIN + index * LANE_HEIGHT, width);
+
+    const muted = cssColor(canvas, "--color-text-muted", coreColors.textMuted);
+    const line = cssColor(canvas, "--color-line", "rgba(255,167,51,0.14)");
+    const text = cssColor(canvas, "--color-text", coreColors.text);
+    currentFrame.panels.forEach((panel, index) => {
+      drawPanel(ctx, panel, HUD_PAD + index * PANEL_HEIGHT, width, muted, line, text);
     });
   }, [currentFrame]);
 
-  if (!meta) return null;
-
   return (
     <div className={styles.visualizer}>
-      <ul className={styles.chips}>
-        {meta.chips.map((chip) => (
-          <li key={chip} className={styles.chip}>
-            {chip}
-          </li>
-        ))}
-      </ul>
-
+      {meta ? (
+        <div className={styles.chipRow}>
+          {meta.chips.map((chip) => (
+            <span key={chip} className={styles.chip}>
+              {chip}
+            </span>
+          ))}
+        </div>
+      ) : null}
       <ZoomableStage hud={{ kind: stepKinds[stepIndex] ?? "idle", step: stepIndex, total: frames.length }}>
         <div className={styles.canvasWrap}>
           <canvas
             ref={canvasRef}
             className={styles.canvas}
-            style={{ height: canvasHeight }}
+            style={{ height: HUD_PAD + panelCount * PANEL_HEIGHT }}
             role="img"
-            aria-label={currentFrame ? currentFrame.traces.map((t) => t.label).join(" / ") : "波形"}
+            aria-label={currentFrame ? `波形とスペクトルのパネル${currentFrame.panels.length}枚。${currentFrame.description}` : "波形の可視化"}
           />
         </div>
       </ZoomableStage>
-
-      {currentFrame && currentFrame.readouts.length > 0 ? (
-        <dl className={styles.readouts}>
-          {currentFrame.readouts.map((readout) => (
-            <div key={readout.label} className={styles.readout}>
-              <dt>{readout.label}</dt>
-              <dd>{readout.value}</dd>
-            </div>
-          ))}
-        </dl>
-      ) : null}
-
       <p className={styles.description} role="status">
         {isComputing ? "Web Workerで計算中…" : currentFrame?.description}
       </p>
@@ -224,14 +304,13 @@ export function SignalVisualizer({ algorithmId }: SignalVisualizerProps) {
       <ul className={styles.legend}>
         {LEGEND_ITEMS.map((item) => (
           <li key={item.key} className={styles.legendItem}>
-            <span className={styles.legendSwatch} style={{ color: stateColors[item.key] }} aria-hidden="true">
-              {STEP_KIND_LABELS[item.key].glyph}
+            <span className={styles.legendGlyph} style={{ color: stateColors[item.key] }} aria-hidden="true">
+              {item.glyph}
             </span>
             {item.label}
           </li>
         ))}
       </ul>
-      {meta.caveat ? <p className={styles.caveat}>※ {meta.caveat}</p> : null}
     </div>
   );
 }

@@ -4,11 +4,10 @@
   gap: var(--space-4);
 }
 
-.chips {
+.chipRow {
   display: flex;
   flex-wrap: wrap;
   gap: var(--space-2);
-  list-style: none;
 }
 
 .chip {
@@ -20,7 +19,7 @@
   padding: var(--space-1) var(--space-2);
 }
 
-/* フルブリード可視化キャンバス(ui-design.md 2.4節: 唯一の破調区画)。高さは波形の本数で決まる */
+/* フルブリード可視化キャンバス(ui-design.md 2.4節: 唯一の破調区画)。高さはパネル数に応じてインラインで指定する */
 .canvasWrap {
   position: relative;
 }
@@ -33,36 +32,12 @@
   border-radius: 4px;
 }
 
-.readouts {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--space-2) var(--space-4);
-}
-
-.readout {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  min-width: 0;
-}
-
-.readout dt {
-  font-size: 0.6875rem;
-  color: var(--color-text-muted);
-}
-
-.readout dd {
-  font-family: var(--font-mono);
-  font-size: 0.8125rem;
-  color: var(--color-text);
-  overflow-wrap: anywhere;
-}
-
 .description {
   font-family: var(--font-mono);
   font-size: 0.875rem;
   color: var(--color-accent-amber);
-  min-height: 1.5em;
+  min-height: 3em;
+  overflow-wrap: anywhere;
 }
 
 .legend {
@@ -83,13 +58,9 @@
   color: var(--color-text-muted);
 }
 
-.legendSwatch {
-  font-size: 0.875rem;
-  line-height: 1;
+/* 印の形(●◆▲■)は、色だけに頼らず状態を区別するためのもの(決めごと表 2.7節) */
+.legendGlyph {
+  width: 1em;
+  text-align: center;
   flex-shrink: 0;
-}
-
-.caveat {
-  font-size: 0.75rem;
-  color: var(--color-text-muted);
 }

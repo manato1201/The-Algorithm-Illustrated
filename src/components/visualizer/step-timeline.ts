@@ -3,7 +3,7 @@ import type { DPFrame } from "@/lib/dp-visualizers";
 import type { GeometryFrame } from "@/lib/geometry-visualizers";
 import type { GraphFrame } from "@/lib/graph-visualizers";
 import type { LaneFrame } from "@/lib/lane-visualizers";
-import type { SignalFrame } from "@/lib/signal-visualizers";
+import type { SignalFrame } from "@/lib/signal-math";
 import type { GridCellState, GridFrame } from "@/lib/pathfinding-visualizers";
 import type { StringMatchFrame } from "@/lib/string-visualizers";
 import type { TreeFrame } from "@/lib/tree-visualizers";
@@ -191,6 +191,17 @@ export function stringEntities(frame: StringMatchFrame): EntityStates {
   return map;
 }
 
+/** 信号(波形・スペクトル)可視化用。パネルidとサンプル番号の組を要素として、印のついたサンプルの状態を見る。 */
+export function signalEntities(frame: SignalFrame): EntityStates {
+  const map: EntityStates = new Map();
+  for (const panel of frame.panels) {
+    for (const [index, kind] of Object.entries(panel.highlight)) {
+      map.set(`${panel.id}:${index}`, kind ?? "idle");
+    }
+  }
+  return map;
+}
+
 export function geometryEntities(frame: GeometryFrame): EntityStates {
   const map: EntityStates = new Map();
   for (const [id, state] of Object.entries(frame.pointStates)) {
@@ -222,15 +233,4 @@ export function laneStepKinds(frames: readonly LaneFrame[]): StepKind[] {
     );
     return newlyFinished ? "settled" : "comparing";
   });
-}
-
-/** 波形(信号処理)可視化用。トレースごとのサンプルの印(pivot/comparing/swapping/settled)をそのまま要素の状態として扱う。 */
-export function signalEntities(frame: SignalFrame): EntityStates {
-  const map: EntityStates = new Map();
-  for (const trace of frame.traces) {
-    for (const [index, kind] of Object.entries(trace.marks)) {
-      map.set(`${trace.id}:${index}`, kind ?? "idle");
-    }
-  }
-  return map;
 }

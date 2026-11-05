@@ -27,13 +27,6 @@ const LEGEND_ITEMS: { key: StateColorKey; label: string }[] = [
 
 /** 棒グラフ可視化のグループでは、探索用の凡例(未検査・検査中・発見)が意味に合わないので、グループごとの言葉に置き換える。 */
 const BAR_GROUP_LEGENDS: Record<BarGroup, { key: StateColorKey; label: string }[]> = {
-  greedy: [
-    { key: "idle", label: "未処理" },
-    { key: "comparing", label: "候補・進行中" },
-    { key: "pivot", label: "いま注目している選択" },
-    { key: "swapping", label: "却下・分割・やり直し" },
-    { key: "settled", label: "確定" },
-  ],
   ranking: [
     { key: "idle", label: "未計算" },
     { key: "comparing", label: "計算済み・候補" },
@@ -41,7 +34,7 @@ const BAR_GROUP_LEGENDS: Record<BarGroup, { key: StateColorKey; label: string }[
     { key: "swapping", label: "割り引かれた" },
     { key: "settled", label: "確定した結果" },
   ],
-  game: [
+  procedural: [
     { key: "idle", label: "未計算" },
     { key: "comparing", label: "計算に使った値・計算済み" },
     { key: "pivot", label: "いま計算している位置" },

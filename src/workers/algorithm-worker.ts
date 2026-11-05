@@ -58,7 +58,7 @@ ctx.onmessage = (event) => {
     const generate = GRAPH_VISUALIZERS[request.algorithmId];
     frames = generate ? generate() : [];
   } else if (request.kind === "search") {
-    // 貪欲法・情報検索・ゲームの棒グラフ可視化も、配列+状態色のフレーム(SearchFrame)なので search kind で描画する
+    // 情報検索(SimHash)・手続き型生成の棒グラフ可視化も、配列+状態色のフレーム(SearchFrame)なので search kind で描画する
     const generate = SEARCH_VISUALIZERS[request.algorithmId] ?? BAR_VISUALIZERS[request.algorithmId];
     frames = generate ? generate() : [];
   } else if (request.kind === "tree") {

@@ -1,4 +1,8 @@
 import { SHORTEST_PATH_EDGES, SHORTEST_PATH_NODES } from "./graph-visualizers.ts";
+import { GREEDY_TABLE_META, GREEDY_VISUALIZERS } from "./greedy-visualizers.ts";
+import { COMPILER_TABLE_META, COMPILER_VISUALIZERS } from "./compiler-visualizers.ts";
+import { IR_TABLE_META, IR_VISUALIZERS } from "./ir-visualizers.ts";
+import { GAME_THEORY_TABLE_META, GAME_THEORY_VISUALIZERS } from "./game-visualizers.ts";
 
 export type DPCellState = "idle" | "comparing" | "pivot" | "settled";
 
@@ -8662,6 +8666,14 @@ export const DP_TABLE_META: Record<string, DPTableMeta> = {
     rowHeaders: ["∅", ...NOISY_CHANNEL_WORD.split("")],
     colHeaders: ["∅", ...NOISY_CHANNEL_BEST.word.split("")],
   },
+  // 貪欲法の属性表(src/lib/greedy-visualizers.ts)
+  ...GREEDY_TABLE_META,
+  // コンパイラ・構文解析(src/lib/compiler-visualizers.ts)
+  ...COMPILER_TABLE_META,
+  // 情報検索・ランキング(src/lib/ir-visualizers.ts)
+  ...IR_TABLE_META,
+  // 数理ゲーム理論(src/lib/game-visualizers.ts)
+  ...GAME_THEORY_TABLE_META,
 };
 
 export const DP_VISUALIZERS: Record<string, () => DPFrame[]> = {
@@ -8761,4 +8773,12 @@ export const DP_VISUALIZERS: Record<string, () => DPFrame[]> = {
   "parallel-merge-sort": parallelMergeSortSteps,
   "crdt-g-counter": crdtGCounterSteps,
   "noisy-channel-spelling-correction": noisyChannelSpellingCorrectionSteps,
+  // 貪欲法(src/lib/greedy-visualizers.ts)
+  ...GREEDY_VISUALIZERS,
+  // コンパイラ・構文解析(src/lib/compiler-visualizers.ts)
+  ...COMPILER_VISUALIZERS,
+  // 情報検索・ランキング(src/lib/ir-visualizers.ts)
+  ...IR_VISUALIZERS,
+  // 数理ゲーム理論(src/lib/game-visualizers.ts)
+  ...GAME_THEORY_VISUALIZERS,
 };
