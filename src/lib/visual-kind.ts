@@ -10,6 +10,7 @@ import { TRIE_VISUALIZERS } from "./trie-visualizer.ts";
 import { GEOMETRY_VISUALIZERS } from "./geometry-visualizers.ts";
 import { LANE_VISUALIZERS } from "./lane-visualizers.ts";
 import { SIGNAL_VISUALIZERS } from "./signal-visualizers.ts";
+import { SCENE3D_VISUALIZERS } from "./scene3d-visualizers.ts";
 
 /**
  * このidを、どの種類の可視化(描画コンポーネント)が受け持つか。
@@ -28,7 +29,8 @@ export type VisualKind =
   | "trie"
   | "geometry"
   | "lanes"
-  | "signal";
+  | "signal"
+  | "scene3d";
 
 const ORDER: [VisualKind, Record<string, unknown>][] = [
   ["sort", SORT_VISUALIZERS],
@@ -43,6 +45,7 @@ const ORDER: [VisualKind, Record<string, unknown>][] = [
   ["geometry", GEOMETRY_VISUALIZERS],
   ["lanes", LANE_VISUALIZERS],
   ["signal", SIGNAL_VISUALIZERS],
+  ["scene3d", SCENE3D_VISUALIZERS],
 ];
 
 /** 対応する可視化が無ければ null。 */

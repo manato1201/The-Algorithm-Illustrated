@@ -23,6 +23,7 @@ import {
   waveshapingDistortionSteps,
   wavetableSynthesisSteps,
 } from "./signal-effects.ts";
+import { CONTROL_SERIES_META, CONTROL_SERIES_VISUALIZERS } from "./control-series.ts";
 
 export type { SignalFrame, SignalPanel, SignalMeta } from "./signal-math.ts";
 
@@ -50,6 +51,8 @@ export const SIGNAL_VISUALIZERS: Record<string, () => SignalFrame[]> = {
   "chorus-flanger-effect": chorusFlangerEffectSteps,
   "convolution-reverb": convolutionReverbSteps,
   "granular-synthesis": granularSynthesisSteps,
+  // 制御・ロボティクスの時系列(信号kindのパネル列を流用)
+  ...CONTROL_SERIES_VISUALIZERS,
 };
 
 /** 画面上部のチップ(入力の条件)。 */
@@ -72,4 +75,5 @@ export const SIGNAL_META: Record<string, SignalMeta> = {
   "chorus-flanger-effect": { chips: ["遅延 6±4 サンプル", "LFO周期64", "原音と1:1で混合"] },
   "convolution-reverb": { chips: ["音32サンプル", "応答24サンプル", "出力55サンプル"] },
   "granular-synthesis": { chips: ["粒24サンプル", "ずらし幅12", "8粒", "ハン窓"] },
+  ...CONTROL_SERIES_META,
 };

@@ -1,6 +1,7 @@
 import type { SearchFrame } from "./search-visualizers.ts";
 import { RANKING_VISUALIZERS } from "./ranking-visualizers.ts";
 import { PROCEDURAL_VISUALIZERS } from "./procedural-visualizers.ts";
+import { CONTEST_VISUALIZERS } from "./contest-visualizers.ts";
 
 /**
  * 「配列の棒グラフ+状態色」で描く可視化のうち、探索系(SEARCH_VISUALIZERS)・DPテーブル型(DP_VISUALIZERS)以外のグループ。
@@ -12,6 +13,7 @@ import { PROCEDURAL_VISUALIZERS } from "./procedural-visualizers.ts";
 export const BAR_GROUPS = {
   ranking: RANKING_VISUALIZERS,
   procedural: PROCEDURAL_VISUALIZERS,
+  contest: CONTEST_VISUALIZERS,
 } as const;
 
 export type BarGroup = keyof typeof BAR_GROUPS;
@@ -19,6 +21,7 @@ export type BarGroup = keyof typeof BAR_GROUPS;
 export const BAR_VISUALIZERS: Record<string, () => SearchFrame[]> = {
   ...RANKING_VISUALIZERS,
   ...PROCEDURAL_VISUALIZERS,
+  ...CONTEST_VISUALIZERS,
 };
 
 /** このidが属する棒グラフ可視化のグループ(凡例の出し分けに使う)。無ければ null。 */

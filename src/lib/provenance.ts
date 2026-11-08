@@ -32,6 +32,16 @@ export const SIMULATED_NOTES: Record<string, string> = {
   "navmesh-generation": "2次元の簡略版",
   "watershed-algorithm": "実際の画像の輝度地形ではなく、簡略化した例で示している",
   "multiple-sequence-alignment": "段階的アラインメントの簡略版",
+  "pid-control": "制御対象は簡単な1次遅れのモデル。実機の応答ではない",
+  "bang-bang-control": "部屋の温度は簡単な熱モデル。実際の部屋の応答ではない",
+  "complementary-filter": "センサの雑音とジャイロの偏りは、固定シードの擬似乱数で作った模擬データ(実機のセンサ値ではない)",
+  "kalman-filter": "測定値は、固定シードの擬似乱数で作った模擬データ(実機のセンサ値ではない)",
+  "curl-noise": "ポテンシャルにノイズ関数ではなく周期関数を使った簡略版(発散が0という性質は同じ)",
+  "skeletal-animation-slerp-blending": "1本の関節の向きを、球面上の点で表した簡略図",
+  "momentum-sgd": "損失は2次関数の谷という最も単純な例(実際のニューラルネットの損失ではない)",
+  rmsprop: "損失は2次関数の谷という最も単純な例(実際のニューラルネットの損失ではない)",
+  "adagrad-optimizer": "損失は2次関数の谷という最も単純な例(実際のニューラルネットの損失ではない)",
+  "adam-optimizer": "損失は2次関数の谷という最も単純な例(実際のニューラルネットの損失ではない)",
 };
 
 export type ProvenanceInfo = {

@@ -164,6 +164,11 @@ import * as PROV from "../src/lib/provenance.ts";
 import * as FLOW from "../src/lib/flow-overview.ts";
 import * as GUESS from "../src/lib/guess-first.ts";
 import * as DEP from "../src/lib/dependency-map.ts";
+import * as S3D from "../src/lib/scene3d-visualizers.ts";
+import * as GFX from "../src/lib/scene3d-graphics.ts";
+import * as MLP from "../src/lib/scene3d-ml.ts";
+import * as CTL from "../src/lib/control-series.ts";
+import * as CON from "../src/lib/contest-visualizers.ts";
 import * as RANK from "../src/lib/ranking-visualizers.ts";
 import * as PROC from "../src/lib/procedural-visualizers.ts";
 import {
@@ -2970,9 +2975,10 @@ section("第6弾: 種類の判定・札・全体図・予想・依存の地図")
     geometry: GEOMETRY_VISUALIZERS,
     lanes: LANE_VISUALIZERS,
     signal: SIGNAL_VISUALIZERS,
+    scene3d: S3D.SCENE3D_VISUALIZERS,
   };
   // 振り分けの優先順(従来の AlgorithmVisualizer の if 連鎖と同じ順)を、判定関数とは別に書き直して比べる
-  const order = ["sort", "pathfinding", "dp", "graph", "search", "tree", "string", "trie", "geometry", "lanes", "signal"];
+  const order = ["sort", "pathfinding", "dp", "graph", "search", "tree", "string", "trie", "geometry", "lanes", "signal", "scene3d"];
   const referenceKind = (id) => order.find((kind) => id in allRegistries[kind]) ?? null;
   const allIds = new Set(Object.values(allRegistries).flatMap((r) => Object.keys(r)));
 
@@ -3008,7 +3014,7 @@ section("第6弾: 種類の判定・札・全体図・予想・依存の地図")
   check("札: 「再生」は他の札と同時には付かない", [...infos.values()].every((i) => !i.kinds.includes("replay") || i.kinds.length === 1));
 
   // ---- flow-overview ----
-  check("全体図: 全種類(11)に、入力と出力の文言がある", Object.keys(FLOW.FLOW_BY_KIND).sort().join() === order.slice().sort().join() && Object.values(FLOW.FLOW_BY_KIND).every((f) => f.input.length > 3 && f.output.length > 3));
+  check("全体図: 全種類(12)に、入力と出力の文言がある", Object.keys(FLOW.FLOW_BY_KIND).sort().join() === order.slice().sort().join() && Object.values(FLOW.FLOW_BY_KIND).every((f) => f.input.length > 3 && f.output.length > 3));
   check("全体図: 個別の入出力を書いたアルゴリズムが実在する可視化で、種類の説明とは別の文言", Object.entries(FLOW.FLOW_OVERRIDES).every(([id, f]) => allIds.has(id) && f.input.length > 3 && f.output.length > 3 && f.input !== FLOW.FLOW_BY_KIND[VK.visualKindOf(id)].input), Object.keys(FLOW.FLOW_OVERRIDES).filter((id) => !allIds.has(id)).join(","));
   check("全体図: 全件で入出力が引ける(個別があれば個別、なければ種類の説明)", [...allIds].every((id) => {
     const f = FLOW.flowOverviewFor(id, VK.visualKindOf(id));
@@ -3083,6 +3089,534 @@ section("第6弾: 種類の判定・札・全体図・予想・依存の地図")
     check("足場: 参照数の降順(同数はid順)で、件数が参照元の数と一致", top.length === 20 && top.every((t, i) => t.count === map.get(t.id).refBy.length && (i === 0 || top[i - 1].count > t.count || (top[i - 1].count === t.count && top[i - 1].id < t.id))));
     check("足場: 参照されていない記事は含めない", DEP.topFoundations(map, 10000).every((t) => t.count > 0));
     check("リンク抽出: 出現順・重複なし・アルゴリズム以外のリンクは無視", DEP.extractAlgorithmLinks("[a](/algorithms/x) と [b](/algorithms/y) と [c](/algorithms/x) と [d](/atlas) と [e](https://example.com/algorithms/z)").join() === "x,y");
+  }
+}
+
+// ===========================================================================
+// SCENE3D: 3次元の可視化(three.js)。計算は別実装の参照計算(Rodrigues回転・ヤコビ法の固有値分解・
+// 数値微分のカール・総当たりの再シミュレーション)と突き合わせ、描く座標が計算した値と食い違わないことを確かめる。
+// ===========================================================================
+section("SCENE3D: 3次元の可視化(オプティマイザ4・CG3・機械学習1)");
+{
+  const near = (a, b, eps = 1e-9) => Math.abs(a - b) <= eps;
+  const vecNear = (a, b, eps = 1e-9) => a.length === b.length && a.every((v, i) => near(v, b[i], eps));
+  const KINDS = ["idle", "comparing", "swapping", "pivot", "settled"];
+  const makeRng = (seed) => {
+    let a = seed >>> 0;
+    return () => {
+      a = (a + 0x6d2b79f5) >>> 0;
+      let t = a;
+      t = Math.imul(t ^ (t >>> 15), t | 1);
+      t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+      return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    };
+  };
+
+  // ---- 全件共通 ----
+  for (const id of Object.keys(S3D.SCENE3D_VISUALIZERS)) {
+    const frames = S3D.SCENE3D_VISUALIZERS[id]();
+    const meta = S3D.SCENE3D_META[id];
+    checkWellFormed(id, frames);
+    check(`${id}: メタ情報(チップ・カメラ・軸の説明)がある`, !!meta && meta.chips.length > 0 && meta.camera.position.length === 3 && meta.camera.target.length === 3 && !!meta.axes.x && !!meta.axes.y && !!meta.axes.z);
+    check(`${id}: カメラの位置と注視点が違う(視線が定まる)`, meta && meta.camera.position.some((v, i) => v !== meta.camera.target[i]));
+    check(`${id}: 最初のフレームは待機(idle)・全フレームの種類が状態の語彙`, frames[0].kind === "idle" && frames.every((f) => KINDS.includes(f.kind)));
+    check(`${id}: 最後のフレームは確定(settled)`, frames[frames.length - 1].kind === "settled");
+    const finite = (v) => v.every(Number.isFinite);
+    check(
+      `${id}: 全フレームの座標が有限値`,
+      frames.every(
+        (f) =>
+          f.paths.every((p) => p.points.every((pt) => pt.length === 3 && finite(pt))) &&
+          f.points.every((p) => p.position.length === 3 && finite(p.position)) &&
+          (!f.surface || f.surface.heights.every(Number.isFinite)),
+      ),
+    );
+    check(
+      `${id}: 点・経路のidがフレーム内で重複しない、状態が状態の語彙`,
+      frames.every((f) => new Set(f.points.map((p) => p.id)).size === f.points.length && new Set(f.paths.map((p) => p.id)).size === f.paths.length && [...f.points, ...f.paths].every((o) => KINDS.includes(o.state))),
+    );
+    check(`${id}: 曲面の高さの数が nx×nz に一致`, frames.every((f) => !f.surface || f.surface.heights.length === f.surface.nx * f.surface.nz));
+    check(`${id}: 2回生成しても同一(決定的)`, JSON.stringify(S3D.SCENE3D_VISUALIZERS[id]()) === JSON.stringify(frames));
+  }
+  check("SCENE3D: 8件が可視化の種類 scene3d に振り分けられ、他のレジストリとidが重複しない", Object.keys(S3D.SCENE3D_VISUALIZERS).length === 8 && Object.keys(S3D.SCENE3D_VISUALIZERS).every((id) => VK.visualKindOf(id) === "scene3d"));
+
+  // ---- オプティマイザ(別実装の再シミュレーション) ----
+  {
+    const f = (a, b) => 0.5 * (a * a + 10 * b * b);
+    const grad = (a, b) => [a, 10 * b];
+    const run = (id) => {
+      let a = 4, b = 1.5;
+      const out = [[a, b]];
+      let m = [0, 0], v = [0, 0];
+      const firstDelta = [];
+      for (let t = 1; t <= 40; t++) {
+        const g = grad(a, b);
+        let d;
+        if (id === "momentum-sgd") {
+          m = m.map((x, i) => 0.9 * x + g[i]);
+          d = m.map((x) => -0.02 * x);
+        } else if (id === "rmsprop") {
+          v = v.map((x, i) => 0.9 * x + 0.1 * g[i] ** 2);
+          d = g.map((x, i) => (-0.1 * x) / (Math.sqrt(v[i]) + 1e-8));
+        } else if (id === "adagrad-optimizer") {
+          v = v.map((x, i) => x + g[i] ** 2);
+          d = g.map((x, i) => (-1 * x) / (Math.sqrt(v[i]) + 1e-8));
+        } else {
+          m = m.map((x, i) => 0.9 * x + 0.1 * g[i]);
+          v = v.map((x, i) => 0.999 * x + 0.001 * g[i] ** 2);
+          d = g.map((_, i) => (-0.3 * (m[i] / (1 - 0.9 ** t))) / (Math.sqrt(v[i] / (1 - 0.999 ** t)) + 1e-8));
+        }
+        if (t === 1) firstDelta.push(...d);
+        a += d[0];
+        b += d[1];
+        out.push([a, b]);
+      }
+      return { out, firstDelta, g0: grad(4, 1.5) };
+    };
+    for (const id of ["momentum-sgd", "rmsprop", "adagrad-optimizer", "adam-optimizer"]) {
+      const { out, firstDelta, g0 } = run(id);
+      const frames = S3D.SCENE3D_VISUALIZERS[id]();
+      check(`${id}: 41フレーム(開始+40回の更新)`, frames.length === 41);
+      const currents = frames.map((fr) => fr.points.find((p) => p.id === "current").position);
+      check(`${id}: 全反復のパラメータが、別実装の再シミュレーションと一致`, currents.every((p, i) => near(p[0], out[i][0], 1e-9) && near(p[2], out[i][1], 1e-9)));
+      check(`${id}: 描く高さが 0.25×損失 と一致(図と計算の食い違いが無い)`, currents.every((p, i) => near(p[1], 0.25 * f(out[i][0], out[i][1]), 1e-9)));
+      check(`${id}: 経路の点の数が 反復数+1`, frames.every((fr, i) => i === 0 || fr.paths[0].points.length === i + 1));
+      const surface = frames[0].surface;
+      check(
+        `${id}: 曲面の高さが 0.25×損失 の格子と一致`,
+        surface.heights.every((h, idx) => {
+          const ix = idx % surface.nx;
+          const iz = Math.floor(idx / surface.nx);
+          const x = surface.xRange[0] + ((surface.xRange[1] - surface.xRange[0]) * ix) / (surface.nx - 1);
+          const z = surface.zRange[0] + ((surface.zRange[1] - surface.zRange[0]) * iz) / (surface.nz - 1);
+          return near(h, 0.25 * f(x, z), 1e-9);
+        }),
+      );
+      const last = out[out.length - 1];
+      check(`${id}: 40回の更新で損失が最初の1/10以下(${f(...out[0]).toFixed(2)} → ${f(...last).toFixed(3)})`, f(...last) < f(...out[0]) / 10);
+      if (id === "momentum-sgd") check(`${id}: 最初の更新量が −η×勾配(速度が勾配そのものだから)`, firstDelta.every((d, i) => near(d, -0.02 * g0[i], 1e-12)));
+      if (id === "adagrad-optimizer") check(`${id}: 最初の更新量の大きさが学習率ちょうど(g/√(g²)=符号)`, firstDelta.every((d) => near(Math.abs(d), 1, 1e-6)));
+      if (id === "adam-optimizer") check(`${id}: 最初の更新量の大きさが学習率ちょうど(偏りの補正で m̂/√v̂ = 符号)`, firstDelta.every((d) => near(Math.abs(d), 0.3, 1e-6)));
+      if (id === "rmsprop") check(`${id}: 最初の更新量の大きさが η/√(1−ρ)`, firstDelta.every((d) => near(Math.abs(d), 0.1 / Math.sqrt(0.1), 1e-6)));
+    }
+    // 谷の形の性質: 急な軸(b)の更新が、緩い軸(a)よりずっと先に収まる
+    const adam = run("adam-optimizer").out;
+    check("オプティマイザ: 急な軸 b は、緩い軸 a よりも早く0付近(|b|<0.3)に入る(Adam)", adam.findIndex((p) => Math.abs(p[1]) < 0.3) < adam.findIndex((p) => Math.abs(p[0]) < 0.3));
+  }
+
+  // ---- slerp ----
+  {
+    const frames = S3D.SCENE3D_VISUALIZERS["skeletal-animation-slerp-blending"]();
+    const last = frames[frames.length - 1];
+    const slerpTips = Array.from({ length: 11 }, (_, i) => last.points.find((p) => p.id === `slerp${i}`).position);
+    const nlerpTips = [slerpTips[0], ...Array.from({ length: 10 }, (_, i) => last.points.find((p) => p.id === `nlerp${i + 1}`).position)];
+    // Rodrigues の回転公式(クォータニオンを使わない独立実装): q0=単位なので、slerp は軸まわりの回転角を t 倍するだけ
+    const axis = [Math.SQRT1_2, Math.SQRT1_2, 0];
+    const rodrigues = (v, angle) => {
+      const c = Math.cos(angle), s = Math.sin(angle);
+      const cross = [axis[1] * v[2] - axis[2] * v[1], axis[2] * v[0] - axis[0] * v[2], axis[0] * v[1] - axis[1] * v[0]];
+      const d = axis[0] * v[0] + axis[1] * v[1] + axis[2] * v[2];
+      return v.map((x, i) => x * c + cross[i] * s + axis[i] * d * (1 - c));
+    };
+    const total = (170 * Math.PI) / 180;
+    check("slerp: 先端が Rodrigues の回転公式(角度 = t×170°)と一致", slerpTips.every((p, k) => vecNear(p, rodrigues([0, 0, 1], (k / 10) * total), 1e-9)));
+    const angle = (a, b) => Math.acos(Math.max(-1, Math.min(1, a[0] * b[0] + a[1] * b[1] + a[2] * b[2])));
+    const slerpSteps = slerpTips.slice(1).map((p, i) => angle(slerpTips[i], p));
+    const nlerpSteps = nlerpTips.slice(1).map((p, i) => angle(nlerpTips[i], p));
+    check("slerp: 10等分の1ステップの回転角がすべて 170°÷10 で等しい(等しい角速度)", slerpSteps.every((a) => near(a, total / 10, 1e-9)));
+    check(`slerp: nlerpは1ステップの回転角が不揃い(最大/最小 = ${(Math.max(...nlerpSteps) / Math.min(...nlerpSteps)).toFixed(2)} > 1.05)`, Math.max(...nlerpSteps) / Math.min(...nlerpSteps) > 1.05);
+    check("slerp: nlerpは中ほどで速く、両端でゆっくり(中央のステップが両端より大きい)", nlerpSteps[4] > nlerpSteps[0] && nlerpSteps[5] > nlerpSteps[9]);
+    check("slerp: 両端(t=0, t=1)では slerp と nlerp が同じ点", vecNear(slerpTips[0], nlerpTips[0]) && vecNear(slerpTips[10], nlerpTips[10], 1e-9));
+    check("slerp: 全ての先端が単位球面上(長さ1)", [...slerpTips, ...nlerpTips].every((p) => near(Math.hypot(...p), 1, 1e-12)));
+    check("slerp: 全体の回転角(開始→終了の先端)が 170°", near(angle(slerpTips[0], slerpTips[10]), total, 1e-9));
+  }
+
+  // ---- curl-noise ----
+  {
+    const psi = ([x, y, z]) => [Math.sin(y) + Math.cos(z), Math.sin(z) + Math.cos(x), Math.sin(x) + Math.cos(y)];
+    // 数値微分(中心差分)で ψ の回転を求める: v = (∂ψz/∂y − ∂ψy/∂z, ∂ψx/∂z − ∂ψz/∂x, ∂ψy/∂x − ∂ψx/∂y)
+    const numericCurl = (p, h = 1e-5) => {
+      const d = (comp, axis) => {
+        const a = [...p], b = [...p];
+        a[axis] += h;
+        b[axis] -= h;
+        return (psi(a)[comp] - psi(b)[comp]) / (2 * h);
+      };
+      return [d(2, 1) - d(1, 2), d(0, 2) - d(2, 0), d(1, 0) - d(0, 1)];
+    };
+    const rng = makeRng(99);
+    const samples = Array.from({ length: 60 }, () => [(rng() * 2 - 1) * 4, (rng() * 2 - 1) * 4, (rng() * 2 - 1) * 4]);
+    check("curl-noise: 解析的な速度が、ポテンシャル ψ の数値微分による回転と一致(導出が正しい)", samples.every((p) => vecNear(GFX.curlVelocity(p), numericCurl(p), 1e-8)));
+    check("curl-noise: 流れの発散がどこでも0(60点で |∇·v| < 1e-6)", samples.every((p) => Math.abs(GFX.curlDivergence(p)) < 1e-6));
+    check("curl-noise: 速さが有界(|v| ≤ √12)", samples.every((p) => Math.hypot(...GFX.curlVelocity(p)) <= Math.sqrt(12) + 1e-9));
+    // 別実装の中点法で全粒子を進め直す
+    const rngStart = makeRng(31);
+    const starts = Array.from({ length: 18 }, () => [(rngStart() * 2 - 1) * Math.PI, (rngStart() * 2 - 1) * Math.PI, (rngStart() * 2 - 1) * Math.PI]);
+    const velocity = (p) => numericCurl(p, 1e-6);
+    const finals = starts.map((s) => {
+      let p = s;
+      for (let k = 0; k < 36; k++) {
+        const v1 = velocity(p);
+        const mid = p.map((x, i) => x + 0.1 * v1[i]);
+        const v2 = velocity(mid);
+        p = p.map((x, i) => x + 0.2 * v2[i]);
+      }
+      return p;
+    });
+    const frames = S3D.SCENE3D_VISUALIZERS["curl-noise"]();
+    const last = frames[frames.length - 1];
+    check("curl-noise: 全18粒子の最終位置が、数値微分の速度を使った別実装の中点法と一致(1e-6)", finals.every((p, i) => vecNear(last.points.find((q) => q.id === `p${i}`).position, p, 1e-6)));
+    check("curl-noise: 初期位置が立方体 [−π, π]³ の内側", starts.every((p) => p.every((c) => Math.abs(c) <= Math.PI)));
+    check("curl-noise: 経路の点の数が時刻とともに1つずつ増える", frames.every((f, k) => k === 0 || f.paths.filter((p) => p.id.startsWith("trail")).every((p) => p.points.length === k + 1)));
+  }
+
+  // ---- cascaded-shadow-maps ----
+  {
+    const n = 1, far = 40, m = 4, lambda = 0.6;
+    const split = (i) => lambda * n * (far / n) ** (i / m) + (1 - lambda) * (n + (i / m) * (far - n));
+    const frames = S3D.SCENE3D_VISUALIZERS["cascaded-shadow-maps"]();
+    const last = frames[frames.length - 1];
+    const planes = last.paths.filter((p) => p.id.startsWith("plane"));
+    check("カスケード: 5枚の分割面(C0〜C4)が最後のフレームに揃う", planes.length === 5);
+    check("カスケード: 各分割面の奥行きが 実用分割 C_i = λ·n(f/n)^(i/m) + (1−λ)(n+(i/m)(f−n)) と一致", planes.every((p, i) => p.points.every((pt) => near(pt[2], split(i), 1e-9))));
+    check("カスケード: C0 = near、C4 = far", near(split(0), n) && near(split(4), far) && near(planes[0].points[0][2], n) && near(planes[4].points[0][2], far));
+    check("カスケード: 分割面が単調に奥へ進み、手前のカスケードほど奥行きが短い", planes.every((p, i) => i === 0 || p.points[0][2] > planes[i - 1].points[0][2]) && [1, 2, 3].every((i) => split(i + 1) - split(i) > split(i) - split(i - 1)));
+    check("カスケード: 実用分割は、対数分割と一様分割のあいだにある(i=1..3)", [1, 2, 3].every((i) => {
+      const lg = n * (far / n) ** (i / m);
+      const un = n + (i / m) * (far - n);
+      return split(i) >= Math.min(lg, un) - 1e-12 && split(i) <= Math.max(lg, un) + 1e-12;
+    }));
+    const halfH = (z) => z * Math.tan((60 * Math.PI) / 360);
+    check("カスケード: 各分割面が視錐台の断面(画角60°・16:9)になっている", planes.every((p) => p.points.every((pt) => near(Math.abs(pt[1]), halfH(pt[2]), 1e-9) && near(Math.abs(pt[0]), (halfH(pt[2]) * 16) / 9, 1e-9)) && p.closed === true));
+    check("カスケード: フレームごとに分割面が1枚ずつ増える", frames.every((f, c) => f.paths.filter((p) => p.id.startsWith("plane")).length === c + 1));
+  }
+
+  // ---- pca ----
+  {
+    const points = MLP.pcaData();
+    const N = points.length;
+    const mean = [0, 1, 2].map((a) => points.reduce((s, p) => s + p[a], 0) / N);
+    const cov = [0, 1, 2].map((i) => [0, 1, 2].map((j) => points.reduce((s, p) => s + (p[i] - mean[i]) * (p[j] - mean[j]), 0) / N));
+    // ヤコビ法(巡回): 対称行列の固有値分解の独立実装
+    const jacobi = (matrix) => {
+      const A = matrix.map((r) => [...r]);
+      const V = [[1, 0, 0], [0, 1, 0], [0, 0, 1]];
+      for (let sweep = 0; sweep < 60; sweep++) {
+        for (const [p, q] of [[0, 1], [0, 2], [1, 2]]) {
+          if (Math.abs(A[p][q]) < 1e-18) continue;
+          const theta = (A[q][q] - A[p][p]) / (2 * A[p][q]);
+          const t = Math.sign(theta || 1) / (Math.abs(theta) + Math.sqrt(theta * theta + 1));
+          const c = 1 / Math.sqrt(t * t + 1), s = t * c;
+          for (let k = 0; k < 3; k++) {
+            const akp = A[k][p], akq = A[k][q];
+            A[k][p] = c * akp - s * akq;
+            A[k][q] = s * akp + c * akq;
+          }
+          for (let k = 0; k < 3; k++) {
+            const apk = A[p][k], aqk = A[q][k];
+            A[p][k] = c * apk - s * aqk;
+            A[q][k] = s * apk + c * aqk;
+          }
+          for (let k = 0; k < 3; k++) {
+            const vkp = V[k][p], vkq = V[k][q];
+            V[k][p] = c * vkp - s * vkq;
+            V[k][q] = s * vkp + c * vkq;
+          }
+        }
+      }
+      const order = [0, 1, 2].sort((a, b) => A[b][b] - A[a][a]);
+      return { values: order.map((i) => A[i][i]), vectors: order.map((i) => [V[0][i], V[1][i], V[2][i]]) };
+    };
+    const ref = jacobi(cov);
+    const mine = MLP.principalAxes(points);
+    check(`pca: 固有値(${mine.values.map((v) => v.toFixed(3)).join(", ")})がヤコビ法の固有値分解と一致`, mine.values.every((v, i) => near(v, ref.values[i], 1e-8 * Math.max(1, ref.values[0]))));
+    check("pca: 固有ベクトルが、符号を除いて一致(|内積|=1)", mine.vectors.every((v, i) => near(Math.abs(v[0] * ref.vectors[i][0] + v[1] * ref.vectors[i][1] + v[2] * ref.vectors[i][2]), 1, 1e-8)));
+    check("pca: 3つの軸が単位長で互いに直交", mine.vectors.every((v, i) => near(Math.hypot(...v), 1, 1e-9) && mine.vectors.every((w, j) => i === j || near(v[0] * w[0] + v[1] * w[1] + v[2] * w[2], 0, 1e-8))));
+    check("pca: 固有値が降順で、合計が共分散行列のトレース(全分散)に等しい", mine.values[0] >= mine.values[1] && mine.values[1] >= mine.values[2] && near(mine.values.reduce((a, b) => a + b, 0), cov[0][0] + cov[1][1] + cov[2][2], 1e-9));
+    check("pca: 平均が参照の平均と一致", vecNear(MLP.meanOf(points), mean, 1e-12));
+    const frames = S3D.SCENE3D_VISUALIZERS.pca();
+    const last = frames[frames.length - 1];
+    const projected = last.points.filter((p) => p.id.startsWith("q")).map((p) => p.position);
+    const dev3 = projected.map((p) => (p[0] - mean[0]) * ref.vectors[2][0] + (p[1] - mean[1]) * ref.vectors[2][1] + (p[2] - mean[2]) * ref.vectors[2][2]);
+    check("pca: 射影した点が、第1・第2主成分の平面の上(第3主成分方向の成分が0)", dev3.every((d) => near(d, 0, 1e-8)) && projected.length === points.length);
+    const variance = projected.reduce((s, p) => s + (p[0] - mean[0]) ** 2 + (p[1] - mean[1]) ** 2 + (p[2] - mean[2]) ** 2, 0) / N;
+    check("pca: 射影後の分散が λ1+λ2(残る分散の割合の根拠)", near(variance, ref.values[0] + ref.values[1], 1e-8));
+    check("pca: 元の点が最後まで残って、射影した点と並べて見られる", last.points.filter((p) => p.id.startsWith("o")).length === points.length);
+    check("pca: 点群の主な広がりが第1主成分(最大の固有値が2番目の3倍以上)", ref.values[0] > 3 * ref.values[1]);
+  }
+}
+
+// ===========================================================================
+// CONTROL: 制御・ロボティクスの時系列(PID・Bang-bang・相補フィルタ・カルマン・最小躍度)。
+// 別実装の再シミュレーションと、その制御の「性質」(定常偏差が消える・ヒステリシス・ノイズが減る・ゲインが下がる・躍度が最小)で確認する。
+// ===========================================================================
+section("CONTROL (5件): 制御・ロボティクスの時系列");
+{
+  const near = (a, b, eps = 1e-9) => Math.abs(a - b) <= eps;
+  const allNear = (a, b, eps = 1e-9) => a.length === b.length && a.every((v, i) => near(v, b[i], eps));
+  const lastValues = (id, panelId) => {
+    const frames = SIGNAL_VISUALIZERS[id]();
+    return frames[frames.length - 1].panels.find((p) => p.id === panelId).values;
+  };
+  const makeRng = (seed) => {
+    let a = seed >>> 0;
+    return () => {
+      a = (a + 0x6d2b79f5) >>> 0;
+      let t = a;
+      t = Math.imul(t ^ (t >>> 15), t | 1);
+      t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+      return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    };
+  };
+  check("CONTROL: 5件が信号kind(パネル列)のレジストリに登録され、チップがある", Object.keys(CTL.CONTROL_SERIES_VISUALIZERS).every((id) => id in SIGNAL_VISUALIZERS && (SIGNAL_META[id]?.chips.length ?? 0) > 0));
+
+  // ---- PID ----
+  {
+    const sim = (kp, ki, kd) => {
+      const y = [], u = [], e = [];
+      let state = 0, integral = 0, prev = 1;
+      for (let k = 0; k < 60; k++) {
+        const err = 1 - state;
+        integral += err;
+        const control = kp * err + ki * integral + kd * (err - prev);
+        prev = err;
+        y.push(state);
+        e.push(err);
+        u.push(control);
+        state = 0.9 * state + 0.1 * control;
+      }
+      return { y, u, e, final: state };
+    };
+    const full = sim(3, 0.5, 1);
+    const pOnly = sim(3, 0, 0);
+    check("pid-control: 出力・誤差・操作量が、別実装の再シミュレーションと一致", allNear(lastValues("pid-control", "y"), full.y) && allNear(lastValues("pid-control", "e"), full.e) && allNear(lastValues("pid-control", "u"), full.u));
+    check("pid-control: 操作量が P+I+D の3項の合計(最終フレームの各項から)", (() => {
+      const frames = SIGNAL_VISUALIZERS["pid-control"]();
+      const terms = frames[frames.length - 1].panels.find((p) => p.id === "terms").values;
+      const u = lastValues("pid-control", "u");
+      return near(terms[0] + terms[1] + terms[2], u[u.length - 1]);
+    })());
+    check(`pid-control: Iの項があるので定常偏差が消える(最終 ${full.final.toFixed(5)} → 目標1)`, Math.abs(full.final - 1) < 1e-3);
+    check(`pid-control: P制御だけでは偏差が残る(${pOnly.final.toFixed(3)} ≈ 理論値 Kp·b/(1−a+Kp·b) = 0.75)`, near(pOnly.final, 0.75, 1e-3) && Math.abs(1 - pOnly.final) > 0.2);
+    check(`pid-control: 行き過ぎ(オーバーシュート)が10%未満で、25ステップ以内に±2%に入る`, Math.max(...full.y) < 1.1 && full.y.slice(25).every((v) => Math.abs(v - 1) < 0.02));
+    check("pid-control: 開始時の誤差が目標そのもの(y=0 → e=1)", near(full.e[0], 1) && full.y[0] === 0);
+  }
+
+  // ---- Bang-bang ----
+  {
+    const { temp, heater } = (() => {
+      const temp = [], heater = [];
+      let t = 12, on = false;
+      for (let k = 0; k < 50; k++) {
+        if (t < 19) on = true;
+        else if (t > 21) on = false;
+        temp.push(t);
+        heater.push(on ? 1 : 0);
+        t = t + 0.15 * (10 - t) + (on ? 2.5 : 0);
+      }
+      return { temp, heater };
+    })();
+    check("bang-bang-control: 温度とヒーターが、別実装の再シミュレーションと一致", allNear(lastValues("bang-bang-control", "temp"), temp) && allNear(lastValues("bang-bang-control", "heater"), heater));
+    check("bang-bang-control: ヒステリシス(下限19未満では必ず入、上限21超では必ず切、その間は直前のまま)", temp.every((t, k) => (t < 19 ? heater[k] === 1 : t > 21 ? heater[k] === 0 : k === 0 || heater[k] === heater[k - 1])));
+    const settled = temp.slice(10);
+    // 下限: 19未満で入れる直前の温度は、冷えて 19−0.15×(19−10) = 17.65 まで。上限: 21超で切る直前は、加熱 +2.5 で最大 21+2.5 = 23.5
+    check(`bang-bang-control: 立ち上がり後は目標の周りの帯に収まる(${Math.min(...settled).toFixed(1)}〜${Math.max(...settled).toFixed(1)}℃ ⊂ [17.6, 23.5])`, Math.min(...settled) >= 17.6 && Math.max(...settled) <= 23.5);
+    check("bang-bang-control: ヒーターは0か1だけ", heater.every((h) => h === 0 || h === 1));
+    const switches = heater.filter((h, k) => k > 0 && h !== heater[k - 1]).length;
+    check(`bang-bang-control: 切り替えが何度も起きる(${switches}回)が、毎ステップではない(ヒステリシスの効果)`, switches >= 4 && switches < 25);
+  }
+
+  // ---- 相補フィルタ ----
+  {
+    const rng = makeRng(5);
+    const truth = [], accel = [], gyro = [], fused = [];
+    let g = 0, f = 0;
+    for (let k = 0; k < 80; k++) {
+      const t = k * 0.1;
+      const angle = 30 * Math.sin((2 * Math.PI * t) / 8);
+      const rate = 30 * ((2 * Math.PI) / 8) * Math.cos((2 * Math.PI * t) / 8);
+      const a = angle + 15 * (rng() * 2 - 1);
+      const w = rate + 2 + 1 * (rng() * 2 - 1);
+      g += w * 0.1;
+      f = k === 0 ? a : 0.97 * (f + w * 0.1) + 0.03 * a;
+      truth.push(angle);
+      accel.push(a);
+      gyro.push(g);
+      fused.push(f);
+    }
+    check("complementary-filter: 加速度計・ジャイロ積分・合成が、別実装の再シミュレーション(別のLCG実装)と一致", allNear(lastValues("complementary-filter", "accel"), accel) && allNear(lastValues("complementary-filter", "gyro"), gyro) && allNear(lastValues("complementary-filter", "fused"), fused));
+    const rms = (x) => Math.sqrt(x.reduce((s, v, i) => s + (v - truth[i]) ** 2, 0) / x.length);
+    check(`complementary-filter: 合成のずれ(RMS ${rms(fused).toFixed(2)}°)が、加速度計(${rms(accel).toFixed(2)}°)・ジャイロ積分(${rms(gyro).toFixed(2)}°)のどちらよりも小さい`, rms(fused) < rms(accel) && rms(fused) < rms(gyro));
+    check("complementary-filter: ジャイロ積分は時間とともに漂う(終盤のずれが序盤より大きい)", Math.abs(gyro[79] - truth[79]) > Math.abs(gyro[5] - truth[5]));
+    const rough = (x) => x.slice(1).reduce((s, v, i) => s + Math.abs(v - x[i]), 0);
+    check("complementary-filter: 合成は加速度計よりなめらか(隣との差の合計が小さい)", rough(fused) < rough(accel));
+  }
+
+  // ---- カルマンフィルタ ----
+  {
+    const rng = makeRng(12);
+    let x = 0, p = 10;
+    const z = [], est = [], gains = [], vars = [];
+    for (let k = 0; k < 40; k++) {
+      const meas = 5 + 1 * (rng() * 2 - 1) * Math.sqrt(3);
+      const prior = p + 0.01;
+      const K = prior / (prior + 1);
+      x += K * (meas - x);
+      p = (1 - K) * prior;
+      z.push(meas);
+      est.push(x);
+      gains.push(K);
+      vars.push(p);
+    }
+    check("kalman-filter: 測定値・推定値・ゲイン・不確かさが、別実装の再シミュレーションと一致", allNear(lastValues("kalman-filter", "z"), z) && allNear(lastValues("kalman-filter", "x"), est) && allNear(lastValues("kalman-filter", "k"), gains) && allNear(lastValues("kalman-filter", "p"), vars));
+    check("kalman-filter: ゲインが単調に下がり(0〜1)、推定が安定するほど測定を信じなくなる", gains.every((v, i) => v > 0 && v < 1 && (i === 0 || v < gains[i - 1])));
+    // 定常値: p = (1−K)(p+q), K = (p+q)/(p+q+r) を不動点反復で求める
+    let ss = 1;
+    for (let i = 0; i < 200; i++) {
+      const prior = ss + 0.01;
+      ss = (1 - prior / (prior + 1)) * prior;
+    }
+    check(`kalman-filter: 不確かさ P が、リカッチ方程式の定常解(${ss.toFixed(4)})に収束`, near(vars[39], ss, 2e-3));
+    const rmsErr = (a) => Math.sqrt(a.reduce((s, v) => s + (v - 5) ** 2, 0) / a.length);
+    check(`kalman-filter: 序盤を除く推定のずれ(RMS ${rmsErr(est.slice(10)).toFixed(3)})が、生の測定のずれ(${rmsErr(z.slice(10)).toFixed(3)})より小さい`, rmsErr(est.slice(10)) < rmsErr(z.slice(10)));
+    check("kalman-filter: 雑音の分散が測定ノイズ R=1 と一致する設計(一様分布 ±√3 の分散 = 1)", near((2 * Math.sqrt(3)) ** 2 / 12, 1, 1e-12));
+  }
+
+  // ---- 最小躍度軌道 ----
+  {
+    const X = (t) => 10 * t ** 3 - 15 * t ** 4 + 6 * t ** 5;
+    const V = (t) => 30 * t ** 2 - 60 * t ** 3 + 30 * t ** 4;
+    const A = (t) => 60 * t - 180 * t ** 2 + 120 * t ** 3;
+    const tau = Array.from({ length: 41 }, (_, k) => k / 40);
+    check("minimum-jerk-trajectory: 位置・速度・加速度が閉じた式と一致", allNear(lastValues("minimum-jerk-trajectory", "x"), tau.map(X)) && allNear(lastValues("minimum-jerk-trajectory", "v"), tau.map(V)) && allNear(lastValues("minimum-jerk-trajectory", "a"), tau.map(A)));
+    check("minimum-jerk-trajectory: 始点0・終点1で、両端の速度と加速度が0", near(X(0), 0) && near(X(1), 1) && near(V(0), 0) && near(V(1), 0, 1e-12) && near(A(0), 0) && near(A(1), 0, 1e-12));
+    check("minimum-jerk-trajectory: 中央で位置0.5・速度が最大1.875", near(X(0.5), 0.5) && near(V(0.5), 1.875) && tau.every((t) => V(t) <= 1.875 + 1e-12));
+    check("minimum-jerk-trajectory: 点対称(x(1−τ) = 1 − x(τ))", tau.every((t) => near(X(1 - t), 1 - X(t), 1e-12)));
+    // 躍度(3階微分)の2乗の積分。同じ境界条件を満たす多項式 + c·τ³(1−τ)³ より、c=0 が最小
+    const jerk = (t, c) => 60 - 360 * t + 360 * t ** 2 + c * (6 - 72 * t + 180 * t ** 2 - 120 * t ** 3);
+    const integral = (c) => {
+      const n = 2000;
+      let sum = 0;
+      for (let i = 0; i <= n; i++) {
+        const t = i / n;
+        sum += (i === 0 || i === n ? 1 : i % 2 === 1 ? 4 : 2) * jerk(t, c) ** 2;
+      }
+      return (sum / (3 * n));
+    };
+    check(`minimum-jerk-trajectory: 同じ境界条件の別の曲線(±c·τ³(1−τ)³ を足したもの)より躍度の2乗の積分が小さい(${integral(0).toFixed(1)} = 720)`, near(integral(0), 720, 1e-6) && [-2, -0.5, 0.5, 2].every((c) => integral(c) > integral(0)));
+    check("minimum-jerk-trajectory: ライブラリの閉じた式が参照式と一致", tau.every((t) => near(CTL.minimumJerk(t).x, X(t), 1e-12) && near(CTL.minimumJerk(t).v, V(t), 1e-12) && near(CTL.minimumJerk(t).a, A(t), 1e-12)));
+  }
+}
+
+// ===========================================================================
+// CONTEST (4件): いもす法・BITの転倒数・Fisher-Yates・エイリアス法。総当たり・全列挙・定義式と突き合わせる。
+// ===========================================================================
+section("CONTEST (4件): 競技プログラミングの定番技法");
+{
+  const near = (a, b, eps = 1e-9) => Math.abs(a - b) <= eps;
+  const group = BAR.BAR_GROUPS.contest;
+  const lastOf = (id) => {
+    const frames = group[id]();
+    checkWellFormed(id, frames);
+    return { frames, last: frames[frames.length - 1] };
+  };
+  check("CONTEST: 4件が棒グラフのグループ contest に登録され、barGroupOf が一致", Object.keys(group).length === 4 && Object.keys(group).every((id) => BAR.barGroupOf(id) === "contest" && VK.visualKindOf(id) === "search"));
+  for (const id of Object.keys(group)) {
+    const frames = group[id]();
+    check(`${id}(contest): 全フレームで棒の数が同じ・有限値・印の添字が範囲内・決定的`, frames.every((f) => f.array.length === frames[0].array.length && f.array.every(Number.isFinite) && Object.keys(f.highlight).every((k) => Number(k) >= 0 && Number(k) < f.array.length)) && JSON.stringify(group[id]()) === JSON.stringify(frames));
+  }
+
+  // ---- いもす法: マスごとに区間を数える総当たり ----
+  {
+    const N = 12;
+    const ranges = [[1, 5], [3, 8], [4, 10], [7, 11]];
+    const brute = Array.from({ length: N }, (_, i) => ranges.filter(([l, r]) => l <= i && i <= r).length);
+    const { last } = lastOf("imos-method");
+    check(`imos-method: 各マスの値が、マスごとに区間を数える総当たり(${brute.join(",")})と一致`, brute.every((v, i) => last.array[i] === v), String(last.array));
+    check("imos-method: 全マスが確定(番兵の右端は除く)", brute.every((_, i) => last.highlight[i] === "settled") && last.highlight[N] === undefined);
+    const frames = group["imos-method"]();
+    check("imos-method: 区間の更新は 差分の2点だけ(各区間で値が変わる要素がちょうど2つ)", frames.slice(1, 1 + ranges.length).every((f, k) => f.array.filter((v, i) => v !== frames[k].array[i]).length === 2));
+    check("imos-method: 差分の合計が0(+1と−1が対)", frames[ranges.length].array.reduce((a, b) => a + b, 0) === 0);
+  }
+
+  // ---- BIT 転倒数: 総当たり O(n²) と、全順列で比較 ----
+  {
+    const brute = (a) => a.reduce((s, x, i) => s + a.slice(i + 1).filter((y) => y < x).length, 0);
+    const permutations = (items) => (items.length <= 1 ? [items] : items.flatMap((x, i) => permutations([...items.slice(0, i), ...items.slice(i + 1)]).map((rest) => [x, ...rest])));
+    const all = permutations([1, 2, 3, 4, 5, 6]);
+    const { last, frames } = lastOf("inversion-count-bit");
+    const expected = brute(CON.INVERSION_ARRAY);
+    check(`inversion-count-bit: 最後の説明の転倒数が総当たり(${expected})と一致`, last.description.includes(`転倒数は ${expected}`));
+    check(`inversion-count-bit: BIT による転倒数が、6要素の全${all.length}順列で総当たりと一致`, all.every((p) => CON.inversionsByBit(p) === brute(p)));
+    check("inversion-count-bit: 最終のBITが各値の個数(1)から作った木と一致(節 j は直前の lowbit(j) 個の合計)", (() => {
+      const n = 8;
+      const expectedBit = Array.from({ length: n }, (_, k) => {
+        const j = k + 1;
+        return Array.from({ length: j & -j }, (_, t) => j - t).filter((v) => v >= 1).length;
+      });
+      return last.array.every((v, i) => v === expectedBit[i]);
+    })());
+    check("inversion-count-bit: 要素ごとに2フレーム(読み取り・登録)", frames.length === 1 + 2 * CON.INVERSION_ARRAY.length + 1);
+    check("inversion-count-bit: 昇順は転倒数0・降順は n(n−1)/2", CON.inversionsByBit([1, 2, 3, 4, 5]) === 0 && CON.inversionsByBit([5, 4, 3, 2, 1]) === 10);
+  }
+
+  // ---- Fisher-Yates: 全選択列を列挙して、全順列がちょうど1回ずつ現れる ----
+  {
+    const { last } = lastOf("fisher-yates-shuffle");
+    const ref = Array.from({ length: 10 }, (_, i) => i + 1);
+    const makeLcg = (seed) => {
+      let s = seed >>> 0;
+      return () => {
+        s = (1664525 * s + 1013904223) % 4294967296;
+        return s / 4294967296;
+      };
+    };
+    const rng = makeLcg(77);
+    const a = [...ref];
+    for (let i = 9; i >= 1; i--) {
+      const j = Math.floor(rng() * (i + 1));
+      [a[i], a[j]] = [a[j], a[i]];
+    }
+    check("fisher-yates-shuffle: 最終の並びが、別実装(別のLCG実装)のシャッフルと一致", last.array.every((v, i) => v === a[i]), String(last.array));
+    check("fisher-yates-shuffle: 結果が 1〜10 の順列(要素の重複・欠落なし)", [...last.array].sort((x, y) => x - y).join() === ref.join());
+    // 要素4の全選択列(j は 0..i)を列挙: 4! = 24 通りの選択が、24 通りの順列にちょうど1つずつ対応する(一様性の根拠)
+    const outcomes = new Map();
+    for (let c0 = 0; c0 <= 3; c0++) for (let c1 = 0; c1 <= 2; c1++) for (let c2 = 0; c2 <= 1; c2++) {
+      const key = CON.fisherYatesWith([1, 2, 3, 4], [c0, c1, c2]).join("");
+      outcomes.set(key, (outcomes.get(key) ?? 0) + 1);
+    }
+    check(`fisher-yates-shuffle: 4要素の全${4 * 3 * 2}通りの選び方が、全${outcomes.size}通りの順列にちょうど1回ずつ対応(偏りが無い)`, outcomes.size === 24 && [...outcomes.values()].every((n) => n === 1));
+    check("fisher-yates-shuffle: 確定した末尾は動かない(各フレームで settled の要素の値が最後まで同じ)", (() => {
+      const frames = group["fisher-yates-shuffle"]();
+      return frames.every((f, k) => k === 0 || Object.keys(f.highlight).filter((i) => f.highlight[i] === "settled").every((i) => f.array[i] === last.array[i]));
+    })());
+  }
+
+  // ---- エイリアス法: 表から実際の確率を復元して、元の分布と一致 ----
+  {
+    const p = CON.ALIAS_PROBABILITIES;
+    const n = p.length;
+    const { prob, alias } = CON.aliasTables(p);
+    const recovered = Array.from({ length: n }, (_, i) => {
+      let mass = prob[i];
+      for (let j = 0; j < n; j++) if (j !== i && alias[j] === i) mass += 1 - prob[j];
+      return mass / n;
+    });
+    check(`alias-method: 表から復元した選ばれる確率が、元の分布 ${p.join(",")} と一致`, recovered.every((v, i) => near(v, p[i], 1e-12)), recovered.join(","));
+    check("alias-method: 確率の表の値がすべて 0〜1、各列の相手は自分以外(prob<1 のとき)", prob.every((v) => v >= 0 && v <= 1 + 1e-12) && alias.every((a, i) => prob[i] >= 1 - 1e-12 || a !== i));
+    check("alias-method: 元の確率の合計が1", near(p.reduce((a, b) => a + b, 0), 1, 1e-12));
+    const { last } = lastOf("alias-method");
+    check("alias-method: 最終フレームの棒が表の prob と一致", last.array.every((v, i) => near(v, prob[i], 1e-9)), `${last.array} vs ${prob}`);
+    // 別の分布でも成り立つか(ランダムに作った10分布)
+    const rng = (() => { let s = 5; return () => (s = (s * 1664525 + 1013904223) % 4294967296) / 4294967296; })();
+    check("alias-method: 乱数で作った10個の分布(5〜8個の事象)でも、復元した確率が元と一致", Array.from({ length: 10 }, () => {
+      const m = 5 + Math.floor(rng() * 4);
+      const w = Array.from({ length: m }, () => rng() + 0.01);
+      const total = w.reduce((a, b) => a + b, 0);
+      const q = w.map((x) => x / total);
+      const t = CON.aliasTables(q);
+      return q.every((v, i) => near(t.prob[i] / m + t.alias.reduce((s, a, j) => s + (j !== i && a === i ? (1 - t.prob[j]) / m : 0), 0), v, 1e-12));
+    }).every(Boolean));
   }
 }
 

@@ -91,7 +91,10 @@ html {
 html,
 body {
   max-width: 100vw;
+  /* 横のはみ出しを隠す。hidden にすると body 自体がスクロール容器になり、position: sticky
+     (詳細ページの左ペイン・操作列)が効かなくなるので、スクロール容器を作らない clip を使う。 */
   overflow-x: hidden;
+  overflow-x: clip;
 }
 
 body {

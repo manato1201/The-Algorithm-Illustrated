@@ -34,6 +34,13 @@ const BAR_GROUP_LEGENDS: Record<BarGroup, { key: StateColorKey; label: string }[
     { key: "swapping", label: "割り引かれた" },
     { key: "settled", label: "確定した結果" },
   ],
+  contest: [
+    { key: "idle", label: "未処理" },
+    { key: "comparing", label: "読んでいる・進行中" },
+    { key: "pivot", label: "いま書き換える・注目する要素" },
+    { key: "swapping", label: "引く・入れ替える・使い切る" },
+    { key: "settled", label: "確定" },
+  ],
   procedural: [
     { key: "idle", label: "未計算" },
     { key: "comparing", label: "計算に使った値・計算済み" },

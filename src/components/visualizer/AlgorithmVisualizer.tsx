@@ -9,6 +9,7 @@ import { TrieVisualizer } from "./TrieVisualizer";
 import { GeometryVisualizer } from "./GeometryVisualizer";
 import { LaneVisualizer } from "./LaneVisualizer";
 import { SignalVisualizer } from "./SignalVisualizer";
+import { Scene3DVisualizer } from "./Scene3DVisualizer";
 import { AlgorithmMetaProvider } from "./AlgorithmMeta";
 import { visualKindOf, type VisualKind } from "@/lib/visual-kind";
 import { flowOverviewFor } from "@/lib/flow-overview";
@@ -72,5 +73,7 @@ function renderVisualizer(kind: VisualKind, algorithmId: string) {
       return <LaneVisualizer algorithmId={algorithmId} />;
     case "signal":
       return <SignalVisualizer algorithmId={algorithmId} />;
+    case "scene3d":
+      return <Scene3DVisualizer algorithmId={algorithmId} />;
   }
 }

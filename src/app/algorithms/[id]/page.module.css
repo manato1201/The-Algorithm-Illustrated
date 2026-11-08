@@ -62,14 +62,26 @@
   }
 }
 
+/* 左ペイン(可視化+全体図+操作列+擬似コード)は画面の高さを超えがち。貼り付いたまま下半分が見えなくならないよう、
+   ペインの高さを画面内に収めて、はみ出す分はペインの中でスクロールさせる(操作列は PlaybackControls 側で下端に固定する)。 */
 .visualPane {
   position: sticky;
-  top: var(--space-6);
+  top: var(--space-4);
+  max-height: calc(100dvh - var(--space-8));
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
 }
 
+/* 狭い画面(1列): 解説を読んでいる間も可視化と操作が上に残るよう、上端に貼り付ける(画面の半分弱まで) */
 @media (max-width: 768px) {
   .visualPane {
-    position: static;
+    top: 0;
+    z-index: 5;
+    max-height: 46dvh;
+    padding: var(--space-2) 0;
+    background: var(--color-bg-void);
+    border-bottom: 1px solid var(--color-line);
   }
 }
 

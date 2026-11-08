@@ -10,6 +10,7 @@ import { GEOMETRY_VISUALIZERS } from "../lib/geometry-visualizers";
 import { LANE_VISUALIZERS } from "../lib/lane-visualizers";
 import { SIGNAL_VISUALIZERS } from "../lib/signal-visualizers";
 import { BAR_VISUALIZERS } from "../lib/bar-visualizers";
+import { SCENE3D_VISUALIZERS } from "../lib/scene3d-visualizers";
 
 export type WorkerRequest =
   | { kind: "sort"; algorithmId: string; input: number[] }
@@ -22,7 +23,8 @@ export type WorkerRequest =
   | { kind: "trie"; algorithmId: string }
   | { kind: "geometry"; algorithmId: string }
   | { kind: "lanes"; algorithmId: string; size?: number }
-  | { kind: "signal"; algorithmId: string };
+  | { kind: "signal"; algorithmId: string }
+  | { kind: "scene3d"; algorithmId: string };
 
 export type WorkerResponse = {
   /** どのrequestに対する結果かをpostMessageの往復越しに相関させるためエコーバックする。 */
@@ -78,6 +80,9 @@ ctx.onmessage = (event) => {
     frames = generate ? generate(request.size) : [];
   } else if (request.kind === "signal") {
     const generate = SIGNAL_VISUALIZERS[request.algorithmId];
+    frames = generate ? generate() : [];
+  } else if (request.kind === "scene3d") {
+    const generate = SCENE3D_VISUALIZERS[request.algorithmId];
     frames = generate ? generate() : [];
   }
 

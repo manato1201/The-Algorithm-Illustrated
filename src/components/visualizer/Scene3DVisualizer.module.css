@@ -1,0 +1,144 @@
+.visualizer {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  list-style: none;
+}
+
+.chip {
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  color: var(--color-text-muted);
+  border: 1px solid var(--color-line);
+  border-radius: 4px;
+  padding: var(--space-1) var(--space-2);
+}
+
+/* 3Dの描画領域。ステージ内はテーマに関わらずダーク(ZoomableStage の data-surface="dark") */
+.canvasWrap {
+  width: 100%;
+  aspect-ratio: 16 / 10;
+  min-height: 240px;
+  background: var(--color-bg-void);
+  border: 1px solid var(--color-line);
+  border-radius: 4px;
+  cursor: grab;
+  touch-action: none;
+}
+
+.canvasWrap:active {
+  cursor: grabbing;
+}
+
+.canvasWrap:focus-visible {
+  outline: 2px solid var(--color-accent-amber);
+  outline-offset: 2px;
+}
+
+.unsupported {
+  padding: var(--space-3);
+  font-size: 0.8125rem;
+  color: var(--color-accent-amber);
+}
+
+.viewBar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.hint {
+  flex: 1 1 100%;
+  font-size: 0.75rem;
+  color: var(--color-text-muted);
+}
+
+.viewButton {
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  padding: var(--space-1) var(--space-3);
+  border: 1px solid var(--color-line);
+  border-radius: 4px;
+  background: transparent;
+  color: var(--color-text);
+  cursor: pointer;
+}
+
+.viewButton:hover:not(:disabled) {
+  border-color: var(--color-accent-amber);
+}
+
+.viewButton:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.viewButton:focus-visible {
+  outline: 2px solid var(--color-accent-amber);
+  outline-offset: 2px;
+}
+
+.readouts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2) var(--space-4);
+}
+
+.readout {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.readout dt {
+  font-size: 0.6875rem;
+  color: var(--color-text-muted);
+}
+
+.readout dd {
+  font-family: var(--font-mono);
+  font-size: 0.8125rem;
+  color: var(--color-text);
+  overflow-wrap: anywhere;
+}
+
+.description {
+  font-family: var(--font-mono);
+  font-size: 0.875rem;
+  color: var(--color-accent-amber);
+  min-height: 3em;
+  overflow-wrap: anywhere;
+}
+
+.legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-4);
+  list-style: none;
+  padding-top: var(--space-2);
+  border-top: 1px solid var(--color-line);
+}
+
+.legendItem {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  color: var(--color-text-muted);
+}
+
+.axes,
+.caveat {
+  font-size: 0.75rem;
+  color: var(--color-text-muted);
+  line-height: 1.6;
+}

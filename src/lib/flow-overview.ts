@@ -20,6 +20,7 @@ export const FLOW_BY_KIND: Record<VisualKind, FlowIO> = {
   geometry: { input: "点・線分の集合", output: "凸包・交点など、問題ごとの図形" },
   lanes: { input: "同じ行列 A と B", output: "3方式の結果(どれも同じ A×B)と、かかったステップ数" },
   signal: { input: "入力の波形(固定の信号)", output: "処理後の波形・係数・スペクトル" },
+  scene3d: { input: "3次元の入力(曲面・点群・回転・視錐台など。固定)", output: "3次元で確定した結果(到達点・軸・分割面など)" },
 };
 
 /** 代表的なアルゴリズムの個別の入出力。 */
@@ -32,6 +33,14 @@ export const FLOW_OVERRIDES: Record<string, FlowIO> = {
   "knapsack-dp": { input: "品物(重さ・価値)と容量", output: "容量内で価値が最大になる合計" },
   "edit-distance": { input: "2つの文字列", output: "一方を他方に変える最小の編集回数" },
   kmp: { input: "文章と、探すパターン", output: "パターンが現れる開始位置(すべて)" },
+  "momentum-sgd": {"input":"損失の曲面と、開始点","output":"最小点の近くに到達したパラメータ"},
+  "rmsprop": {"input":"損失の曲面と、開始点","output":"最小点の近くに到達したパラメータ"},
+  "adagrad-optimizer": {"input":"損失の曲面と、開始点","output":"最小点の近くに到達したパラメータ"},
+  "adam-optimizer": {"input":"損失の曲面と、開始点","output":"最小点の近くに到達したパラメータ"},
+  "skeletal-animation-slerp-blending": { input: "2つの向き(クォータニオン)と、補間の割合 t", output: "途中の向き(球面上の点)" },
+  "curl-noise": { input: "粒子の初期位置と、発散のない流れ", output: "流れに沿った粒子の軌跡" },
+  "cascaded-shadow-maps": { input: "カメラの視錐台(near・far・カスケード数)", output: "奥行きの分割面" },
+  pca: { input: "3次元の点群", output: "主成分の軸と、2次元に射影した点" },
 };
 
 export function flowOverviewFor(algorithmId: string, kind: VisualKind): FlowIO {
