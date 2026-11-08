@@ -65,6 +65,12 @@
   transition: opacity 0.15s ease;
 }
 
+/* 予想モードでは、まだ再生していないステップの種類(答え)が目盛りの色と高さから読めないよう、そろえて隠す */
+.strip[data-hide-future="true"] .tick[data-played="false"] {
+  --tick-height: 25%;
+  --kind-color: var(--state-idle);
+}
+
 .tick[data-played="true"] {
   opacity: 1;
 }

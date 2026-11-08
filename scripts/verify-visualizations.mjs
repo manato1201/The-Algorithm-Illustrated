@@ -156,6 +156,14 @@ import {
 } from "../src/lib/game-visualizers.ts";
 import { SIGNAL_VISUALIZERS, SIGNAL_META } from "../src/lib/signal-visualizers.ts";
 import * as BAR from "../src/lib/bar-visualizers.ts";
+import fs from "node:fs";
+import path from "node:path";
+import matter from "gray-matter";
+import * as VK from "../src/lib/visual-kind.ts";
+import * as PROV from "../src/lib/provenance.ts";
+import * as FLOW from "../src/lib/flow-overview.ts";
+import * as GUESS from "../src/lib/guess-first.ts";
+import * as DEP from "../src/lib/dependency-map.ts";
 import * as RANK from "../src/lib/ranking-visualizers.ts";
 import * as PROC from "../src/lib/procedural-visualizers.ts";
 import {
@@ -2941,6 +2949,140 @@ section("BAR (4件): SimHash・中点変位・パーリンノイズ・ウォー�
     check("worley-noise: 特徴点が各区画の内側にある", points.every((p, c) => p >= c * 8 && p < (c + 1) * 8 + 0.01));
     check("worley-noise: 特徴点のすぐ近く(距離1未満)の位置が確定(settled)", last.array.every((v, x) => (v < 1) === (last.highlight[x] === "settled")));
     check("worley-noise: 最大距離が区画の幅(8)以下", Math.max(...last.array) <= 8 + 0.005);
+  }
+}
+
+// ===========================================================================
+// 学びの見せ方(設計書 第6弾): 種類の判定・値の出どころの札・全体図・先に予想・依存の地図。
+// 各部品は React に依存しない純粋な関数なので、全アルゴリズムに対して直接確かめられる。
+// ===========================================================================
+section("第6弾: 種類の判定・札・全体図・予想・依存の地図");
+{
+  const allRegistries = {
+    sort: SORT_VISUALIZERS,
+    pathfinding: PATHFINDING_VISUALIZERS,
+    dp: DP_VISUALIZERS,
+    graph: GRAPH_VISUALIZERS,
+    search: { ...SEARCH_VISUALIZERS, ...BAR.BAR_VISUALIZERS },
+    tree: TREE_VISUALIZERS,
+    string: STRING_VISUALIZERS,
+    trie: TRIE_VISUALIZERS,
+    geometry: GEOMETRY_VISUALIZERS,
+    lanes: LANE_VISUALIZERS,
+    signal: SIGNAL_VISUALIZERS,
+  };
+  // 振り分けの優先順(従来の AlgorithmVisualizer の if 連鎖と同じ順)を、判定関数とは別に書き直して比べる
+  const order = ["sort", "pathfinding", "dp", "graph", "search", "tree", "string", "trie", "geometry", "lanes", "signal"];
+  const referenceKind = (id) => order.find((kind) => id in allRegistries[kind]) ?? null;
+  const allIds = new Set(Object.values(allRegistries).flatMap((r) => Object.keys(r)));
+
+  // ---- visual-kind ----
+  check(
+    `visual-kind: 全${allIds.size}件の種類が、従来の振り分け順の参照実装と一致`,
+    [...allIds].every((id) => VK.visualKindOf(id) === referenceKind(id)),
+    [...allIds].filter((id) => VK.visualKindOf(id) !== referenceKind(id)).join(","),
+  );
+  check("visual-kind: 可視化の無いidは null", VK.visualKindOf("no-such-algorithm") === null && VK.visualKindOf("") === null);
+  check("visual-kind: 可視化のあるidは必ずどれかの種類に振り分けられる", [...allIds].every((id) => VK.visualKindOf(id) !== null));
+  check("visual-kind: 入力を変えられる種類はソートとレーン比較だけ", ["sort", "lanes"].every((k) => VK.isInputAdjustable(k)) && order.filter((k) => !["sort", "lanes"].includes(k)).every((k) => !VK.isInputAdjustable(k)));
+
+  // ---- provenance ----
+  const labels = PROV.PROVENANCE_LABELS;
+  check("札: 4語(読んだ/再生/模擬/実行)が、記号・語・意味とも重複せずそろっている",
+    PROV.PROVENANCE_ORDER.length === 4 &&
+      new Set(PROV.PROVENANCE_ORDER.map((k) => labels[k].glyph)).size === 4 &&
+      new Set(PROV.PROVENANCE_ORDER.map((k) => labels[k].ja)).size === 4 &&
+      PROV.PROVENANCE_ORDER.every((k) => labels[k].meaning.length > 10));
+  check("札: 4語の表示名が設計書どおり", ["読んだ", "再生", "模擬", "実行"].every((ja, i) => labels[PROV.PROVENANCE_ORDER[i]].ja === ja));
+  check("札: 記号が状態の記号(○●▲◆■)と重ならない(色以外の手がかりが混ざらない)", PROV.PROVENANCE_ORDER.every((k) => !Object.values(STEP_KIND_LABELS).some((l) => l.glyph === labels[k].glyph)));
+  const infos = new Map([...allIds].map((id) => [id, PROV.visualizationProvenance(id, VK.visualKindOf(id))]));
+  check("札: 全件で、札と補足の数が同じで、札は1つ以上・重複なし", [...infos.values()].every((i) => i.kinds.length > 0 && i.kinds.length === i.notes.length && new Set(i.kinds).size === i.kinds.length && i.notes.every((n) => n.length > 5)));
+  check("札: 図の札に「読んだ」は含めない(読んだ=解説の文章の札)", [...infos.values()].every((i) => !i.kinds.includes("read")));
+  check("札: ソートの全件が「実行」(入力を変えると計算し直す)", Object.keys(SORT_VISUALIZERS).every((id) => infos.get(id).kinds.includes("executed")));
+  check("札: レーン比較は「実行」と「模擬」の両方", infos.get("matrix-multiplication-three-ways").kinds.join() === "executed,simulated");
+  check("札: 簡略モデルとして挙げた全件が、実在する可視化で「模擬」", Object.keys(PROV.SIMULATED_NOTES).every((id) => allIds.has(id) && infos.get(id).kinds.includes("simulated")), Object.keys(PROV.SIMULATED_NOTES).filter((id) => !allIds.has(id)).join(","));
+  check(
+    "札: 入力を変えられず簡略モデルでもないものは「再生」だけ",
+    [...allIds].filter((id) => !VK.isInputAdjustable(VK.visualKindOf(id)) && !(id in PROV.SIMULATED_NOTES)).every((id) => infos.get(id).kinds.join() === "replay"),
+  );
+  check("札: 「再生」は他の札と同時には付かない", [...infos.values()].every((i) => !i.kinds.includes("replay") || i.kinds.length === 1));
+
+  // ---- flow-overview ----
+  check("全体図: 全種類(11)に、入力と出力の文言がある", Object.keys(FLOW.FLOW_BY_KIND).sort().join() === order.slice().sort().join() && Object.values(FLOW.FLOW_BY_KIND).every((f) => f.input.length > 3 && f.output.length > 3));
+  check("全体図: 個別の入出力を書いたアルゴリズムが実在する可視化で、種類の説明とは別の文言", Object.entries(FLOW.FLOW_OVERRIDES).every(([id, f]) => allIds.has(id) && f.input.length > 3 && f.output.length > 3 && f.input !== FLOW.FLOW_BY_KIND[VK.visualKindOf(id)].input), Object.keys(FLOW.FLOW_OVERRIDES).filter((id) => !allIds.has(id)).join(","));
+  check("全体図: 全件で入出力が引ける(個別があれば個別、なければ種類の説明)", [...allIds].every((id) => {
+    const f = FLOW.flowOverviewFor(id, VK.visualKindOf(id));
+    return id in FLOW.FLOW_OVERRIDES ? f === FLOW.FLOW_OVERRIDES[id] : f === FLOW.FLOW_BY_KIND[VK.visualKindOf(id)];
+  }));
+
+  // ---- guess-first ----
+  const K = ["idle", "comparing", "comparing", "swapping", "settled"];
+  check("予想: 種類が変わる場面(次が待機以外で、いまと違う)で問う", GUESS.shouldAskGuess(K, 0, null) && GUESS.shouldAskGuess(K, 2, null));
+  check("予想: 次がいまと同じ種類なら問わない", !GUESS.shouldAskGuess(K, 1, null));
+  check("予想: 次が待機なら問わない・最後のステップでも問わない", !GUESS.shouldAskGuess(["comparing", "idle", "swapping"], 0, null) && !GUESS.shouldAskGuess(K, K.length - 1, null) && !GUESS.shouldAskGuess(K, 99, null));
+  check("予想: 前の問いから間(3ステップ)を空ける", !GUESS.shouldAskGuess(K, 2, 0) && GUESS.shouldAskGuess(K, 3, 0) && GUESS.GUESS_COOLDOWN === 3);
+  check("予想: 選択肢が1つ以下の再生(区別するものが無い)では問わない", !GUESS.shouldAskGuess(["idle", "comparing", "idle"], 0, null) && GUESS.guessChoices(["idle", "comparing"]).length === 1);
+  check("予想: 選択肢は待機を含まず、状態の語彙の並びで、現れる種類だけ", GUESS.guessChoices(["idle", "settled", "swapping", "comparing", "comparing"]).join() === "comparing,swapping,settled" && GUESS.guessChoices(["idle"]).length === 0);
+  // 実際の再生で、手動で「進む」を押し続けたときの問われ方
+  {
+    const walk = (kinds) => {
+      const asked = [];
+      let last = null;
+      for (let i = 0; i < kinds.length - 1; i++) {
+        if (GUESS.shouldAskGuess(kinds, i, last)) {
+          asked.push(i);
+          last = i;
+        }
+      }
+      return asked;
+    };
+    const input = [5, 3, 8, 1, 9, 2, 7, 4, 6, 10];
+    const runs = [
+      ...Object.entries(SORT_VISUALIZERS).map(([id, fn]) => [id, buildStepKinds(fn(input), highlightEntities)]),
+      ...Object.entries(SEARCH_VISUALIZERS).map(([id, fn]) => [id, buildStepKinds(fn(), highlightEntities)]),
+    ];
+    let tooMany = [];
+    let gapBroken = [];
+    let badTarget = [];
+    for (const [id, kinds] of runs) {
+      const asked = walk(kinds);
+      if (asked.length > Math.ceil(kinds.length / GUESS.GUESS_COOLDOWN)) tooMany.push(id);
+      if (asked.some((v, i) => i > 0 && v - asked[i - 1] < GUESS.GUESS_COOLDOWN)) gapBroken.push(id);
+      if (asked.some((v) => kinds[v + 1] === "idle" || kinds[v + 1] === kinds[v])) badTarget.push(id);
+    }
+    check(`予想: ソート・探索の全${runs.length}件で、問う回数が ステップ数÷3 を超えない(問いすぎない)`, tooMany.length === 0, tooMany.join(","));
+    check(`予想: 全${runs.length}件で、問いの間隔が3ステップ以上`, gapBroken.length === 0, gapBroken.join(","));
+    check(`予想: 全${runs.length}件で、答えが「いまと同じ」「待機」になる問いは無い`, badTarget.length === 0, badTarget.join(","));
+    const bubble = walk(buildStepKinds(SORT_VISUALIZERS["bubble-sort"](input), highlightEntities));
+    check(`予想: バブルソートでは問われる場面がある(${bubble.length}回)が、全ステップの半分未満`, bubble.length >= 1 && bubble.length < SORT_VISUALIZERS["bubble-sort"](input).length / 2);
+  }
+
+  // ---- dependency-map ----
+  {
+    const dir = path.join(process.cwd(), "content", "algorithms");
+    const files = fs.readdirSync(dir).filter((f) => f.endsWith(".md"));
+    const entries = files.map((f) => ({ id: f.replace(/\.md$/, ""), body: matter(fs.readFileSync(path.join(dir, f), "utf8")).content }));
+    const ids = new Set(entries.map((e) => e.id));
+    // 参照実装: 別の正規表現で、(参照元, 参照先) の組を集める
+    const edges = new Set();
+    const broken = [];
+    for (const { id, body } of entries) {
+      for (const m of body.matchAll(/\]\(\/algorithms\/([^)\s]+)\)/g)) {
+        if (!ids.has(m[1])) broken.push(`${id}→${m[1]}`);
+        else if (m[1] !== id) edges.add(`${id}>${m[1]}`);
+      }
+    }
+    const map = DEP.buildDependencyMap(entries);
+    const got = new Set([...map].flatMap(([id, e]) => e.refs.map((r) => `${id}>${r}`)));
+    check(`依存の地図: 全${entries.length}記事から読み取ったつながり(${edges.size}本)が、別の正規表現の参照実装と一致`, got.size === edges.size && [...edges].every((e) => got.has(e)));
+    check("依存の地図: 記事本文のアルゴリズムへのリンクに、存在しないidが無い(リンク切れ)", broken.length === 0, broken.slice(0, 5).join(" "));
+    check("依存の地図: 参照するほうと参照されるほうが対称(a→b なら b の被参照に a)", [...map].every(([id, e]) => e.refs.every((r) => map.get(r).refBy.includes(id))) && [...map.values()].reduce((s, e) => s + e.refs.length, 0) === [...map.values()].reduce((s, e) => s + e.refBy.length, 0));
+    check("依存の地図: 自分自身への参照と重複が無い", [...map].every(([id, e]) => !e.refs.includes(id) && new Set(e.refs).size === e.refs.length && new Set(e.refBy).size === e.refBy.length));
+    check("依存の地図: 全記事がちょうど1回ずつ載っている", map.size === entries.length && entries.every((e) => map.has(e.id)));
+    const top = DEP.topFoundations(map, 20);
+    check("足場: 参照数の降順(同数はid順)で、件数が参照元の数と一致", top.length === 20 && top.every((t, i) => t.count === map.get(t.id).refBy.length && (i === 0 || top[i - 1].count > t.count || (top[i - 1].count === t.count && top[i - 1].id < t.id))));
+    check("足場: 参照されていない記事は含めない", DEP.topFoundations(map, 10000).every((t) => t.count > 0));
+    check("リンク抽出: 出現順・重複なし・アルゴリズム以外のリンクは無視", DEP.extractAlgorithmLinks("[a](/algorithms/x) と [b](/algorithms/y) と [c](/algorithms/x) と [d](/atlas) と [e](https://example.com/algorithms/z)").join() === "x,y");
   }
 }
 

@@ -9,18 +9,10 @@ import { TrieVisualizer } from "./TrieVisualizer";
 import { GeometryVisualizer } from "./GeometryVisualizer";
 import { LaneVisualizer } from "./LaneVisualizer";
 import { SignalVisualizer } from "./SignalVisualizer";
-import { SORT_VISUALIZERS } from "@/lib/sort-visualizers";
-import { PATHFINDING_VISUALIZERS } from "@/lib/pathfinding-visualizers";
-import { DP_VISUALIZERS } from "@/lib/dp-visualizers";
-import { GRAPH_VISUALIZERS } from "@/lib/graph-visualizers";
-import { SEARCH_VISUALIZERS } from "@/lib/search-visualizers";
-import { TREE_VISUALIZERS } from "@/lib/tree-visualizers";
-import { STRING_VISUALIZERS } from "@/lib/string-visualizers";
-import { TRIE_VISUALIZERS } from "@/lib/trie-visualizer";
-import { GEOMETRY_VISUALIZERS } from "@/lib/geometry-visualizers";
-import { LANE_VISUALIZERS } from "@/lib/lane-visualizers";
-import { SIGNAL_VISUALIZERS } from "@/lib/signal-visualizers";
-import { BAR_VISUALIZERS } from "@/lib/bar-visualizers";
+import { AlgorithmMetaProvider } from "./AlgorithmMeta";
+import { visualKindOf, type VisualKind } from "@/lib/visual-kind";
+import { flowOverviewFor } from "@/lib/flow-overview";
+import { visualizationProvenance } from "@/lib/provenance";
 
 /**
  * このidに対応する可視化コンポーネントが存在するかどうか。詳細ページ・比較画面の両方から使う。
@@ -42,27 +34,43 @@ type AlgorithmVisualizerProps = {
  * プレースホルダ表示を出し分ける)。
  */
 export function AlgorithmVisualizer({ algorithmId }: AlgorithmVisualizerProps) {
-  if (algorithmId in SORT_VISUALIZERS)
-    return <SortVisualizer algorithmId={algorithmId} />;
-  if (algorithmId in PATHFINDING_VISUALIZERS)
-    return <PathfindingVisualizer algorithmId={algorithmId} />;
-  if (algorithmId in DP_VISUALIZERS)
-    return <DPTableVisualizer algorithmId={algorithmId} />;
-  if (algorithmId in GRAPH_VISUALIZERS)
-    return <GraphVisualizer algorithmId={algorithmId} />;
-  if (algorithmId in SEARCH_VISUALIZERS || algorithmId in BAR_VISUALIZERS)
-    return <SearchVisualizer algorithmId={algorithmId} />;
-  if (algorithmId in TREE_VISUALIZERS)
-    return <TreeVisualizer algorithmId={algorithmId} />;
-  if (algorithmId in STRING_VISUALIZERS)
-    return <StringMatchVisualizer algorithmId={algorithmId} />;
-  if (algorithmId in TRIE_VISUALIZERS)
-    return <TrieVisualizer algorithmId={algorithmId} />;
-  if (algorithmId in GEOMETRY_VISUALIZERS)
-    return <GeometryVisualizer algorithmId={algorithmId} />;
-  if (algorithmId in LANE_VISUALIZERS)
-    return <LaneVisualizer algorithmId={algorithmId} />;
-  if (algorithmId in SIGNAL_VISUALIZERS)
-    return <SignalVisualizer algorithmId={algorithmId} />;
-  return null;
+  const kind = visualKindOf(algorithmId);
+  if (kind === null) return null;
+  return (
+    <AlgorithmMetaProvider
+      value={{
+        flow: flowOverviewFor(algorithmId, kind),
+        provenance: visualizationProvenance(algorithmId, kind),
+      }}
+    >
+      {renderVisualizer(kind, algorithmId)}
+    </AlgorithmMetaProvider>
+  );
+}
+
+function renderVisualizer(kind: VisualKind, algorithmId: string) {
+  switch (kind) {
+    case "sort":
+      return <SortVisualizer algorithmId={algorithmId} />;
+    case "pathfinding":
+      return <PathfindingVisualizer algorithmId={algorithmId} />;
+    case "dp":
+      return <DPTableVisualizer algorithmId={algorithmId} />;
+    case "graph":
+      return <GraphVisualizer algorithmId={algorithmId} />;
+    case "search":
+      return <SearchVisualizer algorithmId={algorithmId} />;
+    case "tree":
+      return <TreeVisualizer algorithmId={algorithmId} />;
+    case "string":
+      return <StringMatchVisualizer algorithmId={algorithmId} />;
+    case "trie":
+      return <TrieVisualizer algorithmId={algorithmId} />;
+    case "geometry":
+      return <GeometryVisualizer algorithmId={algorithmId} />;
+    case "lanes":
+      return <LaneVisualizer algorithmId={algorithmId} />;
+    case "signal":
+      return <SignalVisualizer algorithmId={algorithmId} />;
+  }
 }

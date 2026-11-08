@@ -14,6 +14,7 @@ const NAV_ITEMS: { href: string; label: string }[] = [
   { href: "/", label: "カタログ" },
   { href: "/atlas", label: "年表" },
   { href: "/compare", label: "比較" },
+  { href: "/map", label: "依存の地図" },
   { href: "/updates", label: "更新情報" },
   { href: "/about", label: "About" },
 ];

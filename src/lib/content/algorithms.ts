@@ -3,6 +3,7 @@ import path from "node:path";
 import matter from "gray-matter";
 import { marked } from "marked";
 import { hasVisualizer } from "@/lib/has-visualizer";
+import { buildDependencyMap, type DependencyEntry } from "@/lib/dependency-map";
 
 const CONTENT_DIR = path.join(process.cwd(), "content", "algorithms");
 
@@ -127,6 +128,20 @@ export function getAllAlgorithmsMeta(): AlgorithmMeta[] {
     })
     .filter((meta): meta is AlgorithmMeta => meta !== null);
   return cachedMeta;
+}
+
+/**
+ * 依存の地図(記事本文のリンクから機械的に読み取ったつながり)。全記事の本文を1回だけ読み、プロセス内でメモ化する。
+ * 詳細ページ(静的生成)の各ページと /map から呼ばれる。
+ */
+let cachedDependencyMap: Map<string, DependencyEntry> | null = null;
+
+export function getDependencyMap(): Map<string, DependencyEntry> {
+  if (cachedDependencyMap) return cachedDependencyMap;
+  cachedDependencyMap = buildDependencyMap(
+    getAllAlgorithmIds().map((id) => ({ id, body: readFrontmatter(id)?.content ?? "" })),
+  );
+  return cachedDependencyMap;
 }
 
 /** 詳細ページの「関連アルゴリズム」欄向け。同じサブカテゴリの他アルゴリズムを最大limit件返す。 */

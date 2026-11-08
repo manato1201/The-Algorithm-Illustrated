@@ -16,7 +16,10 @@ import {
   getAllAlgorithmIds,
   getAlgorithmDetail,
   getRelatedAlgorithms,
+  getAllAlgorithmsMeta,
+  getDependencyMap,
 } from "@/lib/content/algorithms";
+import { PROVENANCE_LABELS } from "@/lib/provenance";
 
 type AlgorithmDetailPageProps = {
   params: Promise<{ id: string }>;
@@ -37,6 +40,13 @@ export default async function AlgorithmDetailPage({
   }
 
   const relatedAlgorithms = getRelatedAlgorithms(id);
+  // 依存の地図: 記事本文のリンクから読み取ったつながり(この記事が参照している / この記事を参照している)
+  const links = getDependencyMap().get(id) ?? { refs: [], refBy: [] };
+  const nameById = new Map(getAllAlgorithmsMeta().map((meta) => [meta.id, meta.name]));
+  const linkGroups = [
+    { title: "この記事が参照しているアルゴリズム", ids: links.refs },
+    { title: "この記事を参照しているアルゴリズム", ids: links.refBy },
+  ].filter((group) => group.ids.length > 0);
 
   return (
     <div className={styles.page}>
@@ -130,6 +140,37 @@ export default async function AlgorithmDetailPage({
         </section>
       </div>
       </ScrubBridgeProvider>
+
+      {linkGroups.length > 0 ? (
+        <section className={styles.related} aria-labelledby="map-heading">
+          <h2 id="map-heading" className={styles.sectionLabel}>
+            ■ MAP 依存の地図
+          </h2>
+          <p className={styles.mapNote}>
+            <span aria-hidden="true">{PROVENANCE_LABELS.read.glyph}</span> {PROVENANCE_LABELS.read.ja}:
+            記事の本文にあるリンクを機械的に読み取ったつながりです。前提・比較・関連の区別はしていません。
+            <Link href="/map" className={styles.relatedLink}>
+              全体の地図を見る
+            </Link>
+          </p>
+          {linkGroups.map((group) => (
+            <div key={group.title}>
+              <h3 className={styles.standardNotesTitle}>
+                {group.title}({group.ids.length}件)
+              </h3>
+              <ul className={styles.relatedList}>
+                {group.ids.map((linkedId) => (
+                  <li key={linkedId}>
+                    <Link href={`/algorithms/${linkedId}`} className={styles.relatedLink}>
+                      {nameById.get(linkedId) ?? linkedId}
+                    </Link>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ))}
+        </section>
+      ) : null}
 
       {relatedAlgorithms.length > 0 ? (
         <section className={styles.related} aria-labelledby="related-heading">

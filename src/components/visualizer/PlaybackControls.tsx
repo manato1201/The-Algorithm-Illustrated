@@ -11,10 +11,14 @@ import {
   StepForwardIcon,
 } from "./PlaybackIcons";
 import { StepScore } from "./StepScore";
+import { FlowOverview } from "./FlowOverview";
+import { GuessPrompt } from "./GuessPrompt";
+import { useAlgorithmMeta } from "./AlgorithmMeta";
 import { countKindsUpTo, STEP_KIND_LABELS, type StepKind } from "./step-timeline";
 import { PLAYBACK_SPEEDS, type PlaybackSpeed } from "./useStepPlayer";
 import { useRegisterScrub } from "./ScrubBridge";
 import { playStepTone } from "@/lib/step-sound";
+import { guessChoices, shouldAskGuess } from "@/lib/guess-first";
 import { useMediaQuery } from "@/lib/use-media-query";
 
 type PlaybackControlsProps = {
@@ -80,6 +84,11 @@ export function PlaybackControls({
   // 譜面(操作の列を流す表示)と音。どちらも既定はオフで、この画面の中だけの状態
   const [scoreOn, setScoreOn] = useState(false);
   const [soundOn, setSoundOn] = useState(false);
+  // 先に予想(既定はオフ)。問いすぎないよう、いつ問うかは guess-first.ts の規則に従う
+  const [guessOn, setGuessOn] = useState(false);
+  const [guess, setGuess] = useState<{ index: number; chosen: StepKind | null } | null>(null);
+  const [lastAsked, setLastAsked] = useState<number | null>(null);
+  const algorithmMeta = useAlgorithmMeta();
   const reduceMotion = useMediaQuery("(prefers-reduced-motion: reduce)");
   // 詳細ページでは、解説のスクロール位置から再生位置を動かせるよう、操作口を登録する(Providerが無ければ何もしない)
   useRegisterScrub(frameCount, onScrub);
@@ -118,6 +127,19 @@ export function PlaybackControls({
 
   const currentLabel = COUNTED_KINDS.find(({ kind }) => kind === currentKind)?.label ?? "待機";
 
+  // 「進む」(ボタン・→・.): 予想が有効で問う場面なら、進む前に次の1手を予想させる。再生中は問わない
+  const activeGuess = guessOn && guess !== null && guess.index === stepIndex ? guess : null;
+  const requestForward = () => {
+    const asked = lastAsked !== null && lastAsked <= stepIndex ? lastAsked : null;
+    if (guessOn && !showPause && activeGuess === null && shouldAskGuess(stepKinds, stepIndex, asked)) {
+      setGuess({ index: stepIndex, chosen: null });
+      setLastAsked(stepIndex);
+      return;
+    }
+    setGuess(null);
+    onStep(1);
+  };
+
   // ← →でステップ送り、Spaceで再生/一時停止。比較画面では可視化パネルが複数並ぶことがあるため、
   // windowに直接張るとどのパネルのキー操作か区別できない。フォーカスを受け取ったパネル自身に
   // リスナーを置き、クリック/Tabでフォーカスしたパネルだけが反応するようにする。
@@ -131,7 +153,7 @@ export function PlaybackControls({
       onStep(-1);
     } else if (event.key === "ArrowRight" || event.key === ".") {
       event.preventDefault();
-      onStep(1);
+      requestForward();
     } else if (event.key === " " || event.code === "Space") {
       // フォーカス中のボタンがSpaceのネイティブclickも発火させるため、二重発火を防ぐ。
       event.preventDefault();
@@ -148,7 +170,7 @@ export function PlaybackControls({
       aria-label="再生コントロール(クリック後、矢印キーまたは , . で前後移動、スペースキーで再生/一時停止)"
     >
       <div className={styles.timeline}>
-        <div className={styles.strip} aria-hidden="true">
+        <div className={styles.strip} data-hide-future={guessOn} aria-hidden="true">
           {ticks.map((kind, index) => (
             <span
               key={index}
@@ -171,7 +193,7 @@ export function PlaybackControls({
         />
       </div>
 
-      {scoreOn ? <StepScore stepKinds={stepKinds} stepIndex={stepIndex} /> : null}
+      {scoreOn && !guessOn ? <StepScore stepKinds={stepKinds} stepIndex={stepIndex} /> : null}
 
       <div className={styles.readout}>
         <ul className={styles.legend} aria-label="タイムラインの凡例と累計ステップ数">
@@ -192,6 +214,28 @@ export function PlaybackControls({
           ) : null}
         </span>
       </div>
+
+      {algorithmMeta ? (
+        <FlowOverview
+          flow={algorithmMeta.flow}
+          provenance={algorithmMeta.provenance}
+          presentKinds={presentKinds.map(({ kind }) => kind)}
+          currentKind={currentKind}
+        />
+      ) : null}
+
+      {activeGuess ? (
+        <GuessPrompt
+          choices={guessChoices(stepKinds)}
+          answer={stepKinds[stepIndex + 1] ?? "idle"}
+          chosen={activeGuess.chosen}
+          onChoose={(kind) => setGuess({ index: activeGuess.index, chosen: kind })}
+          onContinue={() => {
+            setGuess(null);
+            onStep(1);
+          }}
+        />
+      ) : null}
 
       <div className={styles.controls}>
         <button
@@ -220,7 +264,7 @@ export function PlaybackControls({
         <button
           type="button"
           className={styles.button}
-          onClick={() => onStep(1)}
+          onClick={requestForward}
           disabled={isFinished}
         >
           進む
@@ -297,6 +341,19 @@ export function PlaybackControls({
           title="ステップごとに状態の種類に応じた短い音を鳴らす(既定はオフ)"
         >
           音
+        </button>
+        <button
+          type="button"
+          className={styles.speedButton}
+          aria-pressed={guessOn}
+          data-active={guessOn}
+          onClick={() => {
+            setGuessOn((on) => !on);
+            setGuess(null);
+          }}
+          title="「進む」を押したとき、次の1手を先に予想してから進む(既定はオフ・採点なし。ネタバレになる譜面と先の目盛りの色は隠れる)"
+        >
+          予想
         </button>
         <div className={styles.speedGroup} role="group" aria-label="再生速度">
           <SpeedIcon className={styles.speedIcon} />
