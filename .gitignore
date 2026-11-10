@@ -106,3 +106,8 @@ next-env.d.ts
 # Ignoring the whole directory also covers its nested __MACOSX/ zip-extraction junk
 # and scripts/__pycache__/ without needing separate rules.
 web-production-skill/
+
+# Claude Code の承認済みコマンドには秘密情報が残ることがある(2026-11-09 追加)
+.claude/settings.local.json
+.env.*
+!.env.example
