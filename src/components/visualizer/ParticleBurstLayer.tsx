@@ -1,6 +1,8 @@
 "use client";
 
 import { useEffect, useRef } from "react";
+// CSP(script-src に unsafe-eval を許さない)でも動くよう、シェーダーの組み立てを eval なしにする版を先に読み込む。
+import "pixi.js/unsafe-eval";
 import { Application, Graphics } from "pixi.js";
 import styles from "./ParticleBurstLayer.module.css";
 
