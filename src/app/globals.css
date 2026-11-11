@@ -63,7 +63,7 @@
   --color-bg-surface-2: #ebe8e0;
   --color-text: #15171d;
   --color-text-muted: #586073;
-  --color-accent-green: #0a7f55;
+  --color-accent-green: #087650; /* 地 #f4f2ec で 5.05:1・面 #ebe8e0 でも 4.61:1(旧 #0a7f55 は地で 4.49:1 で足りなかった) */
   --color-accent-amber: #a35800;
 
   --state-idle: #b9bec9;
@@ -77,6 +77,18 @@
   --glow-state-settled: 0 0 8px rgba(10, 127, 85, 0.4);
 }
 
+
+/* 動きの規則(DESIGN.md「動き」)。これから足す動きは、時間とイージングをここから使う(既存の CSS は触らない。触るときに寄せる)。
+   動かすのは transform と opacity だけ。動きを減らす設定では、下のグローバルな規則がすぐ切り替えにする。 */
+:root {
+  --dur-instant: 120ms; /* 押す・切り替える */
+  --dur-open: 240ms; /* 開く・閉じる */
+  --dur-enter: 300ms; /* 画面の出現(段をずらしても全体で 400ms 以内) */
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1); /* 出る */
+  --ease-in: cubic-bezier(0.7, 0, 0.84, 0); /* 入る・退く */
+  --ease-move: cubic-bezier(0.4, 0, 0.2, 1); /* 動く */
+}
+
 html {
   height: 100%;
 }
@@ -85,6 +97,18 @@ html {
 @media (prefers-reduced-motion: no-preference) {
   html {
     scroll-behavior: smooth;
+  }
+}
+
+/* 動きを減らす設定: 動きを消すのでなく、すぐ切り替える(状態の変化は伝わる)。
+   個別の CSS に書き忘れても、ここで止まる安全網(FoundationsEncyclopedia・ColorEncyclopedia と同じ形)。 */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
   }
 }
 
