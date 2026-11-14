@@ -7,6 +7,7 @@
 コンテンツ(Markdown)からブラウザ表示までの流れです。DB/CMSを持たず、リポジトリ内のMarkdownファイルを`next build`時にファイルシステム経由で読み込む構成が特徴です。
 
 ```mermaid
+%%{init: {"theme":"base","fontFamily":"Noto Sans JP, Hiragino Sans, Meiryo, sans-serif","themeVariables":{"fontFamily":"Noto Sans JP, Hiragino Sans, Meiryo, sans-serif","primaryColor":"#ffffff","primaryBorderColor":"#d0d5dd","primaryTextColor":"#101828","lineColor":"#667085","clusterBkg":"#f2f4f7","clusterBorder":"#d0d5dd","edgeLabelBackground":"#ffffff"},"flowchart":{"wrappingWidth":480,"nodeSpacing":40,"rankSpacing":56,"padding":14},"sequence":{"mirrorActors":false,"wrap":false,"width":150,"actorMargin":30,"messageMargin":34}}}%%
 flowchart LR
     subgraph Repo["リポジトリ (GitHub)"]
         MD["content/algorithms/*.md<br/>367件・frontmatter+本文"]
@@ -36,6 +37,7 @@ flowchart LR
 各記事は `## 概要` `## 仕組み` `## 特性・トレードオフ` `## 実装例` の4見出し構成のMarkdown本文と、検索・分類に使うfrontmatterで構成されます。
 
 ```mermaid
+%%{init: {"theme":"base","fontFamily":"Noto Sans JP, Hiragino Sans, Meiryo, sans-serif","themeVariables":{"fontFamily":"Noto Sans JP, Hiragino Sans, Meiryo, sans-serif","primaryColor":"#ffffff","primaryBorderColor":"#d0d5dd","primaryTextColor":"#101828","lineColor":"#667085","clusterBkg":"#f2f4f7","clusterBorder":"#d0d5dd","edgeLabelBackground":"#ffffff"},"flowchart":{"wrappingWidth":480,"nodeSpacing":40,"rankSpacing":56,"padding":14},"sequence":{"mirrorActors":false,"wrap":false,"width":150,"actorMargin":30,"messageMargin":34}}}%%
 sequenceDiagram
     participant FS as content/algorithms/bubble-sort.md
     participant GM as gray-matter
@@ -57,6 +59,7 @@ sequenceDiagram
 可視化対応済み190件は、アルゴリズムの種類に応じて8種類のビジュアライザコンポーネントのいずれかにディスパッチされます。ステップ列の生成はUIをブロックしないようWeb Workerで行います。
 
 ```mermaid
+%%{init: {"theme":"base","fontFamily":"Noto Sans JP, Hiragino Sans, Meiryo, sans-serif","themeVariables":{"fontFamily":"Noto Sans JP, Hiragino Sans, Meiryo, sans-serif","primaryColor":"#ffffff","primaryBorderColor":"#d0d5dd","primaryTextColor":"#101828","lineColor":"#667085","clusterBkg":"#f2f4f7","clusterBorder":"#d0d5dd","edgeLabelBackground":"#ffffff"},"flowchart":{"wrappingWidth":480,"nodeSpacing":40,"rankSpacing":56,"padding":14},"sequence":{"mirrorActors":false,"wrap":false,"width":150,"actorMargin":30,"messageMargin":34}}}%%
 flowchart TD
     ID["algorithmId"] --> HAS{"hasVisualizer(id)?<br/>src/lib/has-visualizer.ts"}
     HAS -->|false| PLACEHOLDER["「準備中」プレースホルダ表示"]
@@ -82,6 +85,7 @@ flowchart TD
 `category → subcategory[]` の2階層構造で、カタログ画面の絞り込みチップの元データになっています。367件は24カテゴリに分類され、件数の多い上位6カテゴリは以下の通りです(全カテゴリの一覧は[技術解説書](technical-guide.md#4-カテゴリ分類)を参照)。
 
 ```mermaid
+%%{init: {"theme":"base","fontFamily":"Noto Sans JP, Hiragino Sans, Meiryo, sans-serif","themeVariables":{"fontFamily":"Noto Sans JP, Hiragino Sans, Meiryo, sans-serif","primaryColor":"#ffffff","primaryBorderColor":"#d0d5dd","primaryTextColor":"#101828","lineColor":"#667085","clusterBkg":"#f2f4f7","clusterBorder":"#d0d5dd","edgeLabelBackground":"#ffffff"},"flowchart":{"wrappingWidth":480,"nodeSpacing":40,"rankSpacing":56,"padding":14},"sequence":{"mirrorActors":false,"wrap":false,"width":150,"actorMargin":30,"messageMargin":34}}}%%
 graph LR
     ROOT["367件<br/>24カテゴリ"]
     ROOT --> C1["グラフ (25)"]
@@ -98,6 +102,7 @@ graph LR
 各記事の`## 実装例`セクション(Python/TypeScript/C++/Rust/C#)は、言語ごとに異なる方法で正しさを検証しています(環境にC++/Rustのコンパイラがないという制約への対応)。
 
 ```mermaid
+%%{init: {"theme":"base","fontFamily":"Noto Sans JP, Hiragino Sans, Meiryo, sans-serif","themeVariables":{"fontFamily":"Noto Sans JP, Hiragino Sans, Meiryo, sans-serif","primaryColor":"#ffffff","primaryBorderColor":"#d0d5dd","primaryTextColor":"#101828","lineColor":"#667085","clusterBkg":"#f2f4f7","clusterBorder":"#d0d5dd","edgeLabelBackground":"#ffffff"},"flowchart":{"wrappingWidth":480,"nodeSpacing":40,"rankSpacing":56,"padding":14},"sequence":{"mirrorActors":false,"wrap":false,"width":150,"actorMargin":30,"messageMargin":34}}}%%
 flowchart LR
     LOGIC["検証済みの<br/>アルゴリズムロジック"] --> PY["Python<br/>python3で実行"]
     LOGIC --> TS["TypeScript<br/>node --experimental-strip-typesで実行"]
@@ -114,6 +119,7 @@ flowchart LR
 ## 6. デプロイフロー
 
 ```mermaid
+%%{init: {"theme":"base","fontFamily":"Noto Sans JP, Hiragino Sans, Meiryo, sans-serif","themeVariables":{"fontFamily":"Noto Sans JP, Hiragino Sans, Meiryo, sans-serif","primaryColor":"#ffffff","primaryBorderColor":"#d0d5dd","primaryTextColor":"#101828","lineColor":"#667085","clusterBkg":"#f2f4f7","clusterBorder":"#d0d5dd","edgeLabelBackground":"#ffffff"},"flowchart":{"wrappingWidth":480,"nodeSpacing":40,"rankSpacing":56,"padding":14},"sequence":{"mirrorActors":false,"wrap":false,"width":150,"actorMargin":30,"messageMargin":34}}}%%
 flowchart LR
     DEV["ローカル / エージェント<br/>git commit"] -->|git push| GH["GitHub<br/>manato1201/The-Algorithm-Illustrated"]
     GH -->|Webhook| VERCEL["Vercel<br/>GitHub連携ビルド"]
