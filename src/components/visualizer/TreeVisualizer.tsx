@@ -138,14 +138,17 @@ export function TreeVisualizer({ algorithmId }: TreeVisualizerProps) {
     };
     const isNew = (id: string) => fromFrame !== undefined && tween.from !== stepIndex && !(id in fromFrame.nodes);
 
-    ctx.font = "12px var(--font-mono), monospace";
+    ctx.font = "12px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace";
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";
 
-    Object.values(currentFrame.nodes).forEach((node) => {
+    // 木につなぐ前の頂点(座標が無い)は描かない。ステップの途中では、新しい頂点が nodes に先に入っていることがある
+    const placed = Object.values(currentFrame.nodes).filter((node) => positions[node.id] !== undefined);
+
+    placed.forEach((node) => {
       const from = point(node.id);
       [node.left, node.right].forEach((childId) => {
-        if (!childId) return;
+        if (!childId || positions[childId] === undefined) return;
         const to = point(childId);
         ctx.strokeStyle = stateColors.idle;
         ctx.lineWidth = 1.5;
@@ -158,7 +161,7 @@ export function TreeVisualizer({ algorithmId }: TreeVisualizerProps) {
     });
     ctx.globalAlpha = 1;
 
-    Object.values(currentFrame.nodes).forEach((node) => {
+    placed.forEach((node) => {
       const state = currentFrame.nodeStates[node.id] ?? "idle";
       const isRedBlackNode = node.color !== undefined;
       const isIntervalNode = node.hi !== undefined;
@@ -200,14 +203,14 @@ export function TreeVisualizer({ algorithmId }: TreeVisualizerProps) {
       // ノードの塗り色(fillColor)の実際の輝度から文字色を決める。状態色が増減しても常に読める組み合わせになる。
       ctx.fillStyle = readableTextColor(paintColor);
       if (isIntervalNode) {
-        ctx.font = "10px var(--font-mono), monospace";
+        ctx.font = "10px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace";
         ctx.fillText(`[${node.value},${node.hi}]`, x, y);
-        ctx.font = "12px var(--font-mono), monospace";
+        ctx.font = "12px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace";
         if (node.maxHigh !== undefined) {
           ctx.fillStyle = state === "idle" ? coreColors.textMuted : NODE_COLORS[state];
-          ctx.font = "10px var(--font-mono), monospace";
+          ctx.font = "10px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace";
           ctx.fillText(`max=${node.maxHigh}`, x, y + radius + 10);
-          ctx.font = "12px var(--font-mono), monospace";
+          ctx.font = "12px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace";
         }
       } else {
         ctx.fillText(String(node.value), x, y);
@@ -230,6 +233,7 @@ export function TreeVisualizer({ algorithmId }: TreeVisualizerProps) {
       const previousState = previousFrame?.nodeStates[node.id];
       if (state === "inserted" && previousState !== "inserted") {
         const pos = positions[node.id];
+        if (!pos) return; // まだ木につながっていない頂点
         const px = marginX + pos.x * (width - marginX * 2);
         const py = marginTop + pos.y * (height - marginTop - marginBottom);
         result.push({

@@ -115,7 +115,7 @@ export function GeometryVisualizer({ algorithmId }: GeometryVisualizerProps) {
       return { x: padding + nx * usableW, y: padding + ny * usableH };
     };
 
-    ctx.font = "11px var(--font-mono), monospace";
+    ctx.font = "11px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace";
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";
 

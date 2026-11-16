@@ -142,7 +142,7 @@ export function TrieVisualizer({ algorithmId }: TrieVisualizerProps) {
     };
     const isNew = (id: string) => fromFrame !== undefined && tween.from !== stepIndex && !(id in fromFrame.nodes);
 
-    ctx.font = "12px var(--font-mono), monospace";
+    ctx.font = "12px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace";
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";
 

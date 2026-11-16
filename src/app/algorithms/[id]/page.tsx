@@ -7,6 +7,7 @@ import { ViewTracker } from "./ViewTracker";
 import { ReadingProgress } from "./ReadingProgress";
 import { ScrollScrubToggle } from "./ScrollScrubToggle";
 import { ScrubBridgeProvider } from "@/components/visualizer/ScrubBridge";
+import { VisualizerBoundary } from "@/components/visualizer/VisualizerBoundary";
 import { ComplexityBadge } from "@/components/hud/ComplexityBadge";
 import {
   AlgorithmVisualizer,
@@ -95,7 +96,9 @@ export default async function AlgorithmDetailPage({
             ■ VISUALIZE 実行の可視化
           </h2>
           {hasVisualizer(id) ? (
-            <AlgorithmVisualizer algorithmId={id} />
+            <VisualizerBoundary>
+              <AlgorithmVisualizer algorithmId={id} />
+            </VisualizerBoundary>
           ) : (
             <div className={styles.placeholder}>
               このアルゴリズムの可視化はまだ準備中です。

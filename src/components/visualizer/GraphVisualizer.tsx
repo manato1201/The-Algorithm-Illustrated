@@ -124,7 +124,7 @@ export function GraphVisualizer({ algorithmId }: GraphVisualizerProps) {
       return { x: padding + nx * usableW, y: padding + ny * usableH };
     };
 
-    ctx.font = "11px var(--font-mono), monospace";
+    ctx.font = "11px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace";
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";
 
@@ -219,11 +219,11 @@ export function GraphVisualizer({ algorithmId }: GraphVisualizerProps) {
       const distance = currentFrame.distances[node.id];
       if (distance !== undefined) {
         ctx.fillStyle = state === "idle" ? coreColors.textMuted : color;
-        ctx.font = "10px var(--font-mono), monospace";
+        ctx.font = "10px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace";
         // 下寄りの頂点はラベルがcanvas下端からはみ出るため、その場合は上に描く(見切れ防止)。
         const labelBelow = y + 26 <= height - 4;
         ctx.fillText(distance === null ? "∞" : String(distance), x, labelBelow ? y + 26 : y - 22);
-        ctx.font = "11px var(--font-mono), monospace";
+        ctx.font = "11px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace";
       }
     }
   }, [frames, stepIndex, dataset, bounds, tween.from, tween.t]);
