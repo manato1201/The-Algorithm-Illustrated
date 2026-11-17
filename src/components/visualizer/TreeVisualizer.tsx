@@ -5,6 +5,7 @@ import styles from "./TreeVisualizer.module.css";
 import { PlaybackControls } from "./PlaybackControls";
 import { buildStepKinds, treeEntities } from "./step-timeline";
 import { ZoomableStage } from "./ZoomableStage";
+import { canvasFont, fillFitText } from "@/lib/canvas-text";
 import { useStepPlayer } from "./useStepPlayer";
 import { useFrameTween } from "./useFrameTween";
 import { useWorkerFrames } from "./useWorkerFrames";
@@ -138,7 +139,7 @@ export function TreeVisualizer({ algorithmId }: TreeVisualizerProps) {
     };
     const isNew = (id: string) => fromFrame !== undefined && tween.from !== stepIndex && !(id in fromFrame.nodes);
 
-    ctx.font = "12px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace";
+    ctx.font = canvasFont(12);
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";
 
@@ -203,17 +204,15 @@ export function TreeVisualizer({ algorithmId }: TreeVisualizerProps) {
       // ノードの塗り色(fillColor)の実際の輝度から文字色を決める。状態色が増減しても常に読める組み合わせになる。
       ctx.fillStyle = readableTextColor(paintColor);
       if (isIntervalNode) {
-        ctx.font = "10px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace";
-        ctx.fillText(`[${node.value},${node.hi}]`, x, y);
-        ctx.font = "12px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace";
+        fillFitText(ctx, `[${node.value},${node.hi}]`, x, y, radius * 2 - 4, 10);
+        ctx.font = canvasFont(12);
         if (node.maxHigh !== undefined) {
           ctx.fillStyle = state === "idle" ? coreColors.textMuted : NODE_COLORS[state];
-          ctx.font = "10px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace";
-          ctx.fillText(`max=${node.maxHigh}`, x, y + radius + 10);
-          ctx.font = "12px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace";
+          fillFitText(ctx, `max=${node.maxHigh}`, x, y + radius + 10, 64, 10);
+          ctx.font = canvasFont(12);
         }
       } else {
-        ctx.fillText(String(node.value), x, y);
+        fillFitText(ctx, String(node.value), x, y, baseRadius * 2 - 4, 12);
       }
       ctx.globalAlpha = 1;
     });

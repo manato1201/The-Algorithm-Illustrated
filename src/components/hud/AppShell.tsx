@@ -14,6 +14,10 @@ const NAV_ITEMS: { href: string; label: string }[] = [
   { href: "/", label: "カタログ" },
   { href: "/atlas", label: "年表" },
   { href: "/compare", label: "比較" },
+];
+
+/** 使用頻度の低いページ。ヘッダーを 1 段に収めるため、メニューにまとめる。 */
+const MORE_NAV_ITEMS: { href: string; label: string }[] = [
   { href: "/map", label: "依存の地図" },
   { href: "/updates", label: "更新情報" },
   { href: "/about", label: "About" },
@@ -35,7 +39,7 @@ export function AppShell({ children }: AppShellProps) {
             状態分離型 インタラクティブ・アルゴリズム図鑑
           </span>
         </div>
-        <NavLinks items={NAV_ITEMS} />
+        <NavLinks items={NAV_ITEMS} moreItems={MORE_NAV_ITEMS} />
         <div className={styles.headerRight}>
           <StatusChip status="online" />
           <LiveClock />

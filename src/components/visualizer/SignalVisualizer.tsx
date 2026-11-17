@@ -5,6 +5,7 @@ import styles from "./SignalVisualizer.module.css";
 import { PlaybackControls } from "./PlaybackControls";
 import { buildStepKinds, signalEntities } from "./step-timeline";
 import { ZoomableStage } from "./ZoomableStage";
+import { canvasFont, fillFitText } from "@/lib/canvas-text";
 import { useStepPlayer } from "./useStepPlayer";
 import { useWorkerFrames } from "./useWorkerFrames";
 import { coreColors, shouldGlow, stateColors, type StateColorKey } from "@/lib/design-tokens";
@@ -113,23 +114,22 @@ function drawPanel(
   ctx.lineTo(plotLeft + plotWidth, zeroY + 0.5);
   ctx.stroke();
   ctx.fillStyle = muted;
-  ctx.font = "9px ui-monospace, monospace";
+  ctx.font = canvasFont(9);
   ctx.textAlign = "right";
   ctx.textBaseline = "top";
-  ctx.fillText(Number(panel.yMax.toPrecision(3)).toString(), plotLeft - 4, plotTop);
+  // 縦軸の目盛りは左の余白(plotLeft - 6)に収める。桁が多い値は文字を縮める
+  fillFitText(ctx, Number(panel.yMax.toPrecision(3)).toString(), plotLeft - 4, plotTop, plotLeft - 6, 9, 6);
   ctx.textBaseline = "bottom";
-  ctx.fillText(Number(panel.yMin.toPrecision(3)).toString(), plotLeft - 4, plotBottom);
+  fillFitText(ctx, Number(panel.yMin.toPrecision(3)).toString(), plotLeft - 4, plotBottom, plotLeft - 6, 9, 6);
 
   // タイトルと横軸ラベル
   ctx.textAlign = "left";
   ctx.textBaseline = "top";
-  ctx.font = "11px ui-monospace, monospace";
   ctx.fillStyle = muted;
-  ctx.fillText(panel.title, plotLeft, top + 4, plotWidth);
+  fillFitText(ctx, panel.title, plotLeft, top + 4, plotWidth, 11, 8);
   if (panel.xLabel) {
-    ctx.font = "9px ui-monospace, monospace";
     ctx.textBaseline = "bottom";
-    ctx.fillText(panel.xLabel, plotLeft, top + PANEL_HEIGHT - 3, plotWidth);
+    fillFitText(ctx, panel.xLabel, plotLeft, top + PANEL_HEIGHT - 3, plotWidth, 9, 7);
   }
 
   // 縦の目印(窓の端・重なりの終端など)
@@ -145,10 +145,10 @@ function drawPanel(
     ctx.stroke();
     ctx.restore();
     ctx.fillStyle = coreColors.accentAmber;
-    ctx.font = "9px ui-monospace, monospace";
     ctx.textAlign = x > width - 80 ? "right" : "left";
     ctx.textBaseline = "top";
-    ctx.fillText(marker.label, x + (x > width - 80 ? -3 : 3), plotTop + 2);
+    const markerRoom = x > width - 80 ? x - plotLeft - 3 : width - PLOT_RIGHT - x - 3;
+    fillFitText(ctx, marker.label, x + (x > width - 80 ? -3 : 3), plotTop + 2, Math.max(markerRoom, 24), 9, 7);
   });
 
   // 参照波形(薄く)

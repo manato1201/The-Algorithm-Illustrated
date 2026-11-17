@@ -5,6 +5,7 @@ import styles from "./GraphVisualizer.module.css";
 import { PlaybackControls } from "./PlaybackControls";
 import { buildStepKinds, graphEntities } from "./step-timeline";
 import { ZoomableStage } from "./ZoomableStage";
+import { canvasFont, fillFitText, fitText } from "@/lib/canvas-text";
 import { useStepPlayer } from "./useStepPlayer";
 import { useFrameTween } from "./useFrameTween";
 import { useWorkerFrames } from "./useWorkerFrames";
@@ -124,19 +125,37 @@ export function GraphVisualizer({ algorithmId }: GraphVisualizerProps) {
       return { x: padding + nx * usableW, y: padding + ny * usableH };
     };
 
-    ctx.font = "11px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace";
+    ctx.font = canvasFont(11);
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";
 
     const fromFrame = frames[tween.from];
+
+    // 頂点の半径: 通常は16px。長いラベル(状態集合 "{q1,q2,q3}" など)は、円を大きくして文字を読める大きさで収める。
+    const radiusFor = (label: string) => {
+      ctx.font = canvasFont(11);
+      return Math.min(26, Math.max(16, Math.ceil(ctx.measureText(label).width / 2) + 5));
+    };
+    const radii = new Map(dataset.nodes.map((n) => [n.id, radiusFor(n.label)]));
+
+    // 往復の辺(A→B と B→A)は、同じ線・同じラベル位置に重なる。進行方向の左へ少しずらして並べる。
+    const edgeKeys = new Set(dataset.edges.map((e) => `${e.from}>${e.to}`));
+    const PARALLEL_OFFSET = 9;
 
     for (const edge of dataset.edges) {
       const state = currentFrame.edgeStates[edge.id] ?? "idle";
       const targetColor = EDGE_COLORS[state];
       const fromState = fromFrame?.edgeStates[edge.id] ?? "idle";
       const color = mixColor(EDGE_COLORS[fromState], targetColor, tween.t);
-      const from = point(edge.from);
-      const to = point(edge.to);
+      let from = point(edge.from);
+      let to = point(edge.to);
+      if (edgeKeys.has(`${edge.to}>${edge.from}`)) {
+        const len = Math.hypot(to.x - from.x, to.y - from.y) || 1;
+        const dx = (-(to.y - from.y) / len) * PARALLEL_OFFSET;
+        const dy = ((to.x - from.x) / len) * PARALLEL_OFFSET;
+        from = { x: from.x + dx, y: from.y + dy };
+        to = { x: to.x + dx, y: to.y + dy };
+      }
 
       ctx.strokeStyle = color;
       ctx.lineWidth = lerp(fromState === "idle" ? 1.5 : 3, state === "idle" ? 1.5 : 3, tween.t);
@@ -165,7 +184,7 @@ export function GraphVisualizer({ algorithmId }: GraphVisualizerProps) {
 
       if (dataset.directed) {
         const angle = Math.atan2(to.y - from.y, to.x - from.x);
-        const nodeRadius = 16;
+        const nodeRadius = radii.get(edge.to) ?? 16;
         const tipX = to.x - Math.cos(angle) * nodeRadius;
         const tipY = to.y - Math.sin(angle) * nodeRadius;
         const arrowSize = 8;
@@ -188,13 +207,16 @@ export function GraphVisualizer({ algorithmId }: GraphVisualizerProps) {
       const midX = (from.x + to.x) / 2;
       const midY = (from.y + to.y) / 2;
       const label = currentFrame.edgeLabels?.[edge.id] ?? String(edge.weight);
-      const labelWidth = Math.max(24, label.length * 7 + 8);
+      // 辺のラベルは、実際の文字幅を測って背景の幅を決める(長い文字でも背景から出ない)
+      const labelFit = fitText(ctx, label, 72, 11, 9);
+      const labelWidth = Math.max(24, labelFit.width + 8);
       ctx.shadowBlur = 0;
       ctx.fillStyle = "#06070a";
       ctx.fillRect(midX - labelWidth / 2, midY - 8, labelWidth, 16);
       // idle(未探索)の色は背景と同系統の暗色のため、そのまま文字色に使うと読めなくなる。
       ctx.fillStyle = state === "idle" ? coreColors.textMuted : color;
-      ctx.fillText(label, midX, midY);
+      ctx.fillText(labelFit.text, midX, midY);
+      ctx.font = canvasFont(11);
     }
 
     for (const node of dataset.nodes) {
@@ -208,22 +230,21 @@ export function GraphVisualizer({ algorithmId }: GraphVisualizerProps) {
       ctx.shadowBlur = shouldGlow(targetColor) ? 14 * tween.t : 0;
       ctx.fillStyle = color;
       ctx.beginPath();
-      ctx.arc(x, y, 16, 0, Math.PI * 2);
+      const nodeRadius = radii.get(node.id) ?? 16;
+      ctx.arc(x, y, nodeRadius, 0, Math.PI * 2);
       ctx.fill();
 
       ctx.shadowBlur = 0;
       // 頂点の塗り色(color)の実際の輝度から文字色を決める。状態色が増減しても常に読める組み合わせになる。
       ctx.fillStyle = readableTextColor(color);
-      ctx.fillText(node.label, x, y);
+      fillFitText(ctx, node.label, x, y, nodeRadius * 2 - 4, 11, 8);
 
       const distance = currentFrame.distances[node.id];
       if (distance !== undefined) {
         ctx.fillStyle = state === "idle" ? coreColors.textMuted : color;
-        ctx.font = "10px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace";
         // 下寄りの頂点はラベルがcanvas下端からはみ出るため、その場合は上に描く(見切れ防止)。
-        const labelBelow = y + 26 <= height - 4;
-        ctx.fillText(distance === null ? "∞" : String(distance), x, labelBelow ? y + 26 : y - 22);
-        ctx.font = "11px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace";
+        const labelBelow = y + nodeRadius + 10 <= height - 4;
+        fillFitText(ctx, distance === null ? "∞" : String(distance), x, labelBelow ? y + nodeRadius + 10 : y - nodeRadius - 6, 48, 10);
       }
     }
   }, [frames, stepIndex, dataset, bounds, tween.from, tween.t]);

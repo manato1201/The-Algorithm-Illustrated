@@ -10,7 +10,8 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  flex-wrap: wrap;
+  /* 1 段に収める: 折り返さず、足りない幅は下のメディアクエリで飾りを減らして作る */
+  flex-wrap: nowrap;
   gap: var(--space-4);
   padding: var(--space-4) var(--space-6);
   border-bottom: 1px solid var(--color-line);
@@ -20,7 +21,8 @@
   display: flex;
   align-items: baseline;
   gap: var(--space-3);
-  flex-wrap: wrap;
+  flex-shrink: 0;
+  white-space: nowrap;
 }
 
 .brandDot {
@@ -46,11 +48,17 @@
   color: var(--color-text-muted);
 }
 
+.navRoot {
+  position: relative;
+  min-width: 0;
+}
+
 .nav {
   display: flex;
   align-items: center;
   gap: var(--space-2);
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
+  white-space: nowrap;
 }
 
 .navLink {
@@ -65,6 +73,11 @@
   transition:
     color 0.15s ease,
     border-color 0.15s ease;
+}
+
+button.navLink {
+  background: none;
+  cursor: pointer;
 }
 
 .navLink:hover,
@@ -105,6 +118,92 @@
   display: flex;
   align-items: center;
   gap: var(--space-4);
+  flex-shrink: 0;
+}
+
+.menuButton {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+}
+
+.menuLabelNarrow {
+  display: none;
+}
+
+.menuPrimaryItem {
+  display: none;
+}
+
+.menu {
+  position: absolute;
+  top: calc(100% + var(--space-2));
+  right: 0;
+  z-index: 20;
+  min-width: 11rem;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  padding: var(--space-2);
+  border: 1px solid var(--color-line);
+  border-radius: 8px;
+  background: var(--color-bg-surface);
+}
+
+.menu .navLink {
+  border-radius: 6px;
+}
+
+/* 幅が足りないときは、飾り(サブタイトル・時計・状態表示)から順に省く。機能(ナビ・テーマ切替)は残す */
+@media (max-width: 1399px) {
+  .brandSub {
+    display: none;
+  }
+}
+
+@media (max-width: 1099px) {
+  .headerRight > :not(:last-child) {
+    display: none;
+  }
+}
+
+/* 狭い画面: 主要ページもメニューへ畳み、ヘッダーはブランド+メニュー+テーマ切替の 1 段にする */
+@media (max-width: 879px) {
+  .header {
+    padding: var(--space-3) var(--space-4);
+    gap: var(--space-2);
+  }
+
+  .brandName {
+    font-size: 0.875rem;
+    letter-spacing: 0.03em;
+  }
+
+  .navPrimary {
+    display: none;
+  }
+
+  .menuPrimaryItem {
+    display: block;
+  }
+
+  .menuLabelWide {
+    display: none;
+  }
+
+  .menuLabelNarrow {
+    display: inline;
+  }
+
+  .navRoot {
+    margin-left: auto;
+  }
+
+  .themeToggle {
+    font-size: 0;
+    gap: 0;
+    padding: var(--space-1) var(--space-2);
+  }
 }
 
 .main {

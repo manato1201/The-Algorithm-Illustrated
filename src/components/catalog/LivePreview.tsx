@@ -151,6 +151,8 @@ export function LivePreview({
     }
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     ctx.clearRect(0, 0, width, height);
+    // hero は上端にHUD(文字)が乗る。図がそこへ届かないよう、HUDの高さ分を空けて描く。
+    const hudBand = variant === "hero" ? 28 : 0;
 
     if (loaded.kind === "bars") {
       const frame = loaded.frames[shownStep];
@@ -163,7 +165,7 @@ export function LivePreview({
       const minValue = Math.min(0, ...values);
       const maxValue = Math.max(0, ...values);
       const range = maxValue - minValue || 1;
-      const usable = height - 8;
+      const usable = height - 8 - hudBand;
       const yFor = (value: number) =>
         height - 4 - ((value - minValue) / range) * usable;
       const zeroY = yFor(0);
@@ -196,7 +198,7 @@ export function LivePreview({
       const cols = frame.cellStates[0]?.length ?? 0;
       const gap = 2;
       const cellWidth = (width - gap * (cols - 1)) / cols;
-      const cellHeight = (height - gap * (rows - 1)) / rows;
+      const cellHeight = (height - hudBand - gap * (rows - 1)) / rows;
       frame.cellStates.forEach((row, r) => {
         row.forEach((state, c) => {
           const fromState = fromFrame?.cellStates[r]?.[c];
@@ -206,14 +208,14 @@ export function LivePreview({
             : target;
           ctx.fillRect(
             c * (cellWidth + gap),
-            r * (cellHeight + gap),
+            hudBand + r * (cellHeight + gap),
             cellWidth,
             cellHeight,
           );
         });
       });
     }
-  }, [loaded, shownStep, tween.from, tween.t]);
+  }, [loaded, shownStep, tween.from, tween.t, variant]);
 
   return (
     <div

@@ -4,11 +4,20 @@
   gap: var(--space-2);
 }
 
+/* 左: いまのステップのHUD / 右: ズーム操作。図の領域とは別の行に置き、図に重ねない。 */
 .toolbar {
   display: flex;
   align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
   gap: var(--space-2);
-  align-self: flex-end;
+}
+
+.zoomControls {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin-left: auto;
 }
 
 .zoomButton {
@@ -70,27 +79,22 @@
   width: 100%;
 }
 
-/* ---- ステージ隅のHUD(いまのステップの種別と位置) ----
-   色に加えて、形の記号(●▲◆■)とラベルでも種別を示す。操作の邪魔にならないよう、クリックは透過する。 */
-.viewportWrap {
-  position: relative;
-}
-
+/* ---- ステージ上端のHUD(いまのステップの種別と位置) ----
+   色に加えて、形の記号(●▲◆■)とラベルでも種別を示す。図の上には重ねず、ズーム操作と同じ行(図の領域の上)に置く
+   (重ねると、拡大・縮小したときや狭い幅で図の文字を隠すため)。 */
 .hud {
-  position: absolute;
-  left: var(--space-2);
-  top: var(--space-2);
-  right: var(--space-2);
+  flex: 1 1 14rem;
+  min-width: 0;
   display: flex;
   justify-content: space-between;
   align-items: baseline;
-  gap: var(--space-2);
+  flex-wrap: wrap;
+  gap: var(--space-1) var(--space-2);
   padding: 2px var(--space-2);
   font-family: var(--font-mono);
   font-size: 0.6875rem;
   letter-spacing: 0.08em;
   color: var(--color-text-muted);
-  pointer-events: none;
   /* 左右の縦線(コーナーブラケット風) */
   border-left: 1px solid var(--color-line);
   border-right: 1px solid var(--color-line);

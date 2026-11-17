@@ -75,7 +75,7 @@ export function DPTableVisualizer({ algorithmId }: DPTableVisualizerProps) {
       </div>
 
       <ZoomableStage hud={{ kind: stepKinds[stepIndex] ?? "idle", step: stepIndex, total: frames.length }}>
-        <div className={styles.tableWrap}>
+        <div className={styles.tableWrap} role="region" aria-label="表(列が多いときは横にスクロールできます)" tabIndex={0}>
           <table className={styles.table}>
             <thead>
               <tr>

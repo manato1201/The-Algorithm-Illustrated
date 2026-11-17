@@ -5,6 +5,7 @@ import styles from "./GeometryVisualizer.module.css";
 import { PlaybackControls } from "./PlaybackControls";
 import { buildStepKinds, geometryEntities } from "./step-timeline";
 import { ZoomableStage } from "./ZoomableStage";
+import { canvasFont, fitText } from "@/lib/canvas-text";
 import { useStepPlayer } from "./useStepPlayer";
 import { useWorkerFrames } from "./useWorkerFrames";
 import { ParticleBurstLayer, type ParticleBurst } from "./ParticleBurstLayer";
@@ -115,7 +116,7 @@ export function GeometryVisualizer({ algorithmId }: GeometryVisualizerProps) {
       return { x: padding + nx * usableW, y: padding + ny * usableH };
     };
 
-    ctx.font = "11px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace";
+    ctx.font = canvasFont(11);
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";
 
@@ -135,6 +136,8 @@ export function GeometryVisualizer({ algorithmId }: GeometryVisualizerProps) {
     }
     ctx.shadowBlur = 0;
 
+    // 点のidラベル。先に描いたラベルと重なるものは省く(点が密な可視化で文字が団子になるのを防ぐ)。
+    const placedLabels: { l: number; r: number; t: number; b: number }[] = [];
     for (const point of dataset.points) {
       const state = currentFrame.pointStates[point.id] ?? "idle";
       const color = POINT_COLORS[state];
@@ -152,7 +155,19 @@ export function GeometryVisualizer({ algorithmId }: GeometryVisualizerProps) {
       ctx.shadowBlur = 0;
       // idleの色は背景(canvas void)と同系統の暗色のため、そのまま文字色に使うと読めなくなる。
       ctx.fillStyle = state === "idle" ? coreColors.textMuted : color;
-      ctx.fillText(point.id, x, y - radius - 8);
+      const labelFit = fitText(ctx, point.id, 44, 11);
+      const box = {
+        l: x - labelFit.width / 2,
+        r: x + labelFit.width / 2,
+        t: y - radius - 8 - 6,
+        b: y - radius - 8 + 6,
+      };
+      const collides = placedLabels.some((o) => box.l < o.r && o.l < box.r && box.t < o.b && o.t < box.b);
+      if (!collides) {
+        placedLabels.push(box);
+        ctx.fillText(labelFit.text, x, y - radius - 8);
+      }
+      ctx.font = canvasFont(11);
     }
   }, [frames, stepIndex, dataset, bounds]);
 

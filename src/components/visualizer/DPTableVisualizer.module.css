@@ -20,9 +20,13 @@
 }
 
 /* フルブリード可視化領域(ui-design.md 2.4節: 唯一の破調区画)。Canvasではなくテーブル+CSSトランジションで表現 */
+/* 列が多い表は、この枠の中だけ横にスクロールさせる(ページ全体は押し広げない)。 */
 .tableWrap {
   position: relative;
+  max-width: 100%;
   overflow-x: auto;
+  overscroll-behavior-x: contain;
+  scrollbar-width: thin;
   border: 1px solid var(--color-line);
   border-radius: 4px;
   background: var(--color-bg-void);

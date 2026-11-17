@@ -23,7 +23,7 @@
   height: 100%;
 }
 
-/* hero: 上端にHUD(LIVE PREVIEW / 名前 / ステップ)。棒は上端まで届かないので重ならない。 */
+/* hero: 上端にHUD(LIVE PREVIEW / 名前 / ステップ)。canvas 側がHUDの高さ分(28px)を空けて描くので重ならない。 */
 .hud {
   position: absolute;
   top: var(--space-2);

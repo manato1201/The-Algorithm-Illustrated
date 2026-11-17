@@ -38,40 +38,8 @@ export function ZoomableStage({ children, hud }: ZoomableStageProps) {
   return (
     <div className={styles.stage}>
       <div className={styles.toolbar}>
-        <button
-          type="button"
-          className={styles.zoomButton}
-          onClick={zoomOut}
-          disabled={zoom <= ZOOM_MIN}
-          aria-label="縮小"
-        >
-          −
-        </button>
-        <span className={styles.zoomValue}>{Math.round(zoom * 100)}%</span>
-        <button
-          type="button"
-          className={styles.zoomButton}
-          onClick={zoomIn}
-          disabled={zoom >= ZOOM_MAX}
-          aria-label="拡大"
-        >
-          +
-        </button>
-        {zoom !== ZOOM_DEFAULT && (
-          <button type="button" className={styles.resetButton} onClick={reset}>
-            リセット
-          </button>
-        )}
-      </div>
-      <div className={styles.viewportWrap}>
-        {/* 可視化の描画領域は、テーマに関わらず常にダークの値を使う(globals.cssの data-surface="dark" 参照)。 */}
-        <div className={styles.viewport} data-surface="dark">
-          <div className={styles.content} style={{ transform: `scale(${zoom})` }}>
-            {children}
-          </div>
-        </div>
         {hud ? (
-          <div className={styles.hud} data-surface="dark" data-kind={hud.kind} aria-hidden="true">
+          <div className={styles.hud} data-kind={hud.kind} aria-hidden="true">
             <span className={styles.hudKind}>
               <span className={styles.hudGlyph}>{STEP_KIND_LABELS[hud.kind].glyph}</span>
               {STEP_KIND_LABELS[hud.kind].en}
@@ -82,6 +50,38 @@ export function ZoomableStage({ children, hud }: ZoomableStageProps) {
             </span>
           </div>
         ) : null}
+        <div className={styles.zoomControls}>
+          <button
+            type="button"
+            className={styles.zoomButton}
+            onClick={zoomOut}
+            disabled={zoom <= ZOOM_MIN}
+            aria-label="縮小"
+          >
+            −
+          </button>
+          <span className={styles.zoomValue}>{Math.round(zoom * 100)}%</span>
+          <button
+            type="button"
+            className={styles.zoomButton}
+            onClick={zoomIn}
+            disabled={zoom >= ZOOM_MAX}
+            aria-label="拡大"
+          >
+            +
+          </button>
+          {zoom !== ZOOM_DEFAULT && (
+            <button type="button" className={styles.resetButton} onClick={reset}>
+              リセット
+            </button>
+          )}
+        </div>
+      </div>
+      {/* 可視化の描画領域は、テーマに関わらず常にダークの値を使う(globals.cssの data-surface="dark" 参照)。 */}
+      <div className={styles.viewport} data-surface="dark">
+        <div className={styles.content} style={{ transform: `scale(${zoom})` }}>
+          {children}
+        </div>
       </div>
     </div>
   );

@@ -5,6 +5,7 @@ import styles from "./TrieVisualizer.module.css";
 import { PlaybackControls } from "./PlaybackControls";
 import { buildStepKinds, trieEntities } from "./step-timeline";
 import { ZoomableStage } from "./ZoomableStage";
+import { canvasFont, fillFitText } from "@/lib/canvas-text";
 import { useStepPlayer } from "./useStepPlayer";
 import { useFrameTween } from "./useFrameTween";
 import { useWorkerFrames } from "./useWorkerFrames";
@@ -142,7 +143,7 @@ export function TrieVisualizer({ algorithmId }: TrieVisualizerProps) {
     };
     const isNew = (id: string) => fromFrame !== undefined && tween.from !== stepIndex && !(id in fromFrame.nodes);
 
-    ctx.font = "12px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace";
+    ctx.font = canvasFont(12);
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";
 
@@ -213,7 +214,7 @@ export function TrieVisualizer({ algorithmId }: TrieVisualizerProps) {
       ctx.shadowBlur = 0;
       // ノードの塗り色(color)の実際の輝度から文字色を決める。状態色が増減しても常に読める組み合わせになる。
       ctx.fillStyle = readableTextColor(color);
-      ctx.fillText(node.char || "∅", x, y);
+      fillFitText(ctx, node.char || "∅", x, y, baseRadius * 2 - 4, 12);
       ctx.globalAlpha = 1;
     });
   }, [frames, stepIndex, layout, tween.from, tween.t, fromPositions]);
