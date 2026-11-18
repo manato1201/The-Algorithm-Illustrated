@@ -3,6 +3,7 @@ import { StatusChip } from "./StatusChip";
 import { LiveClock } from "./LiveClock";
 import { NavLinks } from "./NavLinks";
 import { ThemeToggle } from "./ThemeToggle";
+import { BackToTop } from "./BackToTop";
 import styles from "./AppShell.module.css";
 
 type AppShellProps = {
@@ -47,6 +48,7 @@ export function AppShell({ children }: AppShellProps) {
         </div>
       </header>
       <main className={styles.main}>{children}</main>
+      <BackToTop />
     </div>
   );
 }

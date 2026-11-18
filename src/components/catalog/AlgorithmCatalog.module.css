@@ -714,3 +714,20 @@
 .categoryGroup {
   scroll-margin-top: 5rem;
 }
+
+/* 一覧の行・入口のカードは、ポインタを乗せたとき 2px だけ浮く(transform のみ。縁と発光の変化は既存のまま)。
+   タッチ端末では hover が残って浮いたままになるので、hover のある端末だけ。 */
+@media (prefers-reduced-motion: no-preference) and (hover: hover) {
+  .listRow,
+  .startCard {
+    transition:
+      border-color 0.15s ease,
+      box-shadow 0.15s ease,
+      transform var(--dur-instant) var(--ease-out);
+  }
+
+  .listRow:hover,
+  .startCard:hover {
+    transform: translateY(-2px);
+  }
+}

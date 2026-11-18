@@ -53,3 +53,24 @@
   color: var(--color-accent-amber);
   border-color: var(--color-accent-amber);
 }
+
+/* 追加した瞬間だけ、星が一度はずむ(1 回きり。transform のみ)。動きを減らす設定では出さない。 */
+@media (prefers-reduced-motion: no-preference) {
+  .iconButton[data-pop="true"] > span,
+  .labelButton[data-pop="true"] > span {
+    display: inline-block;
+    animation: fav-pop var(--dur-enter) var(--ease-out) 1;
+  }
+}
+
+@keyframes fav-pop {
+  0% {
+    transform: scale(1);
+  }
+  40% {
+    transform: scale(1.45);
+  }
+  100% {
+    transform: scale(1);
+  }
+}

@@ -49,6 +49,7 @@
 2. **動きを減らす設定**: `globals.css` の全体の規則が、`animation` / `transition` を 0.01ms にして**すぐ切り替える**(**2026-11-11 に追加**。それまでは、各ファイルに書き忘れると止まらなかった)。パーティクル(pixi.js)は、JS 側でも `prefers-reduced-motion` を見て生成しない。
 3. CSS の無限ループは**ない**。可視化の再生は JS(利用者が再生・停止・ステップ送りを操作する)。**新しい無限ループは足さない**。
 4. pixi.js は、CSP の `unsafe-eval` を許さずに動かすため、`pixi.js/unsafe-eval` を読み込んでいる(`ParticleBurstLayer.tsx`)。
+5. **2026-11-18 に足した小さな動き(いずれも `prefers-reduced-motion: no-preference` の中だけ。transform と opacity のみ)**: 一覧の行・入口カードのホバーで 2px 浮く(`AlgorithmCatalog.module.css`・hover のある端末だけ)/ お気に入りを「追加」した瞬間に星が 1 回はずむ(`FavoriteToggleButton`、`fav-pop`)/ 右下の「ページの先頭へ戻る」ボタンが、画面 1.5 枚分より下で出入りする(`hud/BackToTop`)。
 
 ## 5. アイコン
 
