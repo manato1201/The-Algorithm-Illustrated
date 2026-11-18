@@ -4,6 +4,8 @@
 
 **公開 URL**: [the-algorithm-illustrated.vercel.app](https://the-algorithm-illustrated.vercel.app)(`git push` のたびに自動で再デプロイ)
 
+**関連サイト**: 自作の 4 サイトは各画面のフッターから相互に行き来できます([アルゴリズム図鑑](https://the-algorithm-illustrated.vercel.app)・[基礎学習図鑑](https://foundations-encyclopedia.vercel.app)・[色彩図鑑](https://color-encyclopedia.vercel.app)・[Houdini リファレンス](https://houdini-reference.vercel.app))。サイトごとにオリジンが違うため、お気に入り・テーマ・設定は共有されません。
+
 ![全体の構成図](docs/diagrams/architecture.svg)
 
 - **記事**: `content/algorithms/*.md`(758 件・29 カテゴリ)。frontmatter + Markdown 本文 + 5 言語の実装例。
