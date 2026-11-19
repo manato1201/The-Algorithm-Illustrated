@@ -1,0 +1,59 @@
+/* 固定タイトルバー。出入りは transform と opacity だけ(1 回きり)。閉じている間は visibility で見えず・フォーカスも受けない。 */
+.bar {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 40;
+  height: var(--titlebar-h, 2.75rem);
+  background: var(--color-bg-surface);
+  border-bottom: 1px solid var(--color-line);
+  transform: translateY(-100%);
+  opacity: 0;
+  visibility: hidden;
+  transition:
+    transform var(--dur-open) var(--ease-move),
+    opacity var(--dur-open) var(--ease-move),
+    visibility 0s linear var(--dur-open);
+}
+
+.bar[data-visible="true"] {
+  transform: none;
+  opacity: 1;
+  visibility: visible;
+  transition-delay: 0s;
+}
+
+.inner {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  height: 100%;
+  max-width: 72rem;
+  margin: 0 auto;
+  padding: 0 var(--space-6);
+}
+
+.name {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: var(--font-display);
+  font-size: 1rem;
+  font-weight: 700;
+}
+
+@media (max-width: 639px) {
+  .inner {
+    padding: 0 var(--space-4);
+    gap: var(--space-2);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .bar {
+    transition: none;
+  }
+}

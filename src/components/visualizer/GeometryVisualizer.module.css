@@ -12,6 +12,9 @@
 .canvas {
   width: 100%;
   aspect-ratio: 16 / 10;
+  /* 低い画面では、詳細ページの左ペインが 1 画面に収まるよう、比率を保ったまま幅(=高さ)を抑える */
+  max-width: calc(var(--stage-max, 9999px) * 1.6);
+  margin-inline: auto;
   display: block;
   background: var(--color-bg-void);
   border: 1px solid var(--color-line);

@@ -1,15 +1,23 @@
 .page {
+  /* 固定タイトルバーの高さ(StickyTitleBar と左ペインの sticky の top が共有する) */
+  --titlebar-h: 2.75rem;
   padding: var(--space-6);
   max-width: 72rem;
   margin: 0 auto;
 }
 
+/* ページ末尾の「カテゴリの一覧へ戻る」(前へ/次への下) */
 .backLink {
   display: inline-block;
   font-family: var(--font-mono);
   font-size: 0.8125rem;
   color: var(--color-text-muted);
-  margin-bottom: var(--space-6);
+  margin-top: var(--space-6);
+}
+
+/* 前へ/次へ(ヘッダーの右端。狭い画面では折り返す) */
+.headerPager {
+  margin-left: auto;
 }
 
 .backLink:hover {
@@ -62,23 +70,27 @@
   }
 }
 
-/* 左ペイン(可視化+全体図+操作列+擬似コード)は画面の高さを超えがち。貼り付いたまま下半分が見えなくならないよう、
-   ペインの高さを画面内に収めて、はみ出す分はペインの中でスクロールさせる(操作列は PlaybackControls 側で下端に固定する)。 */
+/* 左ペイン(可視化+全体図+操作列+擬似コード)は貼り付いたまま見せる。内側のスクロールは持たない
+   (スクロールバーが二重になるため)。1 画面に収まるよう中の間隔を詰める。
+   position: sticky を効かせるため、祖先に overflow: hidden/auto を付けない。 */
 .visualPane {
   position: sticky;
-  top: var(--space-4);
-  max-height: calc(100dvh - var(--space-8));
-  overflow-y: auto;
-  overscroll-behavior: contain;
-  scrollbar-width: thin;
+  /* 固定のタイトルバー(StickyTitleBar)の下に貼り付く */
+  top: calc(var(--titlebar-h) + var(--space-2));
+  /* 可視化の描画領域の高さの上限。操作列・タイムライン・全体図・余白の分(33rem)を引いた、1 画面に収まる高さ */
+  --stage-max: calc(100dvh - 33rem);
 }
 
 /* 狭い画面(1列): 解説を読んでいる間も可視化と操作が上に残るよう、上端に貼り付ける(画面の半分弱まで) */
 @media (max-width: 768px) {
   .visualPane {
-    top: 0;
+    top: var(--titlebar-h);
     z-index: 5;
+    --stage-max: 9999px;
     max-height: 46dvh;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    scrollbar-width: thin;
     padding: var(--space-2) 0;
     background: var(--color-bg-void);
     border-bottom: 1px solid var(--color-line);

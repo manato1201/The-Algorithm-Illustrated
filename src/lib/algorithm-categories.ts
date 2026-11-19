@@ -106,3 +106,61 @@ export const CATEGORY_ORDER = CATEGORY_TAXONOMY.map((c) => c.category);
 export const SUBCATEGORIES_BY_CATEGORY: Record<string, readonly string[]> = Object.fromEntries(
   CATEGORY_TAXONOMY.map((c) => [c.category, c.subcategories]),
 );
+
+/**
+ * カテゴリの大分類(カタログの左サイドバーの見出し)。29 カテゴリを 5 つにまとめ、一覧性を上げる。
+ * 全カテゴリがちょうど 1 つの大分類に入る(`npm run verify:categories` が「未分類・重複・存在しないカテゴリ」を検査する)。
+ * 新カテゴリを CATEGORY_TAXONOMY に足したら、ここにも 1 回だけ追記する。コンポーネント側にカテゴリ名の配列は持たない。
+ * 大分類の中の並びは CATEGORY_ORDER(CATEGORY_TAXONOMY の順)に揃えて表示する。
+ */
+export const CATEGORY_GROUPS: { label: string; categories: string[] }[] = [
+  {
+    label: "基礎アルゴリズム",
+    categories: [
+      "ソート",
+      "探索",
+      "グラフ",
+      "動的計画法",
+      "貪欲法",
+      "文字列",
+      "データ構造",
+      "ゲーム/競技プログラミング",
+    ],
+  },
+  {
+    label: "数理・最適化・制御",
+    categories: [
+      "数論・暗号",
+      "計算幾何",
+      "最適化・確率的手法",
+      "シミュレーション・群知能",
+      "数値計算",
+      "制御・ロボティクス",
+    ],
+  },
+  {
+    label: "データ・AI",
+    categories: [
+      "情報検索・ランキング",
+      "機械学習",
+      "強化学習",
+      "自然言語処理",
+      "コンピュータビジョン",
+      "バイオインフォマティクス",
+    ],
+  },
+  {
+    label: "システム・ソフトウェア",
+    categories: [
+      "デザインパターン",
+      "分散システム",
+      "コンパイラ・構文解析",
+      "並行処理・並列アルゴリズム",
+      "スケジューリング",
+    ],
+  },
+  {
+    label: "ゲーム・CG・メディア",
+    categories: ["ゲーム", "音響・信号処理", "キャラクターAI・空間AI", "CG・3Dレンダリング"],
+  },
+];

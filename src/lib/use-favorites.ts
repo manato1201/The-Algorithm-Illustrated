@@ -3,6 +3,8 @@
 import { useCallback, useEffect, useState } from "react";
 
 const STORAGE_KEY = "algo-illustrated:favorites";
+/** 同じタブ内の別のフック(詳細ページのヘッダーと固定タイトルバーなど)へ変更を知らせるイベント。storage イベントは別タブにしか届かない。 */
+const CHANGE_EVENT = "algo-illustrated:favorites-changed";
 
 function readFavorites(): string[] {
   if (typeof window === "undefined") return [];
@@ -21,6 +23,8 @@ function readFavorites(): string[] {
 function writeFavorites(ids: string[]) {
   try {
     window.localStorage.setItem(STORAGE_KEY, JSON.stringify(ids));
+    // setState の更新関数の中から呼ばれるので、他のコンポーネントの更新は描画のあとに回す
+    setTimeout(() => window.dispatchEvent(new Event(CHANGE_EVENT)), 0);
   } catch {
     // プライベートブラウジング等でlocalStorageが使えない場合は何もしない(お気に入りは保存されないだけ)
   }
@@ -47,10 +51,13 @@ export function useFavorites() {
     const handleStorage = (event: StorageEvent) => {
       if (event.key === STORAGE_KEY) setFavorites(new Set(readFavorites()));
     };
+    const handleChange = () => setFavorites(new Set(readFavorites()));
     window.addEventListener("storage", handleStorage);
+    window.addEventListener(CHANGE_EVENT, handleChange);
     return () => {
       clearTimeout(timer);
       window.removeEventListener("storage", handleStorage);
+      window.removeEventListener(CHANGE_EVENT, handleChange);
     };
   }, []);
 

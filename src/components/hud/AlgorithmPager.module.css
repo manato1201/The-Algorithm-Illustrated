@@ -1,0 +1,98 @@
+/* 前へ/次へ。遷移を表す矢印は右向き(次へ →)、戻るは左向き(← 前へ)。無効のときは破線+薄い色(色だけに頼らず形でも区別する) */
+.pager {
+  display: flex;
+  align-items: stretch;
+  gap: var(--space-2);
+}
+
+.item {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  border: 1px solid var(--color-line);
+  color: var(--color-text-muted);
+  font-family: var(--font-mono);
+  transition:
+    color 0.15s ease,
+    border-color 0.15s ease;
+}
+
+a.item:hover,
+a.item:focus-visible {
+  color: var(--color-accent-amber);
+  border-color: var(--color-accent-amber);
+}
+
+.disabled {
+  border-style: dashed;
+  opacity: 0.5;
+  cursor: default;
+}
+
+/* ---- compact: ヘッダー・固定バー ---- */
+.compact .item {
+  justify-content: center;
+  padding: var(--space-1) var(--space-3);
+  border-radius: 999px;
+  font-size: 0.8125rem;
+  white-space: nowrap;
+}
+
+/* ---- full: ページ末尾(名前つき) ---- */
+.full {
+  flex-wrap: wrap;
+  margin-top: var(--space-8);
+  padding-top: var(--space-6);
+  border-top: 1px solid var(--color-line);
+}
+
+.full .item {
+  flex: 1 1 14rem;
+  gap: var(--space-1);
+  padding: var(--space-3) var(--space-4);
+  border-radius: 8px;
+}
+
+.full .next {
+  text-align: right;
+}
+
+.full .label {
+  font-size: 0.75rem;
+  letter-spacing: 0.06em;
+}
+
+.full .name {
+  font-family: var(--font-body);
+  font-size: 1rem;
+  color: var(--color-text);
+  overflow-wrap: anywhere;
+}
+
+.full .disabled .name {
+  color: var(--color-text-muted);
+  font-size: 0.875rem;
+}
+
+.hint {
+  flex-basis: 100%;
+  margin: 0;
+  font-family: var(--font-body);
+  font-size: 0.8125rem;
+  color: var(--color-text-muted);
+}
+
+.hint kbd {
+  padding: 0 0.375em;
+  border: 1px solid var(--color-line);
+  border-radius: 3px;
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  color: var(--color-text);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .item {
+    transition: none;
+  }
+}

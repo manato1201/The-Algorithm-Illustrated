@@ -9,6 +9,9 @@ import { ScrollScrubToggle } from "./ScrollScrubToggle";
 import { ScrubBridgeProvider } from "@/components/visualizer/ScrubBridge";
 import { VisualizerBoundary } from "@/components/visualizer/VisualizerBoundary";
 import { ComplexityBadge } from "@/components/hud/ComplexityBadge";
+import { AlgorithmPager } from "@/components/hud/AlgorithmPager";
+import { StickyTitleBar } from "@/components/hud/StickyTitleBar";
+import { getAdjacentAlgorithms } from "@/lib/adjacent-algorithms";
 import {
   AlgorithmVisualizer,
   hasVisualizer,
@@ -43,7 +46,12 @@ export default async function AlgorithmDetailPage({
   const relatedAlgorithms = getRelatedAlgorithms(id);
   // 依存の地図: 記事本文のリンクから読み取ったつながり(この記事が参照している / この記事を参照している)
   const links = getDependencyMap().get(id) ?? { refs: [], refBy: [] };
-  const nameById = new Map(getAllAlgorithmsMeta().map((meta) => [meta.id, meta.name]));
+  const allMeta = getAllAlgorithmsMeta();
+  const nameById = new Map(allMeta.map((meta) => [meta.id, meta.name]));
+  // 前へ/次へ: クライアントへ渡すのは id と名前だけ
+  const adjacent = getAdjacentAlgorithms(id, allMeta);
+  const prevItem = adjacent.prev ? { id: adjacent.prev.id, name: adjacent.prev.name } : null;
+  const nextItem = adjacent.next ? { id: adjacent.next.id, name: adjacent.next.name } : null;
   const linkGroups = [
     { title: "この記事が参照しているアルゴリズム", ids: links.refs },
     { title: "この記事を参照しているアルゴリズム", ids: links.refBy },
@@ -84,10 +92,22 @@ export default async function AlgorithmDetailPage({
         <span className={styles.category}>
           {algorithm.category} ・ {algorithm.subcategory}
         </span>
-        <h1 className={styles.title}>{algorithm.name}</h1>
+        <h1 id="algorithm-title" className={styles.title}>
+          {algorithm.name}
+        </h1>
         <ComplexityBadge notation={algorithm.complexity} />
         <FavoriteButton id={id} />
+        <div className={styles.headerPager}>
+          <AlgorithmPager prev={prevItem} next={nextItem} variant="compact" keyboard />
+        </div>
       </header>
+      <StickyTitleBar
+        id={id}
+        name={algorithm.name}
+        prev={prevItem}
+        next={nextItem}
+        targetId="algorithm-title"
+      />
 
       <ScrubBridgeProvider>
       <div className={styles.layout}>
@@ -194,6 +214,15 @@ export default async function AlgorithmDetailPage({
           </ul>
         </section>
       ) : null}
+
+      <AlgorithmPager prev={prevItem} next={nextItem} variant="full" />
+      <Link
+        href={`/?category=${encodeURIComponent(algorithm.category)}`}
+        className={styles.backLink}
+      >
+        <span aria-hidden="true">↑ </span>
+        {algorithm.category}の一覧へ戻る
+      </Link>
     </div>
   );
 }

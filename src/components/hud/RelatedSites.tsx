@@ -1,12 +1,13 @@
 import styles from "./RelatedSites.module.css";
 
-type SiteId = "algorithm" | "foundations" | "color" | "houdini";
+export type SiteId = "algorithm" | "foundations" | "color" | "houdini";
 
 /**
  * 自作の関連サイト 4 つ(図鑑 3 つ+Houdini リファレンス)の名前・URL・一言。各サイトに同じ内容を置く(共有パッケージは作らない)。
  * url が空文字のサイトは、リンクを出さない(本番 URL が確認できるまで推測で書かない)。
+ * フッター(この下の RelatedSites)とヘッダーの「関連サイト」メニュー(SitesMenu)が、この 1 つの定数を共有する。
  */
-const RELATED_SITES: { id: SiteId; name: string; desc: string; url: string }[] = [
+export const RELATED_SITES: { id: SiteId; name: string; desc: string; url: string }[] = [
   {
     id: "algorithm",
     name: "アルゴリズム図鑑",

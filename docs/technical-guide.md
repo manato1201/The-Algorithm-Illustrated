@@ -157,10 +157,11 @@ summary: 隣接要素の比較・交換を繰り返す最も素朴な手法。..
 
 | コンポーネント    | 役割                                                                                                 |
 | ----------------- | ---------------------------------------------------------------------------------------------------- |
-| `AppShell`        | 全画面共通フレーム。ヘッダー(ブランド+ナビゲーション+StatusChip+LiveClock)とコーナーブラケットを提供 |
+| `AppShell`        | 全画面共通フレーム。ヘッダー(ブランド+ナビゲーション+関連サイトのメニュー+テーマ切替)とコーナーブラケットを提供 |
 | `CornerBrackets`  | 四隅のL字罫線装飾                                                                                    |
-| `StatusChip`      | ステータス表示(`online`/`active`/`idle`)                                                             |
-| `LiveClock`       | リアルタイム時計(hydration mismatch回避のため`useEffect`後に反映)                                    |
+| `SitesMenu`       | ヘッダーの「関連サイト」メニュー(一覧は `RelatedSites.tsx` の `RELATED_SITES` を共有)               |
+| `AlgorithmPager`  | 詳細ページの前へ/次へ(順序は `lib/adjacent-algorithms.ts`。キー `[` `]`)                           |
+| `StickyTitleBar`  | 詳細ページの固定タイトルバー(見出しが画面外に出たときだけ表示)                                      |
 | `LogFeed`         | ログ風フィード表示(実装済み・現状未使用)                                                             |
 | `ComplexityBadge` | Big-O表記バッジ(等幅フォント+amber)                                                                  |
 

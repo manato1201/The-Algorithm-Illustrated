@@ -15,6 +15,8 @@
 // 新しいバッチを追加するたびに、ここに検証ブロックを追記していく運用とする
 // (書いて確認したら消す、ではなくここに積み上げる)。
 
+import { getAdjacentAlgorithms } from "../src/lib/adjacent-algorithms.ts";
+import { CATEGORY_ORDER } from "../src/lib/algorithm-categories.ts";
 import {
   SORT_VISUALIZERS,
 } from "../src/lib/sort-visualizers.ts";
@@ -3633,6 +3635,72 @@ section("譜面と音(step-sound): 状態ごとの音と段");
   check("譜面: 段(rank)が状態ごとに異なり、0〜最大段に収まる", new Set(entries.map(([, t]) => t.rank)).size === entries.length && entries.every(([, t]) => t.rank >= 0 && t.rank <= STEP_TONE_MAX_RANK));
   check("譜面: 段が高いほど音も高い(段と音の高さが同じ順序)", pitched.every(([, a]) => pitched.every(([, b]) => (a.rank < b.rank ? a.hz < b.hz : true))));
   check("譜面: 状態の表示名(記号)が5状態分ある", Object.keys(STEP_KIND_LABELS).length === 5 && new Set(Object.values(STEP_KIND_LABELS).map((l) => l.glyph)).size === 5);
+}
+
+// ===========================================================================
+// 詳細ページの「前へ / 次へ」(getAdjacentAlgorithms): カテゴリ順 → 同カテゴリ内の並び。境界は次のカテゴリへ続く
+// ===========================================================================
+section("前へ/次へ(adjacent-algorithms): 端・カテゴリ境界・存在しない id");
+{
+  // 固定の見本: カテゴリの並びは CATEGORY_ORDER(ソート → 探索 → グラフ)。入力順はわざと崩してある
+  const sample = [
+    { id: "g-1", category: "グラフ" },
+    { id: "s-2", category: "ソート" },
+    { id: "q-1", category: "探索" },
+    { id: "s-1", category: "ソート" },
+    { id: "g-2", category: "グラフ" },
+  ];
+  const first = getAdjacentAlgorithms("s-2", sample);
+  check("前後: 並べ替え後の最初(ソートの先頭=入力で先に出る s-2)は prev が null", first.prev === null && first.next?.id === "s-1");
+  const last = getAdjacentAlgorithms("g-2", sample);
+  check("前後: 最後(グラフの末尾)は next が null", last.next === null && last.prev?.id === "g-1");
+  const across = getAdjacentAlgorithms("s-1", sample);
+  check("前後: ソート→探索の境界で、次は次のカテゴリの先頭", across.next?.id === "q-1" && across.prev?.id === "s-2");
+  const back = getAdjacentAlgorithms("q-1", sample);
+  check("前後: 探索の先頭の前は、前のカテゴリの末尾", back.prev?.id === "s-1" && back.next?.id === "g-1");
+  const missing = getAdjacentAlgorithms("no-such-id", sample);
+  check("前後: 存在しない id は両方 null", missing.prev === null && missing.next === null);
+  const empty = getAdjacentAlgorithms("s-1", []);
+  check("前後: 空の一覧でも壊れず両方 null", empty.prev === null && empty.next === null);
+  const single = getAdjacentAlgorithms("only", [{ id: "only", category: "ソート" }]);
+  check("前後: 1 件だけなら両方 null", single.prev === null && single.next === null);
+
+  // 実データ(content/algorithms の全記事): 全記事が 1 本の鎖でつながり、端は null、途中は互いに逆向きに一致する
+  const contentDir = path.join(process.cwd(), "content", "algorithms");
+  const real = fs
+    .readdirSync(contentDir)
+    .filter((f) => f.endsWith(".md"))
+    .map((f) => f.slice(0, -".md".length))
+    .sort()
+    .map((id) => ({ id, category: matter(fs.readFileSync(path.join(contentDir, `${id}.md`), "utf8")).data.category }));
+  const rank = new Map(CATEGORY_ORDER.map((c, i) => [c, i]));
+  let nullPrev = 0;
+  let nullNext = 0;
+  let mutual = true;
+  let monotonic = true;
+  let visited = 0;
+  let cursor = real.find((a) => getAdjacentAlgorithms(a.id, real).prev === null);
+  const seen = new Set();
+  while (cursor && !seen.has(cursor.id)) {
+    seen.add(cursor.id);
+    visited++;
+    const adj = getAdjacentAlgorithms(cursor.id, real);
+    if (adj.next) {
+      if (getAdjacentAlgorithms(adj.next.id, real).prev?.id !== cursor.id) mutual = false;
+      if ((rank.get(adj.next.category) ?? Infinity) < (rank.get(cursor.category) ?? Infinity)) monotonic = false;
+    }
+    cursor = adj.next ?? undefined;
+  }
+  for (const a of real) {
+    const adj = getAdjacentAlgorithms(a.id, real);
+    if (adj.prev === null) nullPrev++;
+    if (adj.next === null) nullNext++;
+  }
+  check("前後(実データ): 先頭は 1 件だけ prev が null", nullPrev === 1, `件数=${nullPrev}`);
+  check("前後(実データ): 末尾は 1 件だけ next が null", nullNext === 1, `件数=${nullNext}`);
+  check("前後(実データ): 先頭から next を辿ると全記事を 1 回ずつ通る", visited === real.length, `${visited}/${real.length}`);
+  check("前後(実データ): next と prev は互いに逆向き", mutual);
+  check("前後(実データ): 辿る順にカテゴリの順序(CATEGORY_ORDER)が戻らない", monotonic);
 }
 
 console.log(`\n${"=".repeat(60)}`);

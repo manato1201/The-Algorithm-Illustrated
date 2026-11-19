@@ -1,0 +1,257 @@
+/* カテゴリ・サイドバー。デスクトップ: 左の sticky 列。モバイル(639px 以下): 下からのシート。
+   sticky を効かせるため、祖先に overflow を付けない(スクロールするのはこのパネル自身だけ)。
+   動きは transform と opacity だけ(シートの出入り)。動きを減らす設定では即時に切り替える。 */
+.panel {
+  position: sticky;
+  top: var(--space-4);
+  align-self: start;
+  margin-top: var(--space-6);
+  max-height: calc(100dvh - var(--space-8));
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+  padding: var(--space-2) var(--space-2) var(--space-4) var(--space-1);
+  font-family: var(--font-body);
+}
+
+.backdrop {
+  display: none;
+}
+
+.head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  margin-bottom: var(--space-2);
+  padding: 0 var(--space-2);
+}
+
+.title {
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  font-weight: 400;
+  letter-spacing: 0.1em;
+  color: var(--color-text-muted);
+}
+
+/* 閉じるボタンはシートのときだけ */
+.close {
+  display: none;
+}
+
+.group {
+  margin-top: var(--space-4);
+}
+
+.groupLabel {
+  padding: 0 var(--space-2);
+  margin-bottom: var(--space-1);
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+  font-weight: 400;
+  letter-spacing: 0.08em;
+  color: var(--color-text-muted);
+}
+
+.list,
+.subList {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.subList {
+  margin: var(--space-1) 0 var(--space-2) var(--space-3);
+  padding-left: var(--space-2);
+  border-left: 1px solid var(--color-line);
+}
+
+/* 選択中は枠+色の両方で示す(決めごと)。非選択でも透明な枠を持たせて、幅が変わらないようにする */
+.row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-2);
+  width: 100%;
+  padding: 0.3125rem var(--space-2);
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--color-text-muted);
+  font-family: var(--font-body);
+  font-size: 0.8125rem;
+  line-height: 1.4;
+  text-align: left;
+  cursor: pointer;
+  transition:
+    color 0.15s ease,
+    border-color 0.15s ease;
+}
+
+.row:hover:not(:disabled),
+.row:focus-visible {
+  color: var(--color-text);
+}
+
+.row[data-active="true"] {
+  color: var(--color-accent-amber);
+  border-color: var(--color-accent-amber);
+}
+
+.row[data-dim="true"] {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.subRow {
+  font-size: 0.78125rem;
+}
+
+.count {
+  flex-shrink: 0;
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+  font-variant-numeric: tabular-nums;
+  opacity: 0.75;
+}
+
+/* カテゴリが 0 件のときの空状態(破線パネル=プレースホルダ領域の言語を転用) */
+.empty {
+  margin-top: var(--space-4);
+  padding: var(--space-4);
+  border: 1px dashed var(--color-line);
+  border-radius: 8px;
+  font-size: 0.8125rem;
+  line-height: 1.6;
+  color: var(--color-text-muted);
+}
+
+/* ---- モバイル用の「カテゴリ」ボタン ---- */
+.trigger {
+  display: none;
+}
+
+@media (max-width: 639px) {
+  .trigger {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-2);
+    min-width: 0;
+    max-width: 100%;
+    padding: var(--space-2) var(--space-3);
+    border: 1px solid var(--color-line);
+    border-radius: 999px;
+    background: transparent;
+    color: var(--color-text);
+    font-family: var(--font-mono);
+    font-size: 0.8125rem;
+    cursor: pointer;
+  }
+
+  .trigger[aria-expanded="true"] {
+    border-color: var(--color-accent-amber);
+    color: var(--color-accent-amber);
+  }
+
+  .triggerLabel {
+    color: var(--color-text-muted);
+  }
+
+  .triggerValue {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .backdrop {
+    display: block;
+    position: fixed;
+    inset: 0;
+    z-index: 59;
+    background: rgba(0, 0, 0, 0.55);
+    opacity: 0;
+    visibility: hidden;
+    transition:
+      opacity var(--dur-open) var(--ease-move),
+      visibility 0s linear var(--dur-open);
+  }
+
+  .backdrop[data-open="true"] {
+    opacity: 1;
+    visibility: visible;
+    transition-delay: 0s;
+  }
+
+  .panel {
+    position: fixed;
+    top: auto;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 60;
+    margin-top: 0;
+    max-height: 78dvh;
+    padding: 0 var(--space-4) var(--space-6);
+    background: var(--color-bg-surface);
+    border-top: 1px solid var(--color-line);
+    border-radius: 12px 12px 0 0;
+    /* 閉じている間は見えず、フォーカスも受けない(visibility) */
+    visibility: hidden;
+    transform: translateY(100%);
+    transition:
+      transform var(--dur-open) var(--ease-move),
+      visibility 0s linear var(--dur-open);
+  }
+
+  .panel[data-open="true"] {
+    visibility: visible;
+    transform: none;
+    transition-delay: 0s;
+  }
+
+  .head {
+    position: sticky;
+    top: 0;
+    z-index: 1;
+    margin: 0 calc(var(--space-4) * -1) var(--space-2);
+    padding: var(--space-3) var(--space-4);
+    background: var(--color-bg-surface);
+    border-bottom: 1px solid var(--color-line);
+  }
+
+  .close {
+    display: inline-flex;
+    align-items: center;
+    padding: var(--space-1) var(--space-3);
+    border: 1px solid var(--color-line);
+    border-radius: 999px;
+    background: transparent;
+    color: var(--color-text);
+    font-family: var(--font-mono);
+    font-size: 0.8125rem;
+    cursor: pointer;
+  }
+
+  .row {
+    padding: var(--space-2) var(--space-3);
+    font-size: 0.9375rem;
+  }
+
+  .subRow {
+    font-size: 0.875rem;
+  }
+
+  .count {
+    font-size: 0.75rem;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .row,
+  .panel,
+  .backdrop {
+    transition: none !important;
+  }
+}

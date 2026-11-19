@@ -8,7 +8,7 @@ This version has breaking changes — APIs, conventions, and file structure may 
 
 ## 新しいカテゴリ・サブカテゴリを足すとき
 
-- `src/lib/algorithm-categories.ts` の `CATEGORY_TAXONOMY` に追記する。これが唯一の情報源で、カタログのチップ・表示順・READMEの集計はここから導出される。コンポーネント側にカテゴリ名の配列を重複して持たない。
+- `src/lib/algorithm-categories.ts` の `CATEGORY_TAXONOMY` に追記する。これが唯一の情報源で、カタログのサイドバー・表示順・READMEの集計はここから導出される。コンポーネント側にカテゴリ名の配列を重複して持たない。新カテゴリは、同じファイルの `CATEGORY_GROUPS`(大分類。全カテゴリがちょうど1つに入る。`verify:categories` が検査)にも1回だけ追記する。
 - 記事(`content/algorithms/<id>.md`)の frontmatter は `name` / `category` / `subcategory` / `complexity` / `summary` の5項目のみ。`category`/`subcategory` は `CATEGORY_TAXONOMY` の文字列と一字一句一致させる。`summary` の先頭を `[` にしない(YAMLが配列と解釈してビルドが壊れる)。`hasVisualizer` はfrontmatterに書かない。
 - 本文は `## 概要` / `## 仕組み` / `## 特性・トレードオフ` / `## 実装例` の4見出し。「なぜ生まれたか」を概要に書く(図鑑の方針)。
   - 見出しに補足を付けてよい(`## 実装例(Lomuto分割方式)` など。前方一致で扱う)。詳細ページでは「特性・トレードオフ」は開、「実装例」は閉のアコーディオンになる。
