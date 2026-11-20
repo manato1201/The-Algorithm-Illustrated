@@ -22,7 +22,7 @@
 4. **可視化の入力は固定のデモ**で、前提の検査が無い(1・2 は、画面からは起きない)。
 5. **新しい可視化の「種類」を足すには、4 か所 + `step-timeline.ts` に書き写す**必要がある。`category-stats.mjs` は `has-visualizer.ts` の判定を**書き写している**(足し忘れると集計だけ合わない)。`has-visualizer.ts` は、拡張子なしの import を使うので、Node から直接は試せない。
 6. **状態色が、TypeScript(`design-tokens.ts`)と CSS(`globals.css`)の 2 か所**にある(手動で同期)。
-7. **可視化の対応は、全体の約半数**(収録 758 件)。残りは記事だけ。
+7. **可視化の対応は、全体の約半数**(収録 808 件)。残りは記事だけ。
 8. **`package.json` に `"type": "module"` が無い**ので、`verify` の実行で、TypeScript のファイルを ES モジュールとして**再解析**する(警告と、わずかな遅さ)。`--experimental-strip-types` という実験的な機能に依存している。
 9. **README のカテゴリ表は手で貼り直す**(`stats:categories` の出力)。貼り忘れると、実データとずれる。
 10. **状態のキャッシュ(IndexedDB)・状態の差分記録は未実装**。

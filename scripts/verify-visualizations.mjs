@@ -173,6 +173,7 @@ import * as CTL from "../src/lib/control-series.ts";
 import * as CON from "../src/lib/contest-visualizers.ts";
 import * as RANK from "../src/lib/ranking-visualizers.ts";
 import * as PROC from "../src/lib/procedural-visualizers.ts";
+import { runAddedChecks } from "./verify-added-visualizations.mjs";
 import {
   AUTOCORR_MIN_LAG, AUTOCORR_MAX_LAG, AUTOCORR_PERIOD, autocorrInput,
   STFT_N, STFT_WIN, STFT_HOP, STFT_SWITCH, stftInput,
@@ -1501,6 +1502,8 @@ section("STRING (15件) / TRIE (2件)");
 // 「一致位置」の概念自体が存在しないため、位置一致チェックの対象から除外する。
 const NON_SEARCH_STRING_IDS = new Set([
   "run-length-encoding",
+  "duval-lyndon-factorization", // リンドン分解(一致位置の概念がない)
+  "soundex-phonetic-encoding", // 符号化(一致位置の概念がない)
   "lz77-compression",
   "lzw-compression",
   "lcp-array",
@@ -3702,6 +3705,9 @@ section("前へ/次へ(adjacent-algorithms): 端・カテゴリ境界・存在�
   check("前後(実データ): next と prev は互いに逆向き", mutual);
   check("前後(実データ): 辿る順にカテゴリの順序(CATEGORY_ORDER)が戻らない", monotonic);
 }
+
+// 追加50件(2026-11)の可視化の検証(verify-added-visualizations.mjs)
+runAddedChecks({ check, section, checkWellFormed });
 
 console.log(`\n${"=".repeat(60)}`);
 console.log(`結果: ${passCount}件成功 / ${failCount}件失敗 (合計${passCount + failCount}件のアサーション)`);

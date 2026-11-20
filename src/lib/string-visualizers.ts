@@ -1,3 +1,5 @@
+import { STRING_EXTRA_VISUALIZERS } from "./string-extra-visualizers.ts";
+
 export type CharState = "idle" | "matching" | "mismatch" | "matched";
 
 export type StringMatchFrame = {
@@ -1423,3 +1425,6 @@ export const STRING_VISUALIZERS: Record<string, () => StringMatchFrame[]> = {
   "n-gram-language-model": nGramLanguageModelSteps,
   "k-mer-counting": kMerCountingSteps,
 };
+
+// string-extra-visualizers.ts に分けた可視化を登録する。
+Object.assign(STRING_VISUALIZERS, STRING_EXTRA_VISUALIZERS);

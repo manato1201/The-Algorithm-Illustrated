@@ -41,6 +41,20 @@ const BAR_GROUP_LEGENDS: Record<BarGroup, { key: StateColorKey; label: string }[
     { key: "swapping", label: "引く・入れ替える・使い切る" },
     { key: "settled", label: "確定" },
   ],
+  structure: [
+    { key: "idle", label: "未処理・空き" },
+    { key: "comparing", label: "読んでいる・比べている要素" },
+    { key: "pivot", label: "いま注目・書き込む要素" },
+    { key: "swapping", label: "入れ替える・押し出す・除外する要素" },
+    { key: "settled", label: "確定" },
+  ],
+  estimate: [
+    { key: "idle", label: "未計算" },
+    { key: "comparing", label: "計算に使った値・候補" },
+    { key: "pivot", label: "いま計算している対象" },
+    { key: "swapping", label: "退けられた・減った値" },
+    { key: "settled", label: "確定した結果" },
+  ],
   procedural: [
     { key: "idle", label: "未計算" },
     { key: "comparing", label: "計算に使った値・計算済み" },

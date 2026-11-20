@@ -23,7 +23,7 @@
 
 | 場所 | 役割 |
 |---|---|
-| `content/algorithms/` | 記事(Markdown。758 件)・`content/atlas/milestones.json`(年表) |
+| `content/algorithms/` | 記事(Markdown。808 件)・`content/atlas/milestones.json`(年表) |
 | `src/lib/*-visualizers.ts` | 可視化の種類ごとの**ステップ列を作る純粋関数**と登録表(`*_VISUALIZERS`) |
 | `src/lib/has-visualizer.ts` | 「可視化があるか」の判定 |
 | `src/lib/algorithm-categories.ts` | 分類表 `CATEGORY_TAXONOMY`(唯一の情報源) |

@@ -14,14 +14,14 @@ OUT = Path(__file__).resolve().parent.parent / "docs" / "diagrams"
 
 def architecture() -> Diagram:
     d = Diagram(1560, 780, "The-Algorithm-Illustrated の構成",
-                "アルゴリズム図鑑。content/algorithms の Markdown(758 件)と、アルゴリズムごとの「ステップ列を作る純粋関数」(src/lib/*-visualizers.ts)を、"
+                "アルゴリズム図鑑。content/algorithms の Markdown(808 件)と、アルゴリズムごとの「ステップ列を作る純粋関数」(src/lib/*-visualizers.ts)を、"
                 "登録表(has-visualizer.ts)でつなぎ、Web Worker が実行して、可視化コンポーネントが 1 コマずつ再生する。"
                 "scripts/verify-visualizations.mjs が、独立した計算や正解値と突き合わせて検査する。")
     d.text(40, 44, "The-Algorithm-Illustrated — 構成", cls="hd")
     d.text(40, 66, "青=主な流れ / 灰の破線=補助。ステップ列は純粋関数、可視化の正しさは独立した検査で守る", cls="note")
 
     d.group(40, 100, 300, 600, "CONTENT", color="orange")
-    md = d.card(190, 250, "doc", "content/algorithms", "記事 758 件(Markdown)\nカテゴリ 29")
+    md = d.card(190, 250, "doc", "content/algorithms", "記事 808 件(Markdown)\nカテゴリ 29")
     at = d.card(190, 470, "clock", "content/atlas", "年表(milestones.json)\n出典と「生まれた目的」が必須")
 
     d.group(400, 100, 380, 600, "LIB — 純粋関数", color="teal")

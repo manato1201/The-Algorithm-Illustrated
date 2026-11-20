@@ -1,3 +1,5 @@
+import { GRAPH_EXTRA_DATASETS, GRAPH_EXTRA_VISUALIZERS } from "./graph-extra-visualizers.ts";
+
 export type GraphNodeState = "idle" | "visited" | "settled";
 export type GraphEdgeState =
   "idle" | "checking" | "relaxed" | "rejected" | "tree";
@@ -10134,3 +10136,7 @@ export const GRAPH_VISUALIZERS: Record<string, () => GraphFrame[]> = {
   "small-to-large-merging": smallToLargeMergingSteps,
   "ant-colony-optimization": antColonyOptimizationSteps,
 };
+
+// graph-extra-visualizers.ts に分けた可視化を登録する(巨大ファイルを肥大させないため)。
+Object.assign(GRAPH_DATASETS, GRAPH_EXTRA_DATASETS);
+Object.assign(GRAPH_VISUALIZERS, GRAPH_EXTRA_VISUALIZERS);

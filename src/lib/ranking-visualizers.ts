@@ -101,6 +101,67 @@ export function simhashSteps(): SearchFrame[] {
   return frames;
 }
 
+// ===========================================================================
+// ウィルソンスコア: 棒=評価の割合(%)→ 信頼区間の下限(%)に置き換える。評価が少ない項目ほど大きく割り引かれる
+// ===========================================================================
+
+export const WILSON_ITEMS: { name: string; positive: number; total: number }[] = [
+  { name: "A", positive: 2, total: 2 },
+  { name: "B", positive: 9, total: 10 },
+  { name: "C", positive: 45, total: 50 },
+  { name: "D", positive: 180, total: 200 },
+  { name: "E", positive: 920, total: 1000 },
+  { name: "F", positive: 3, total: 5 },
+];
+export const WILSON_Z = 1.96;
+
+export function wilsonLowerBound(positive: number, total: number, z = WILSON_Z): number {
+  if (total === 0) return 0;
+  const p = positive / total;
+  const center = p + (z * z) / (2 * total);
+  const margin = z * Math.sqrt((p * (1 - p)) / total + (z * z) / (4 * total * total));
+  return (center - margin) / (1 + (z * z) / total);
+}
+
+const round1 = (v: number) => Math.round(v * 10) / 10;
+
+export function wilsonScoreSteps(): SearchFrame[] {
+  const items = WILSON_ITEMS;
+  const bars = items.map((it) => round1((it.positive / it.total) * 100));
+  const frames = [
+    frame(
+      bars,
+      {},
+      `6つの項目の高評価の割合(%)。割合の順(${[...items].sort((a, b) => b.positive / b.total - a.positive / a.total || a.name.localeCompare(b.name)).map((it) => it.name).join(" > ")})だと、2件だけの満点の A が1位になる。評価の数も考えて、割合の信頼区間(95%)の下限に置き換える`,
+    ),
+  ];
+  const done: Highlight = {};
+  items.forEach((it, i) => {
+    const lower = wilsonLowerBound(it.positive, it.total) * 100;
+    bars[i] = round1(lower);
+    frames.push(
+      frame(
+        bars,
+        { ...done, [i]: "pivot" },
+        `${it.name}: ${it.positive}/${it.total} = ${round1((it.positive / it.total) * 100)}% → 信頼区間の下限 ${round1(lower)}%(評価が${it.total}件なので ${round1((it.positive / it.total) * 100 - lower)} ポイント割り引く)`,
+      ),
+    );
+    done[i] = "swapping";
+  });
+  const order = items.map((it, i) => ({ name: it.name, score: bars[i] })).sort((a, b) => b.score - a.score);
+  const all: Highlight = {};
+  items.forEach((_, i) => (all[i] = "settled"));
+  frames.push(
+    frame(
+      bars,
+      all,
+      `完了: 下限の順は ${order.map((o) => `${o.name}(${o.score}%)`).join(" > ")}。1000件で92%の E が、2件だけの満点の A より上になった。評価が増えるほど、下限は観測した割合に近づく`,
+    ),
+  );
+  return frames;
+}
+
 export const RANKING_VISUALIZERS: Record<string, () => SearchFrame[]> = {
   simhash: simhashSteps,
+  "wilson-score-interval": wilsonScoreSteps,
 };

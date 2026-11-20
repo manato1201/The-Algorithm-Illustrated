@@ -8,7 +8,7 @@
 
 ![全体の構成図](docs/diagrams/architecture.svg)
 
-- **記事**: `content/algorithms/*.md`(758 件・29 カテゴリ)。frontmatter + Markdown 本文 + 5 言語の実装例。
+- **記事**: `content/algorithms/*.md`(808 件・29 カテゴリ)。frontmatter + Markdown 本文 + 5 言語の実装例。
 - **可視化**: アルゴリズムごとの「**ステップ列を作る純粋関数**」を Web Worker で実行し、1 コマずつ再生(巻き戻し・速度・状態色のタイムライン)。
 - **比較**: 最大 4 件を並べる。可視化があれば、実行も並べて見られる。
 - **年表 Atlas・依存の地図**: 生まれた目的つきの年表と、記事本文のリンクから読み取ったつながり。

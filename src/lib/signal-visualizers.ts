@@ -24,6 +24,7 @@ import {
   wavetableSynthesisSteps,
 } from "./signal-effects.ts";
 import { CONTROL_SERIES_META, CONTROL_SERIES_VISUALIZERS } from "./control-series.ts";
+import { SIGNAL_EXTRA_META, SIGNAL_EXTRA_VISUALIZERS } from "./signal-extra-visualizers.ts";
 
 export type { SignalFrame, SignalPanel, SignalMeta } from "./signal-math.ts";
 
@@ -53,6 +54,8 @@ export const SIGNAL_VISUALIZERS: Record<string, () => SignalFrame[]> = {
   "granular-synthesis": granularSynthesisSteps,
   // 制御・ロボティクスの時系列(信号kindのパネル列を流用)
   ...CONTROL_SERIES_VISUALIZERS,
+  // signal-extra-visualizers.ts に分けた可視化
+  ...SIGNAL_EXTRA_VISUALIZERS,
 };
 
 /** 画面上部のチップ(入力の条件)。 */
@@ -76,4 +79,5 @@ export const SIGNAL_META: Record<string, SignalMeta> = {
   "convolution-reverb": { chips: ["音32サンプル", "応答24サンプル", "出力55サンプル"] },
   "granular-synthesis": { chips: ["粒24サンプル", "ずらし幅12", "8粒", "ハン窓"] },
   ...CONTROL_SERIES_META,
+  ...SIGNAL_EXTRA_META,
 };

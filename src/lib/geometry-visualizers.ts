@@ -1,3 +1,5 @@
+import { GEOMETRY_EXTRA_DATASETS, GEOMETRY_EXTRA_VISUALIZERS } from "./geometry-extra-visualizers.ts";
+
 export type GeometryPointState = "idle" | "candidate" | "hull" | "current" | "rejected" | "sweep";
 export type GeometrySegmentState = "active" | "final" | "rejected";
 
@@ -2794,3 +2796,7 @@ export const GEOMETRY_VISUALIZERS: Record<string, () => GeometryFrame[]> = {
   "hermite-curve": hermiteCurveSteps,
   "pursuit-guidance-comparison": pursuitGuidanceComparisonSteps,
 };
+
+// geometry-extra-visualizers.ts に分けた可視化を登録する。
+Object.assign(GEOMETRY_DATASETS, GEOMETRY_EXTRA_DATASETS);
+Object.assign(GEOMETRY_VISUALIZERS, GEOMETRY_EXTRA_VISUALIZERS);
